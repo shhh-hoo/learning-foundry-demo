@@ -1,0 +1,22 @@
+{
+  "_generated": "Generated from learning-foundry-demo. Do not edit manually.",
+  "schemaVersion": "1.0.0",
+  "registryVersion": "2026-07-15.1",
+  "generatedAt": "2026-07-15T09:00:00.000Z",
+  "components": [
+    {
+      "id": "kp-from-equilibrium-moles",
+      "version": "1.0.0",
+      "targetKind": "KP",
+      "contentHash": "lfh1-a007587f",
+      "file": "kp-from-equilibrium-moles.json"
+    },
+    {
+      "id": "stoichiometric-product-mass",
+      "version": "1.0.0",
+      "targetKind": "MASS",
+      "contentHash": "lfh1-65c2876d",
+      "file": "stoichiometric-product-mass.json"
+    }
+  ]
+}

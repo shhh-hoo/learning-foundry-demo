@@ -1,0 +1,561 @@
+{
+  "_generated": "Generated from learning-foundry-demo. Do not edit manually.",
+  "component": {
+    "schemaVersion": "1.0.0",
+    "id": "kp-from-equilibrium-moles",
+    "version": "1.0.0",
+    "status": "PUBLISHED",
+    "curriculum": {
+      "board": "CAIE",
+      "syllabusCode": "9701",
+      "subject": "Chemistry",
+      "topic": "Equilibria",
+      "learningObjectiveId": "9701-EQUILIBRIA-KP-01",
+      "learningObjectiveText": "Calculate Kp from equilibrium amounts and total pressure.",
+      "sourceIds": [
+        "CAIE-9701-SYLLABUS-CONCEPTS",
+        "KP_FROM_EQUILIBRIUM_MOLES_V2_GOLD"
+      ]
+    },
+    "presentation": {
+      "title": "Kp from equilibrium amounts",
+      "reaction": "N₂O₄(g) ⇌ 2NO₂(g)",
+      "prompt": "At equilibrium, a 2.00 dm³ vessel contains 0.400 mol N₂O₄ and 0.600 mol NO₂. The total pressure is 500 kPa. Calculate Kp and give the answer to 3 significant figures.",
+      "marks": 5
+    },
+    "authoredFacts": [
+      {
+        "id": "n-n2o4",
+        "label": "Equilibrium amount N₂O₄",
+        "value": 0.4,
+        "unit": "mol",
+        "relevance": "REQUIRED"
+      },
+      {
+        "id": "n-no2",
+        "label": "Equilibrium amount NO₂",
+        "value": 0.6,
+        "unit": "mol",
+        "relevance": "REQUIRED"
+      },
+      {
+        "id": "total-pressure",
+        "label": "Total pressure",
+        "value": 500,
+        "unit": "kPa",
+        "relevance": "REQUIRED"
+      },
+      {
+        "id": "vessel-volume",
+        "label": "Vessel volume",
+        "value": 2,
+        "unit": "dm³",
+        "relevance": "IRRELEVANT"
+      }
+    ],
+    "target": {
+      "kind": "KP",
+      "expectedValue": 450,
+      "acceptedUnits": [
+        "kPa"
+      ],
+      "significantFigures": 3,
+      "absoluteTolerance": 0.001,
+      "resultReasoningNodeId": "calculate-result"
+    },
+    "formulaDefinitions": [
+      {
+        "id": "total-moles-formula",
+        "targetReasoningNodeId": "total-moles",
+        "expression": {
+          "kind": "FUNCTION",
+          "name": "SUM",
+          "arguments": [
+            {
+              "kind": "VARIABLE",
+              "reference": {
+                "source": "AUTHORED_FACT",
+                "factId": "n-n2o4",
+                "symbol": "n_N2O4"
+              }
+            },
+            {
+              "kind": "VARIABLE",
+              "reference": {
+                "source": "AUTHORED_FACT",
+                "factId": "n-no2",
+                "symbol": "n_NO2"
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": "partial-pressure-n2o4-formula",
+        "targetReasoningNodeId": "partial-pressure-n2o4",
+        "expression": {
+          "kind": "BINARY",
+          "operator": "MULTIPLY",
+          "left": {
+            "kind": "BINARY",
+            "operator": "DIVIDE",
+            "left": {
+              "kind": "VARIABLE",
+              "reference": {
+                "source": "AUTHORED_FACT",
+                "factId": "n-n2o4",
+                "symbol": "n_N2O4"
+              }
+            },
+            "right": {
+              "kind": "VARIABLE",
+              "reference": {
+                "source": "REASONING_QUANTITY",
+                "reasoningNodeId": "total-moles",
+                "symbol": "n_total"
+              }
+            }
+          },
+          "right": {
+            "kind": "VARIABLE",
+            "reference": {
+              "source": "AUTHORED_FACT",
+              "factId": "total-pressure",
+              "symbol": "P_total"
+            }
+          }
+        }
+      },
+      {
+        "id": "partial-pressure-no2-formula",
+        "targetReasoningNodeId": "partial-pressure-no2",
+        "expression": {
+          "kind": "BINARY",
+          "operator": "MULTIPLY",
+          "left": {
+            "kind": "BINARY",
+            "operator": "DIVIDE",
+            "left": {
+              "kind": "VARIABLE",
+              "reference": {
+                "source": "AUTHORED_FACT",
+                "factId": "n-no2",
+                "symbol": "n_NO2"
+              }
+            },
+            "right": {
+              "kind": "VARIABLE",
+              "reference": {
+                "source": "REASONING_QUANTITY",
+                "reasoningNodeId": "total-moles",
+                "symbol": "n_total"
+              }
+            }
+          },
+          "right": {
+            "kind": "VARIABLE",
+            "reference": {
+              "source": "AUTHORED_FACT",
+              "factId": "total-pressure",
+              "symbol": "P_total"
+            }
+          }
+        }
+      },
+      {
+        "id": "kp-expression",
+        "targetReasoningNodeId": "calculate-result",
+        "expression": {
+          "kind": "BINARY",
+          "operator": "DIVIDE",
+          "left": {
+            "kind": "BINARY",
+            "operator": "POWER",
+            "left": {
+              "kind": "VARIABLE",
+              "reference": {
+                "source": "REASONING_QUANTITY",
+                "reasoningNodeId": "partial-pressure-no2",
+                "symbol": "p_NO2"
+              }
+            },
+            "right": {
+              "kind": "NUMBER",
+              "value": 2,
+              "raw": "2"
+            }
+          },
+          "right": {
+            "kind": "VARIABLE",
+            "reference": {
+              "source": "REASONING_QUANTITY",
+              "reasoningNodeId": "partial-pressure-n2o4",
+              "symbol": "p_N2O4"
+            }
+          }
+        }
+      }
+    ],
+    "reasoningGraph": {
+      "version": "kp-reasoning-graph-1.0.0",
+      "pedagogicalOrder": [
+        "select-data",
+        "identify-target",
+        "total-moles",
+        "partial-pressure-n2o4",
+        "partial-pressure-no2",
+        "construct-expression",
+        "substitute-values",
+        "calculate-result",
+        "report-unit",
+        "report-precision"
+      ],
+      "nodes": {
+        "select-data": {
+          "id": "select-data",
+          "label": "Select equilibrium amounts and total pressure",
+          "category": "DATA_EXTRACTION",
+          "dependencies": [],
+          "concept": "select-data",
+          "solutionEvidenceKinds": [
+            "EXPLICIT_STEP",
+            "EQUATION",
+            "DECLARED_RESULT"
+          ]
+        },
+        "identify-target": {
+          "id": "identify-target",
+          "label": "Identify Kp as the target",
+          "category": "TARGET_IDENTIFICATION",
+          "dependencies": [],
+          "concept": "identify-target",
+          "solutionEvidenceKinds": [
+            "EXPLICIT_STEP",
+            "EQUATION",
+            "DECLARED_RESULT"
+          ]
+        },
+        "total-moles": {
+          "id": "total-moles",
+          "label": "Calculate total equilibrium amount",
+          "category": "STRATEGY",
+          "dependencies": [
+            "select-data"
+          ],
+          "concept": "total-moles",
+          "solutionEvidenceKinds": [
+            "EXPLICIT_STEP",
+            "EQUATION",
+            "DECLARED_RESULT"
+          ]
+        },
+        "partial-pressure-n2o4": {
+          "id": "partial-pressure-n2o4",
+          "label": "Calculate partial pressure of N₂O₄",
+          "category": "STRATEGY",
+          "dependencies": [
+            "total-moles"
+          ],
+          "concept": "partial-pressure-n2o4",
+          "solutionEvidenceKinds": [
+            "EXPLICIT_STEP",
+            "EQUATION",
+            "DECLARED_RESULT"
+          ]
+        },
+        "partial-pressure-no2": {
+          "id": "partial-pressure-no2",
+          "label": "Calculate partial pressure of NO₂",
+          "category": "STRATEGY",
+          "dependencies": [
+            "total-moles"
+          ],
+          "concept": "partial-pressure-no2",
+          "solutionEvidenceKinds": [
+            "EXPLICIT_STEP",
+            "EQUATION",
+            "DECLARED_RESULT"
+          ]
+        },
+        "construct-expression": {
+          "id": "construct-expression",
+          "label": "Construct the Kp expression",
+          "category": "FORMULA",
+          "dependencies": [
+            "identify-target"
+          ],
+          "concept": "construct-expression",
+          "solutionEvidenceKinds": [
+            "EXPLICIT_STEP",
+            "EQUATION",
+            "DECLARED_RESULT"
+          ]
+        },
+        "substitute-values": {
+          "id": "substitute-values",
+          "label": "Substitute partial pressures",
+          "category": "SUBSTITUTION",
+          "dependencies": [
+            "construct-expression",
+            "partial-pressure-n2o4",
+            "partial-pressure-no2"
+          ],
+          "concept": "substitute-values",
+          "solutionEvidenceKinds": [
+            "EXPLICIT_STEP",
+            "EQUATION",
+            "DECLARED_RESULT"
+          ]
+        },
+        "calculate-result": {
+          "id": "calculate-result",
+          "label": "Calculate Kp",
+          "category": "ARITHMETIC",
+          "dependencies": [
+            "substitute-values"
+          ],
+          "concept": "calculate-result",
+          "solutionEvidenceKinds": [
+            "EXPLICIT_STEP",
+            "EQUATION",
+            "DECLARED_RESULT"
+          ]
+        },
+        "report-unit": {
+          "id": "report-unit",
+          "label": "Report pressure unit",
+          "category": "UNIT",
+          "dependencies": [
+            "calculate-result"
+          ],
+          "concept": "report-unit",
+          "solutionEvidenceKinds": [
+            "EXPLICIT_STEP",
+            "EQUATION",
+            "DECLARED_RESULT"
+          ]
+        },
+        "report-precision": {
+          "id": "report-precision",
+          "label": "Report three significant figures",
+          "category": "PRECISION",
+          "dependencies": [
+            "calculate-result"
+          ],
+          "concept": "report-precision",
+          "solutionEvidenceKinds": [
+            "EXPLICIT_STEP",
+            "EQUATION",
+            "DECLARED_RESULT"
+          ]
+        }
+      },
+      "acceptedStrategies": [
+        {
+          "id": "PARTIAL_PRESSURE_ROUTE",
+          "label": "Calculate both partial pressures before Kp",
+          "nodeRequirements": [
+            {
+              "nodeId": "select-data",
+              "requirement": "REQUIRED",
+              "allowedEvidenceKinds": [
+                "EXPLICIT_STEP",
+                "EQUATION",
+                "DECLARED_RESULT"
+              ]
+            },
+            {
+              "nodeId": "identify-target",
+              "requirement": "REQUIRED",
+              "allowedEvidenceKinds": [
+                "EXPLICIT_STEP",
+                "EQUATION",
+                "DECLARED_RESULT"
+              ]
+            },
+            {
+              "nodeId": "total-moles",
+              "requirement": "REQUIRED",
+              "allowedEvidenceKinds": [
+                "EXPLICIT_STEP",
+                "EQUATION",
+                "DECLARED_RESULT"
+              ]
+            },
+            {
+              "nodeId": "partial-pressure-n2o4",
+              "requirement": "REQUIRED",
+              "allowedEvidenceKinds": [
+                "EXPLICIT_STEP",
+                "EQUATION",
+                "DECLARED_RESULT"
+              ]
+            },
+            {
+              "nodeId": "partial-pressure-no2",
+              "requirement": "REQUIRED",
+              "allowedEvidenceKinds": [
+                "EXPLICIT_STEP",
+                "EQUATION",
+                "DECLARED_RESULT"
+              ]
+            },
+            {
+              "nodeId": "construct-expression",
+              "requirement": "REQUIRED",
+              "allowedEvidenceKinds": [
+                "EXPLICIT_STEP",
+                "EQUATION",
+                "DECLARED_RESULT"
+              ]
+            },
+            {
+              "nodeId": "substitute-values",
+              "requirement": "REQUIRED",
+              "allowedEvidenceKinds": [
+                "EXPLICIT_STEP",
+                "EQUATION",
+                "DECLARED_RESULT"
+              ]
+            },
+            {
+              "nodeId": "calculate-result",
+              "requirement": "REQUIRED",
+              "allowedEvidenceKinds": [
+                "EXPLICIT_STEP",
+                "EQUATION",
+                "DECLARED_RESULT"
+              ]
+            },
+            {
+              "nodeId": "report-unit",
+              "requirement": "REQUIRED",
+              "allowedEvidenceKinds": [
+                "EXPLICIT_STEP",
+                "EQUATION",
+                "DECLARED_RESULT"
+              ]
+            },
+            {
+              "nodeId": "report-precision",
+              "requirement": "REQUIRED",
+              "allowedEvidenceKinds": [
+                "EXPLICIT_STEP",
+                "EQUATION",
+                "DECLARED_RESULT"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "diagnosisPolicy": {
+      "version": "diagnosis-policy-1.0.0",
+      "categoryOrder": [
+        "DATA_EXTRACTION",
+        "TARGET_IDENTIFICATION",
+        "STRATEGY",
+        "FORMULA",
+        "SUBSTITUTION",
+        "ARITHMETIC",
+        "UNIT",
+        "PRECISION"
+      ],
+      "supportedFailureCodes": [
+        "RELEVANT_DATA_OMITTED",
+        "IRRELEVANT_DATA_USED",
+        "TARGET_MISIDENTIFIED",
+        "WRONG_METHOD",
+        "MISSING_REASONING_LINK",
+        "WRONG_FORMULA",
+        "WRONG_STOICHIOMETRIC_RATIO",
+        "WRONG_VALUE_SUBSTITUTED",
+        "ARITHMETIC_ERROR",
+        "UNIT_ERROR",
+        "SIGNIFICANT_FIGURES_ERROR"
+      ]
+    },
+    "hintPolicy": {
+      "version": "hint-policy-1.0.0",
+      "automaticEscalationAfterConsecutiveFailures": 2,
+      "hints": [
+        {
+          "id": "kp-strategy",
+          "stage": "STRATEGY",
+          "level": 2,
+          "text": "Use mole fraction to obtain each partial pressure.",
+          "revealedReasoningNodeIds": [
+            "total-moles"
+          ]
+        },
+        {
+          "id": "kp-formula",
+          "stage": "FORMULA",
+          "level": 3,
+          "text": "Use the stoichiometric powers in the Kp expression.",
+          "revealedReasoningNodeIds": [
+            "construct-expression"
+          ]
+        }
+      ]
+    },
+    "markScheme": [
+      {
+        "id": "kp-m1",
+        "reasoningNodeId": "total-moles",
+        "description": "Uses equilibrium amounts to calculate mole fractions",
+        "marks": 1
+      },
+      {
+        "id": "kp-m2",
+        "reasoningNodeId": "partial-pressure-n2o4",
+        "description": "Calculates partial pressure of N₂O₄",
+        "marks": 1
+      },
+      {
+        "id": "kp-m3",
+        "reasoningNodeId": "partial-pressure-no2",
+        "description": "Calculates partial pressure of NO₂",
+        "marks": 1
+      },
+      {
+        "id": "kp-m4",
+        "reasoningNodeId": "construct-expression",
+        "description": "Uses p(NO₂)² / p(N₂O₄)",
+        "marks": 1
+      },
+      {
+        "id": "kp-a1",
+        "reasoningNodeId": "calculate-result",
+        "description": "Reports 450 kPa to 3 significant figures",
+        "marks": 1
+      }
+    ],
+    "provenance": {
+      "origin": "MIGRATED",
+      "sourceComponentId": "KP_FROM_EQUILIBRIUM_MOLES_V2_GOLD"
+    },
+    "migration": {
+      "fidelity": "SIMPLIFIED",
+      "sourceContractVersion": "2.0.0-draft.2",
+      "omittedCapabilities": [
+        "multimodal NormalizedAttempt contract",
+        "recognition gating",
+        "two accepted Kp strategies",
+        "independent-stage evidence semantics",
+        "assistance provenance and support outcomes",
+        "full V2 failure taxonomy"
+      ]
+    },
+    "review": {
+      "reviewer": "Dr A. Chen, CAIE Chemistry reviewer",
+      "reviewedAt": "2026-07-15T08:00:00.000Z",
+      "notes": "Checked the authored reasoning contract, recomputation, units, precision and mark allocation."
+    },
+    "publication": {
+      "publishedAt": "2026-07-15T09:00:00.000Z",
+      "publishedBy": "Learning Foundry demo publisher",
+      "contentHash": "lfh1-a007587f"
+    }
+  }
+}
