@@ -1,8 +1,11 @@
 # Learning Foundry Demo
 
-Learning Foundry is the upstream authority for governed learning components. Standard Trainer is one downstream deterministic runtime.
+Learning Foundry connects learner-facing product experience to governed learning components. Standard Trainer is one downstream deterministic runtime.
 
-This repository implements a Foundry-first vertical slice for CAIE 9701 Chemistry. It represents curriculum constraints, authors or deterministically simulates drafts, evaluates component reliability, requires subject-expert approval, publishes immutable versioned snapshots, and exports them for a bounded runtime.
+This repository implements two query-routed surfaces for a CAIE 9701 Chemistry vertical slice:
+
+- `?view=experience`: Chat, Library, Schedule, learning evidence, and Conversation-to-Component promotion.
+- `?view=governance`: standard packs, deterministic authoring, Foundry evaluation, expert review, immutable publication, and runtime preview.
 
 > Automated component evaluation does not replace subject-expert approval. It detects structural, numerical and runtime-compatibility failures before expert review.
 
@@ -15,21 +18,35 @@ This repository implements a Foundry-first vertical slice for CAIE 9701 Chemistr
 ## Architecture
 
 ```text
-CAIE 9701 Standard Pack
-→ Author / deterministic generation
-→ Foundry component evaluation
-→ Expert review
-→ Immutable published registry
-→ Standard Trainer target adapter
-→ Learner evidence trace
+Product Experience (Chat / Library / Schedule / Evidence)
+→ capability routing through trusted standards and published components
+→ Conversation-to-Component candidate
+→ Governance (evaluation / expert review / publication)
+→ Standard Trainer deterministic runtime
 ```
 
-The canonical TypeScript contract and Zod runtime schema live in `src/contracts`. `dist-contract` is generated and is the only cross-repository integration surface. Foundry UI state is ephemeral; publication snapshots are deterministically reconstructed for the static demo.
+The canonical TypeScript contract and Zod runtime schema live in `src/contracts`. `dist-contract` is generated and is the only cross-repository integration surface. Experience session state uses browser `localStorage`; no database or identity claim is introduced.
 
 ## Run and verify
 
 ```bash
 npm ci
+npm run demo:local
+```
+
+The local demo starts:
+
+```text
+Foundry Experience: http://localhost:4173/?view=experience
+Foundry Governance: http://localhost:4173/?view=governance
+Standard Trainer:   http://localhost:4174/
+```
+
+The sibling `../standard-trainer-demo` checkout is required. The launcher reports an explicit clone instruction when it is absent and shuts both processes down together.
+
+Verification commands:
+
+```bash
 npm run check
 npm test
 npm run build
@@ -44,10 +61,10 @@ npm run sync:trainer
 
 Set `TRAINER_REPO=/path/to/checkout` when the sibling checkout is not at `../standard-trainer-demo`.
 
-## Boundaries
+## Product boundaries
 
-The current runtime capability supports `KP` and `MASS`. The schema can describe `KC`, `AMOUNT`, `CONCENTRATION`, `VOLUME`, `PH`, and `OTHER_BOUNDED`, but compatibility fails until a verified adapter exists. The demo does not support arbitrary chemistry questions, arbitrary generated content, OCR, authentication, a database, or server-side model calls. Its stable FNV-based content hash detects demo snapshot mutation; it is not a cryptographic identity or signature.
+Chat is deterministic orchestration, not a general assistant and not an external model call. The three similar learner traces are seeded fixtures, not production analytics. The demo has no multi-user backend, authentication, student database, or production identity. The current runtime supports `KP` and `MASS`; other target kinds fail compatibility until a verified adapter exists.
 
-The broader v0.3 product pack describes a future learner-facing Chat / Library / Schedule system. This repository is the governed component-production infrastructure slice beneath that broader product and does not claim to implement those surfaces.
+Conversation-derived provenance is draft-only metadata. Published components retain the existing `EXPERT_AUTHORED` contract origin and require the existing evaluation, approval, versioning, and publication path.
 
-See [Architecture](docs/ARCHITECTURE.md), [Component Contract](docs/COMPONENT_CONTRACT.md), [Foundry Evaluation](docs/FOUNDRY_EVALUATION.md), [Expert Review](docs/EXPERT_REVIEW.md), [Trainer Integration](docs/TRAINER_INTEGRATION.md), [Demo](docs/DEMO.md), and [Case Study](docs/CASE_STUDY.md).
+See [Product Experience](docs/PRODUCT_EXPERIENCE.md), [Conversation to Component](docs/CONVERSATION_TO_COMPONENT.md), [Local Demo](docs/LOCAL_DEMO.md), [Architecture](docs/ARCHITECTURE.md), [Demo](docs/DEMO.md), and [Case Study](docs/CASE_STUDY.md).

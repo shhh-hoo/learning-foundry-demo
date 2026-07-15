@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "demo:local": "tsx scripts/start-local-demo.ts",
     "check": "tsc -b --pretty false",
     "test": "vitest run",
     "build": "tsc -b && vite build",
@@ -31,4 +32,3 @@
     "vitest": "4.1.10"
   }
 }
-

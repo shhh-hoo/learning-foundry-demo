@@ -2,11 +2,13 @@
 
 ## Problem
 
-The original Standard Trainer proved reliable Kp diagnosis but treated one gold fixture as the permanent authority. That protected a narrow runtime while preventing the system from growing into governed learning infrastructure.
+The original Standard Trainer proved reliable bounded diagnosis, and Learning Foundry proved governed component production. The missing product story was how a learner need reaches the runtime, becomes evidence, drives follow-up, and—only when repeated—enters governance.
 
 ## Intervention
 
-Learning Foundry moves component authority upstream. The reliable Kp asset is represented as a simplified migration rather than discarded, and a separately authored stoichiometric mass component proves that the contract is not a renamed Kp schema. Both pass deterministic graph, reference, numerical, unit, precision, mark-scheme, and runtime checks before expert approval.
+The new Product Experience adds one local-first vertical slice around the existing authorities. A learner’s explicit magnesium-to-magnesium-oxide route is matched to the CAIE 9701 standard pack and `stoichiometric-product-mass@1.0.0`. The existing runtime preview adapter returns `WRONG_STOICHIOMETRIC_RATIO`; the interface explains only that bounded result, saves diagnostic evidence and a worked correction, and schedules a delayed retry.
+
+Three clearly labelled seeded traces expose the Conversation-to-Component step. Promotion creates a `1.1.0` draft with draft-only evidence provenance, then reuses the existing Foundry evaluation, expert approval, publication, and Library return path.
 
 The previous exact serialized-fixture gate is replaced by two boundaries: legacy V2 definitions remain structurally fail-closed, while Foundry-published components require manifest identity, content-hash agreement, compatible capabilities, valid internal references, and a registered target adapter.
 
@@ -18,9 +20,12 @@ The previous exact serialized-fixture gate is replaced by two boundaries: legacy
 - the legacy V2 Kp core retains its existing regression suite, while the simplified published Kp component proves bounded happy-path decision parity only;
 - mass attempts distinguish wrong ratio, arithmetic, unit, and precision;
 - unsupported target kinds fail compatibility rather than receiving a false verified label.
+- diagnosis, artifacts, and schedule persist across refresh in local storage;
+- a promoted candidate starts at `NOT RUN`, with approval locked;
+- the valid revision passes evaluation, publishes immutably, and appears back in Library.
 
 ## Product interpretation
 
-The result demonstrates that curriculum standards can become operational constraints, generated content must become an executable contract, automated checks and expert approval serve different governance roles, and a bounded prototype can become the first runtime in a larger platform without losing its deterministic core.
+The result demonstrates a complete product relationship: Experience captures the need and evidence, Governance converts reusable patterns into reliable components, and Trainer executes published contracts. It remains deliberately deterministic and bounded.
 
-This is a portfolio engineering demonstration, not a production deployment or a claim of autonomous component creation.
+This is a portfolio engineering demonstration, not a production deployment, autonomous component creator, real LLM product, cross-user analytics system, or multi-user LMS.

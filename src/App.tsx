@@ -1,6 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { publishedComponents } from "./components/published";
 import type { DiagnosticLearningComponent, PublishedDiagnosticLearningComponent } from "./contracts/diagnostic-component";
+import { ExperienceView } from "./experience/ExperienceView";
+import { createExperienceRepository } from "./experience/repository";
+import type { ExperienceState, FoundryCandidateHandoff } from "./experience/types";
 import { generateInvalidStoichiometryDraft, generateValidStoichiometryDraft } from "./generation/deterministic-generator";
 import { evaluateComponent, type FoundryEvaluationReport } from "./governance/evaluation";
 import { incrementVersion, publishApprovedComponent } from "./governance/publishing";
@@ -15,9 +18,17 @@ function statusTone(status: string): string {
   return status === "PASS" || status === "PUBLISHED" || status === "PASSED" || status === "SOLVED" ? "positive" : status === "FAIL" || status === "FAILED" || status === "STUDENT_ERROR" ? "negative" : "warning";
 }
 
-export default function App() {
-  const [component, setComponent] = useState<DiagnosticLearningComponent>(publishedComponents[1]);
-  const [evaluation, setEvaluation] = useState<FoundryEvaluationReport | null>(() => evaluateComponent(publishedComponents[1], caie9701StandardPack, standardTrainerCapability, "2026-07-15T09:05:00.000Z"));
+interface GovernanceWorkbenchProps {
+  readonly experienceState: ExperienceState;
+  readonly initialHandoff: FoundryCandidateHandoff | null;
+  readonly onExperienceChange: (state: ExperienceState) => void;
+  readonly onHandoffChange: (handoff: FoundryCandidateHandoff) => void;
+  readonly onNavigate: (view: "experience" | "governance") => void;
+}
+
+function GovernanceWorkbench({ experienceState, initialHandoff, onExperienceChange, onHandoffChange, onNavigate }: GovernanceWorkbenchProps) {
+  const [component, setComponent] = useState<DiagnosticLearningComponent>(() => structuredClone(initialHandoff?.component ?? publishedComponents[1]));
+  const [evaluation, setEvaluation] = useState<FoundryEvaluationReport | null>(() => initialHandoff ? initialHandoff.evaluation : evaluateComponent(publishedComponents[1], caie9701StandardPack, standardTrainerCapability, "2026-07-15T09:05:00.000Z"));
   const [reviewNotes, setReviewNotes] = useState("Checked numerical route, graph dependencies, unit and mark allocation.");
   const [previewValue, setPreviewValue] = useState("8.00");
   const [previewUnit, setPreviewUnit] = useState("g");
@@ -55,12 +66,31 @@ export default function App() {
 
   function approve() {
     if (!canApprove) return;
-    setComponent((current) => ({ ...current, status: "APPROVED", review: { reviewer: "Dr A. Chen, CAIE Chemistry reviewer", reviewedAt: "2026-07-15T09:10:00.000Z", notes: reviewNotes } }));
+    const next: DiagnosticLearningComponent = { ...component, status: "APPROVED", review: { reviewer: "Dr A. Chen, CAIE Chemistry reviewer", reviewedAt: "2026-07-15T09:10:00.000Z", notes: reviewNotes } };
+    setComponent(next);
+    if (initialHandoff) {
+      onExperienceChange({ ...experienceState, candidate: { ...experienceState.candidate, status: "APPROVED" } });
+      onHandoffChange({ ...initialHandoff, component: next, evaluation });
+    }
   }
 
   function publish() {
     if (!canPublish) return;
-    setComponent(publishApprovedComponent(component, { publishedAt: "2026-07-15T09:15:00.000Z", publishedBy: "Learning Foundry demo publisher" }));
+    const next = publishApprovedComponent(component, { publishedAt: "2026-07-15T09:15:00.000Z", publishedBy: "Learning Foundry demo publisher" });
+    setComponent(next);
+    if (initialHandoff) {
+      onExperienceChange({ ...experienceState, candidate: { ...experienceState.candidate, status: "PUBLISHED" }, publishedCandidate: next });
+      onHandoffChange({ ...initialHandoff, component: next, evaluation });
+    }
+  }
+
+  function runEvaluation() {
+    const next = evaluateComponent(component, caie9701StandardPack, standardTrainerCapability);
+    setEvaluation(next);
+    if (initialHandoff) {
+      if (next.outcome === "PASSED") onExperienceChange({ ...experienceState, candidate: { ...experienceState.candidate, status: "EVALUATED" } });
+      onHandoffChange({ ...initialHandoff, component, evaluation: next });
+    }
   }
 
   const published = component.status === "PUBLISHED" ? component as PublishedDiagnosticLearningComponent : null;
@@ -69,6 +99,7 @@ export default function App() {
     <main>
       <header className="masthead">
         <a className="brand" href="#top" aria-label="Learning Foundry home"><span className="brand-mark">LF</span><span>Learning Foundry<small>Governed component production</small></span></a>
+        <nav className="view-switcher" aria-label="Product areas"><a href="?view=experience" onClick={(event) => { event.preventDefault(); onNavigate("experience"); }}>Product Experience</a><a className="active" href="?view=governance" onClick={(event) => { event.preventDefault(); onNavigate("governance"); }}>Governance Workbench</a></nav>
         <div className="environment"><span className="pulse" /> Static demo · Registry 2026-07-15.1</div>
       </header>
 
@@ -94,7 +125,7 @@ export default function App() {
             if (selected) load(selected);
           }}>
             {publishedComponents.map((item) => <option key={item.id} value={`${item.id}@${item.version}`}>{item.presentation.title}</option>)}
-            {!publishedComponents.some((item) => item.id === component.id) ? <option value={`${component.id}@${component.version}`}>{component.presentation.title}</option> : null}
+            {!publishedComponents.some((item) => `${item.id}@${item.version}` === `${component.id}@${component.version}`) ? <option value={`${component.id}@${component.version}`}>{component.presentation.title}</option> : null}
           </select>
         </label>
         <div><span className="meta-label">Lifecycle</span><strong className={`badge ${statusTone(lifecycle)}`}>{lifecycle}</strong></div>
@@ -103,6 +134,8 @@ export default function App() {
         <div><span className="meta-label">Foundry evaluation</span><strong className={`badge ${statusTone(evaluation?.outcome ?? 'NOT RUN')}`}>{evaluation?.outcome ?? "NOT RUN"}</strong></div>
         <div><span className="meta-label">Trainer compatibility</span><strong className={`badge ${statusTone(compatibility?.status ?? 'NOT RUN')}`}>{compatibility?.status ?? "NOT RUN"}</strong></div>
       </section>
+
+      {initialHandoff ? <section className="candidate-handoff" aria-label="Conversation-derived candidate source"><div><p className="stage-number">CONVERSATION-DERIVED DRAFT</p><h2>Ratio-transfer improvement candidate</h2></div><div><span className="meta-label">Source conversations</span><strong>{initialHandoff.candidateSource.conversationIds.join(" · ")}</strong></div><div><span className="meta-label">Evidence IDs</span><strong>{initialHandoff.candidateSource.evidenceIds.join(" · ")}</strong></div><div><span className="meta-label">Evaluation</span><strong className="badge warning">{evaluation?.outcome ?? "NOT RUN"}</strong></div></section> : null}
 
       <div className="workspace">
         <section className="panel standard-panel" id="stage-1">
@@ -129,7 +162,7 @@ export default function App() {
         </section>
 
         <section className="panel evaluation" id="stage-3">
-          <div className="panel-heading"><div><p className="stage-number">03 / FOUNDRY EVALUATION</p><h2>Reliability before learner exposure</h2></div><button className="primary" onClick={() => setEvaluation(evaluateComponent(component, caie9701StandardPack, standardTrainerCapability))}>Run 15 checks</button></div>
+          <div className="panel-heading"><div><p className="stage-number">03 / FOUNDRY EVALUATION</p><h2>Reliability before learner exposure</h2></div><button className="primary" onClick={runEvaluation}>Run 15 checks</button></div>
           <p className="boundary-note"><strong>Content evaluation</strong> asks whether this component may enter a runtime. <strong>Learner diagnosis</strong> later evaluates an attempt against the published contract.</p>
           {evaluation ? <div className="checks">{evaluation.checks.map((check) => <details key={check.id} open={check.status === "FAIL"}><summary><span className={`status-dot ${statusTone(check.status)}`} /> <code>{check.id}</code><strong className={statusTone(check.status)}>{check.status}</strong></summary><div>{check.evidence.map((item) => <p key={item}>{item}</p>)}{check.recommendation ? <p className="recommendation">Recommendation: {check.recommendation}</p> : null}</div></details>)}</div> : <div className="empty-state">Evaluation is invalidated after every edit. Run checks before requesting expert review.</div>}
         </section>
@@ -154,4 +187,55 @@ export default function App() {
       <footer><strong>Learning Foundry</strong><p>Upstream authority for governed learning components. Standard Trainer is one downstream deterministic runtime.</p><span>Static persistence boundary · No authentication · No external model</span></footer>
     </main>
   );
+}
+
+type ProductView = "experience" | "governance";
+
+function viewFromLocation(): ProductView {
+  return new URLSearchParams(window.location.search).get("view") === "experience" ? "experience" : "governance";
+}
+
+export default function App() {
+  const repository = useMemo(() => createExperienceRepository(window.localStorage), []);
+  const [view, setView] = useState<ProductView>(viewFromLocation);
+  const [experienceState, setExperienceState] = useState<ExperienceState>(() => repository.load());
+  const [handoff, setHandoff] = useState<FoundryCandidateHandoff | null>(() => repository.loadHandoff());
+
+  useEffect(() => {
+    const handlePopState = () => setView(viewFromLocation());
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  useEffect(() => { repository.save(experienceState); }, [experienceState, repository]);
+
+  function navigate(next: ProductView) {
+    window.history.pushState({}, "", `?view=${next}`);
+    setView(next);
+    if (import.meta.env.MODE !== "test") window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function reset() {
+    repository.reset();
+    const initial = repository.load();
+    setExperienceState(initial);
+    setHandoff(null);
+  }
+
+  function promote(state: ExperienceState, nextHandoff: FoundryCandidateHandoff) {
+    repository.save(state);
+    repository.saveHandoff(nextHandoff);
+    setExperienceState(state);
+    setHandoff(nextHandoff);
+    navigate("governance");
+  }
+
+  function updateHandoff(nextHandoff: FoundryCandidateHandoff) {
+    repository.saveHandoff(nextHandoff);
+    setHandoff(nextHandoff);
+  }
+
+  return view === "experience"
+    ? <ExperienceView state={experienceState} onChange={setExperienceState} onReset={reset} onPromote={promote} onNavigate={navigate} />
+    : <GovernanceWorkbench experienceState={experienceState} initialHandoff={handoff} onExperienceChange={setExperienceState} onHandoffChange={updateHandoff} onNavigate={navigate} />;
 }
