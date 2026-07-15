@@ -18,4 +18,11 @@ describe("Learning Foundry workbench", () => {
     expect(screen.getAllByText("FAIL").length).toBeGreaterThan(0);
     expect(screen.getByRole("button", { name: "Approve component" })).toBeDisabled();
   });
+
+  it("opens a new minor revision when published content is edited", () => {
+    render(<App />);
+    fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "A revised bounded prompt with enough authored detail." } });
+    expect(screen.getByText("1.1.0", { selector: ".command-bar strong" })).toBeInTheDocument();
+    expect(screen.getByText("DRAFT", { selector: ".command-bar strong" })).toBeInTheDocument();
+  });
 });

@@ -3,7 +3,7 @@ import { publishedComponents } from "./components/published";
 import type { DiagnosticLearningComponent, PublishedDiagnosticLearningComponent } from "./contracts/diagnostic-component";
 import { generateInvalidStoichiometryDraft, generateValidStoichiometryDraft } from "./generation/deterministic-generator";
 import { evaluateComponent, type FoundryEvaluationReport } from "./governance/evaluation";
-import { publishApprovedComponent } from "./governance/publishing";
+import { incrementVersion, publishApprovedComponent } from "./governance/publishing";
 import { evaluatePreviewAttempt, type PreviewDiagnosis } from "./runtime/preview-adapter";
 import { standardTrainerCapability } from "./runtime/capability";
 import { caie9701StandardPack } from "./standards/caie-9701";
@@ -42,7 +42,14 @@ export default function App() {
   }
 
   function editPrompt(prompt: string) {
-    setComponent((current) => ({ ...current, status: "DRAFT", presentation: { ...current.presentation, prompt }, review: undefined, publication: undefined }));
+    setComponent((current) => ({
+      ...current,
+      version: current.status === "PUBLISHED" ? incrementVersion(current.version, "CONTENT") : current.version,
+      status: "DRAFT",
+      presentation: { ...current.presentation, prompt },
+      review: undefined,
+      publication: undefined,
+    }));
     setEvaluation(null);
   }
 
@@ -148,4 +155,3 @@ export default function App() {
     </main>
   );
 }
-
