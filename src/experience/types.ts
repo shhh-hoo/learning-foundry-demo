@@ -15,6 +15,7 @@ export interface LearnerDiagnosisRecord {
   readonly traceId: string;
   readonly agentTraceId: string;
   readonly inputOrigin: InputOrigin;
+  readonly runPurpose: "PRODUCT";
   readonly origin: "TOOL_OUTPUT";
   readonly componentId: string;
   readonly componentVersion: string;

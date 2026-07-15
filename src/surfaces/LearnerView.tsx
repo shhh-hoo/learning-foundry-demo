@@ -36,7 +36,7 @@ export function LearnerView({ state, onChange, initialSection = "CHAT" }: Learne
     if (!input.trim() || busy) return;
     setBusy(true); setError(null);
     try {
-      const response = await fetch(`${gatewayUrl}/agent/runs`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ conversationId: state.conversationId, inputOrigin, messages: [...state.messages.map((item) => ({ role: item.role === "USER" ? "user" : "assistant", content: item.content })), { role: "user", content: input.trim() }] }) });
+      const response = await fetch(`${gatewayUrl}/agent/runs`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ conversationId: state.conversationId, inputOrigin, runPurpose: "PRODUCT", messages: [...state.messages.map((item) => ({ role: item.role === "USER" ? "user" : "assistant", content: item.content })), { role: "user", content: input.trim() }] }) });
       const body = await response.json() as { readonly ok?: boolean; readonly trace?: AgentTrace; readonly toolResults?: readonly GatewayToolResult[]; readonly error?: { readonly message?: string } };
       if (!response.ok || !body.ok || !body.trace) throw new Error(body.error?.message ?? "The Agent run failed.");
       onChange(applyAgentRun(state, input.trim(), body.trace, body.toolResults ?? []));

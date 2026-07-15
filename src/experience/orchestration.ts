@@ -19,12 +19,13 @@ export function createInitialExperienceState(): ExperienceState {
 function isRecord(value: unknown): value is Record<string, unknown> { return Boolean(value) && typeof value === "object" && !Array.isArray(value); }
 
 export function applyAgentRun(state: ExperienceState, userInput: string, trace: AgentTrace, toolResults: readonly GatewayToolResult[]): ExperienceState {
+  if (trace.runPurpose !== "PRODUCT") throw new Error("Product state accepts PRODUCT Agent runs only.");
   const diagnoses = toolResults.filter((item) => item.name === "run_learner_diagnosis" && isRecord(item.data)).flatMap((item): LearnerDiagnosisRecord[] => {
     const data = item.data as Record<string, unknown>;
     const diagnosis = isRecord(data.diagnosis) ? data.diagnosis : null;
     if (!diagnosis || typeof data.traceId !== "string" || typeof data.componentId !== "string" || typeof data.componentVersion !== "string") return [];
     return [{
-      traceId: data.traceId, agentTraceId: trace.traceId, inputOrigin: trace.inputOrigin, origin: "TOOL_OUTPUT",
+      traceId: data.traceId, agentTraceId: trace.traceId, inputOrigin: trace.inputOrigin, runPurpose: "PRODUCT", origin: "TOOL_OUTPUT",
       componentId: data.componentId, componentVersion: data.componentVersion,
       decision: diagnosis.decision as LearnerDiagnosisRecord["decision"],
       firstPedagogicalIssue: typeof diagnosis.firstPedagogicalIssue === "string" ? diagnosis.firstPedagogicalIssue : null,

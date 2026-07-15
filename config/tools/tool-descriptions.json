@@ -1,12 +1,298 @@
 {
   "version": "1.0.0",
   "tools": [
-    { "type": "function", "function": { "name": "search_learning_resources", "description": "Search curated local learning-resource metadata. Use before answering source-grounded course questions.", "parameters": { "type": "object", "properties": { "query": { "type": "string" }, "syllabusCode": { "type": "string" }, "topic": { "type": "string" } }, "required": ["query"], "additionalProperties": false } } },
-    { "type": "function", "function": { "name": "list_capabilities", "description": "List learner-facing capabilities from the real configured capability registry.", "parameters": { "type": "object", "properties": {}, "additionalProperties": false } } },
-    { "type": "function", "function": { "name": "get_capability", "description": "Get the versioned contract and limitations of a learner-facing capability.", "parameters": { "type": "object", "properties": { "id": { "type": "string" } }, "required": ["id"], "additionalProperties": false } } },
-    { "type": "function", "function": { "name": "run_learner_diagnosis", "description": "Run the real Standard Trainer diagnosis API only when the original problem context and learner working are complete. Never invent or alter its failure code.", "parameters": { "type": "object", "properties": { "componentId": { "type": "string" }, "componentVersion": { "type": "string" }, "problemContext": { "type": "object", "properties": { "prompt": { "type": "string" }, "reactionEquation": { "type": "string" }, "givenValues": { "type": "array", "items": { "type": "object", "properties": { "label": { "type": "string" }, "value": { "type": "number" }, "unit": { "type": "string" } }, "required": ["label", "value", "unit"], "additionalProperties": false } }, "targetQuantity": { "type": "string" }, "answerRequirement": { "type": "string" } }, "required": ["prompt", "reactionEquation", "givenValues", "targetQuantity", "answerRequirement"], "additionalProperties": false }, "attempt": { "type": "object", "properties": { "attemptId": { "type": "string" }, "componentId": { "type": "string" }, "componentVersion": { "type": "string" }, "strategyId": { "type": "string" }, "evidencedReasoningNodeIds": { "type": "array", "items": { "type": "string" } }, "substitutedFacts": { "type": "object", "additionalProperties": { "type": "number" } }, "stoichiometricRatio": { "type": "number" }, "arithmeticWorkingValue": { "type": "number" }, "finalAnswer": { "type": "object", "properties": { "value": { "type": "number" }, "unit": { "type": "string" }, "significantFigures": { "type": "integer" } }, "required": ["value", "unit", "significantFigures"], "additionalProperties": false } }, "required": ["attemptId", "componentId", "componentVersion", "strategyId", "evidencedReasoningNodeIds", "substitutedFacts", "finalAnswer"], "additionalProperties": false } }, "required": ["componentId", "problemContext", "attempt"], "additionalProperties": false } } },
-    { "type": "function", "function": { "name": "record_capability_gap", "description": "Record a capability gap found in this actual run, with the missing evidence or unsupported route.", "parameters": { "type": "object", "properties": { "summary": { "type": "string" }, "missingEvidence": { "type": "array", "items": { "type": "string" } } }, "required": ["summary", "missingEvidence"], "additionalProperties": false } } },
-    { "type": "function", "function": { "name": "propose_library_artifact", "description": "Propose a Library artifact. This does not save it; the learner must confirm.", "parameters": { "type": "object", "properties": { "title": { "type": "string" }, "content": { "type": "string" } }, "required": ["title", "content"], "additionalProperties": false } } },
-    { "type": "function", "function": { "name": "propose_schedule_followup", "description": "Propose a follow-up. This does not schedule it; the learner must confirm.", "parameters": { "type": "object", "properties": { "title": { "type": "string" }, "reason": { "type": "string" }, "delayDays": { "type": "integer", "minimum": 1, "maximum": 30 } }, "required": ["title", "reason", "delayDays"], "additionalProperties": false } } }
+    {
+      "type": "function",
+      "function": {
+        "name": "search_learning_resources",
+        "description": "Search curated local learning-resource metadata. Use before answering source-grounded course questions.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string"
+            },
+            "syllabusCode": {
+              "type": "string"
+            },
+            "topic": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "query"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "list_capabilities",
+        "description": "List learner-facing capabilities from the real configured capability registry.",
+        "parameters": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": false
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "get_capability",
+        "description": "Get the versioned contract and limitations of a learner-facing capability.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "run_learner_diagnosis",
+        "description": "Run the real Standard Trainer diagnosis API only when the original problem context and learner working are complete and every context field has an exact quote in the current user message. Never fill missing facts from capability metadata or alter the returned failure code.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "componentId": {
+              "type": "string"
+            },
+            "componentVersion": {
+              "type": "string"
+            },
+            "problemContext": {
+              "type": "object",
+              "properties": {
+                "prompt": {
+                  "type": "string"
+                },
+                "reactionEquation": {
+                  "type": "string"
+                },
+                "givenValues": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "label": {
+                        "type": "string"
+                      },
+                      "value": {
+                        "type": "number"
+                      },
+                      "unit": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "label",
+                      "value",
+                      "unit"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                "targetQuantity": {
+                  "type": "string"
+                },
+                "answerRequirement": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "prompt",
+                "reactionEquation",
+                "givenValues",
+                "targetQuantity",
+                "answerRequirement"
+              ],
+              "additionalProperties": false
+            },
+            "problemContextEvidence": {
+              "type": "object",
+              "properties": {
+                "promptQuote": { "type": "string" },
+                "reactionEquationQuote": { "type": "string" },
+                "givenValueQuotes": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "targetQuantityQuote": { "type": "string" },
+                "answerRequirementQuote": { "type": "string" }
+              },
+              "required": [
+                "promptQuote",
+                "reactionEquationQuote",
+                "givenValueQuotes",
+                "targetQuantityQuote",
+                "answerRequirementQuote"
+              ],
+              "additionalProperties": false
+            },
+            "attempt": {
+              "type": "object",
+              "properties": {
+                "attemptId": {
+                  "type": "string"
+                },
+                "componentId": {
+                  "type": "string"
+                },
+                "componentVersion": {
+                  "type": "string"
+                },
+                "strategyId": {
+                  "type": "string"
+                },
+                "evidencedReasoningNodeIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "substitutedFacts": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "number"
+                  }
+                },
+                "stoichiometricRatio": {
+                  "type": "number"
+                },
+                "arithmeticWorkingValue": {
+                  "type": "number"
+                },
+                "finalAnswer": {
+                  "type": "object",
+                  "properties": {
+                    "value": {
+                      "type": "number"
+                    },
+                    "unit": {
+                      "type": "string"
+                    },
+                    "significantFigures": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "value",
+                    "unit",
+                    "significantFigures"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "required": [
+                "attemptId",
+                "componentId",
+                "componentVersion",
+                "strategyId",
+                "evidencedReasoningNodeIds",
+                "substitutedFacts",
+                "finalAnswer"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "componentId",
+            "problemContext",
+            "problemContextEvidence",
+            "attempt"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "record_capability_gap",
+        "description": "Record a capability gap found in this actual run, with the missing evidence or unsupported route.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "summary": {
+              "type": "string"
+            },
+            "missingEvidence": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "summary",
+            "missingEvidence"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "propose_library_artifact",
+        "description": "Propose a Library artifact. This does not save it; the learner must confirm.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string"
+            },
+            "content": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "title",
+            "content"
+          ],
+          "additionalProperties": false
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "propose_schedule_followup",
+        "description": "Propose a follow-up. This does not schedule it; the learner must confirm.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "delayDays": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 30
+            }
+          },
+          "required": [
+            "title",
+            "reason",
+            "delayDays"
+          ],
+          "additionalProperties": false
+        }
+      }
+    }
   ]
 }

@@ -36,8 +36,8 @@ describe("real Agent product boundaries", () => {
   it("starts Pattern Inbox empty and cannot create a candidate", () => {
     window.history.replaceState({}, "", "/?view=studio");
     render(<App />);
-    expect(screen.getByText((_, element) => element?.classList.contains("empty-state") === true && element.textContent?.includes("No learning patterns yet.") === true)).toBeVisible();
-    expect(screen.getByText((_, element) => element?.classList.contains("empty-state") === true && element.textContent?.includes("Patterns appear only after actual Agent runs") === true)).toBeVisible();
+    expect(screen.getByText((_, element) => element?.classList.contains("empty-state") === true && element.textContent?.includes("No repeated-diagnosis signal yet.") === true)).toBeVisible();
+    expect(screen.getByText((_, element) => element?.classList.contains("empty-state") === true && element.textContent?.includes("matching PRODUCT Agent runs") === true)).toBeVisible();
     expect(screen.queryByRole("button", { name: "Create component candidate" })).not.toBeInTheDocument();
   });
 });

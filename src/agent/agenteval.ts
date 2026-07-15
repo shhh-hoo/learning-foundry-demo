@@ -1,4 +1,5 @@
 import type { AgentTrace } from "./types";
+import { verifyProblemContextProvenance, type ProblemContext, type ProblemContextEvidence } from "./problem-context-provenance";
 
 export interface AgentEvalCase {
   readonly caseId: string; readonly category: string; readonly input: string; readonly inputOrigin: "USER_INPUT" | "PRESET_INPUT";
@@ -19,6 +20,10 @@ export function gradeAgentCase(testCase: AgentEvalCase, trace: AgentTrace, toolR
     const context = (item.arguments as { problemContext?: { prompt?: unknown; reactionEquation?: unknown; givenValues?: unknown; targetQuantity?: unknown; answerRequirement?: unknown } }).problemContext;
     return Boolean(context && typeof context.prompt === "string" && context.prompt.length >= 20 && typeof context.reactionEquation === "string" && context.reactionEquation.length >= 3 && Array.isArray(context.givenValues) && context.givenValues.length > 0 && typeof context.targetQuantity === "string" && context.targetQuantity.length > 0 && typeof context.answerRequirement === "string" && context.answerRequirement.length > 0);
   });
+  const sourceGroundedDiagnosis = diagnosisCalls.filter((item) => item.status === "SUCCEEDED").every((item) => {
+    const argumentsValue = item.arguments as { problemContext?: ProblemContext; problemContextEvidence?: ProblemContextEvidence };
+    return Boolean(argumentsValue.problemContext && argumentsValue.problemContextEvidence && verifyProblemContextProvenance(argumentsValue.problemContext, argumentsValue.problemContextEvidence, testCase.input).ok);
+  });
   const checks = {
     requiredTools: testCase.requiredTools.every((name) => names.includes(name)),
     forbiddenTools: testCase.forbiddenTools.every((name) => !names.includes(name)),
@@ -26,6 +31,7 @@ export function gradeAgentCase(testCase: AgentEvalCase, trace: AgentTrace, toolR
     allowedCapability: capabilityArgs.every((args) => !args.id && !args.componentId || testCase.allowedCapabilities.includes(args.id ?? args.componentId ?? "")),
     diagnosisFidelity: testCase.expectedFailureCode === undefined || (diagnosisResult?.diagnosis?.failureCode ?? null) === testCase.expectedFailureCode,
     diagnosisProblemContext: completeProblemContext,
+    diagnosisSourceGrounded: testCase.category !== "diagnosis" || sourceGroundedDiagnosis,
     diagnosisTraceId: diagnosisCalls.length === 0 ? trace.finalResponse.diagnosisTraceId === undefined : trace.finalResponse.diagnosisTraceId === diagnosisResult?.traceId,
     sourceRefs: trace.finalResponse.sourceRefs.every((ref) => ref.trim().length > 0) && (testCase.requiredSourceIds ?? []).every((ref) => trace.finalResponse.sourceRefs.includes(ref)),
     unsupportedClaims: !(testCase.forbiddenClaims ?? []).some((claim) => finalText.toLowerCase().includes(claim.toLowerCase())),
@@ -33,6 +39,8 @@ export function gradeAgentCase(testCase: AgentEvalCase, trace: AgentTrace, toolR
     insufficientEvidence: testCase.category !== "capability-gap" || trace.finalResponse.status !== "ANSWERED",
     incompleteContextHasNoDiagnosis: testCase.category !== "diagnosis-missing-context" || (diagnosisCalls.length === 0 && trace.finalResponse.diagnosisTraceId === undefined),
     incompleteContextNamesMissingEvidence: testCase.category !== "diagnosis-missing-context" || ["original problem", "reaction condition", "target", "answer requirement"].every((term) => trace.finalResponse.learnerMessage.toLowerCase().includes(term)),
+    inventedContextRejected: testCase.category !== "diagnosis-invented-context" || (diagnosisCalls.every((item) => item.status === "FAILED") && diagnosisResult === undefined && trace.finalResponse.diagnosisTraceId === undefined),
+    agentEvalRunPurpose: trace.runPurpose === "AGENT_EVAL",
   };
   const errors = Object.entries(checks).filter(([, passed]) => !passed).map(([name]) => name);
   return { passed: errors.length === 0, checks, errors };

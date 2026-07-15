@@ -3,7 +3,7 @@ import { runAgent, AgentRunError, type AgentToolExecutor } from "../src/agent/ru
 import type { AgentModelClient, ModelCallResult } from "../src/agent/deepseek-client";
 
 const TEST_FIXTURE = "TEST_FIXTURE" as const;
-const request = { conversationId: "test-conversation", inputOrigin: "PRESET_INPUT" as const, messages: [{ role: "user" as const, content: "Where is my first mistake?" }] };
+const request = { conversationId: "test-conversation", inputOrigin: "PRESET_INPUT" as const, runPurpose: "PRODUCT" as const, messages: [{ role: "user" as const, content: "Where is my first mistake?" }] };
 const base = { request, model: "configured-test-model", thinkingMode: "disabled" as const, systemPrompt: "Return json grounded in tools.", promptVersion: "1.0.0", capabilityRegistryVersion: "1.0.0", toolDefinitions: [] };
 
 function client(results: readonly ModelCallResult[]): AgentModelClient {

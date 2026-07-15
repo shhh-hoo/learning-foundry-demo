@@ -99,6 +99,7 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentTrace> {
         traceId,
         conversationId: options.request.conversationId,
         inputOrigin: options.request.inputOrigin,
+        runPurpose: options.request.runPurpose,
         provider: "deepseek",
         model: options.model,
         thinkingMode: options.thinkingMode,

@@ -3,7 +3,7 @@
 Learning Foundry is a governed learning system where a real DeepSeek Agent uses explicit tools, deterministic diagnosis and human publication gates.
 
 - **Learner Workspace** — real learner input, source-grounded Agent responses, Learner Diagnosis evidence, and user-confirmed Library or Schedule writes.
-- **Foundry Studio** — Learning Pattern Analysis from actual Agent runs, teacher-created candidates, Component Contract Checks, Expert Review and publication.
+- **Foundry Studio** — a configurable repeated-diagnosis signal from PRODUCT runs, a teacher-operated governed Hint Editor, Component Contract Checks, Expert Review and publication.
 - **Engineering Inspector** — real Agent Traces, AgentEval reports, Learner Diagnosis, Runtime Validation, Component Registry and system boundaries.
 - **Demo Shell** — an event-driven observer around the product surfaces; it is not the product and cannot create evidence.
 
@@ -41,6 +41,8 @@ npm run agenteval:compare -- --baseline <evalRunId> --candidate <evalRunId>
 ```
 
 `agenteval:live` requires the real server-side DeepSeek configuration and returns non-zero if it is absent. Automated Tests validate the harness with controlled fixtures; they do not claim that a live AgentEval passed.
+
+Product and AgentEval evidence have required `runPurpose` classification and separate physical stores. Diagnosis problem facts must be backed by exact quotes from the current user message before the Trainer API is called.
 
 ## Documentation
 

@@ -8,8 +8,10 @@ Use these exact product terms:
 - Expert Review
 - Runtime Validation
 - Automated Tests
-- Learning Pattern Analysis
+- Configurable repeated-diagnosis signal
 - Publication Gate
 - Outcome Measurement
 
 `npm run policy:audit` rejects obsolete standalone shorthand and the previous long-form quality term, plus the old Foundry/Learner/Trainer/Runtime phrases.
+
+Do not present the current `componentId + failureCode` heuristic as mature automated Learning Pattern Analysis. Candidate currently contains a minimal governed Hint Editor, not a complete Component Studio.

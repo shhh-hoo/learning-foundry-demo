@@ -2,6 +2,8 @@ import { z } from "zod";
 
 export const inputOriginSchema = z.enum(["USER_INPUT", "PRESET_INPUT"]);
 export type InputOrigin = z.infer<typeof inputOriginSchema>;
+export const runPurposeSchema = z.enum(["PRODUCT", "AGENT_EVAL"]);
+export type RunPurpose = z.infer<typeof runPurposeSchema>;
 
 export const agentResponseEnvelopeSchema = z.object({
   status: z.enum(["ANSWERED", "NEEDS_MORE_EVIDENCE", "CAPABILITY_GAP"]),
@@ -33,6 +35,7 @@ export interface AgentTrace {
   readonly traceId: string;
   readonly conversationId: string;
   readonly inputOrigin: InputOrigin;
+  readonly runPurpose: RunPurpose;
   readonly provider: "deepseek";
   readonly model: string;
   readonly thinkingMode: "enabled" | "disabled";
@@ -51,5 +54,6 @@ export interface AgentConversationMessage { readonly role: "user" | "assistant";
 export interface AgentRunRequest {
   readonly conversationId: string;
   readonly inputOrigin: InputOrigin;
+  readonly runPurpose: RunPurpose;
   readonly messages: readonly AgentConversationMessage[];
 }

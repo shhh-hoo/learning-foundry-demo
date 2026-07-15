@@ -6,7 +6,7 @@ import { createDeepSeekClient } from "../src/agent/deepseek-client.ts";
 import { createAgentGateway } from "../src/agent/gateway.ts";
 import { runAgent } from "../src/agent/run-agent.ts";
 import { createAgentToolExecutor, type CapabilityRecord, type LearningResource } from "../src/agent/tool-executor.ts";
-import { AgentTraceRepository } from "./lib/agent-trace-repository.ts";
+import { PurposeSeparatedAgentTraceRepository } from "./lib/agent-trace-repository.ts";
 
 const root = new URL("../", import.meta.url);
 const readText = (path: string) => readFile(new URL(path, root), "utf8");
@@ -22,17 +22,22 @@ const toolConfig = await readJson<{ readonly version: string; readonly tools: re
 const responsePolicy = await readText("config/agent/response-policy.json");
 const systemPrompt = `${await readText("config/agent/instructions.md")}\nResponse policy: ${responsePolicy}`;
 const contentHash = (value: string) => createHash("sha256").update(value).digest("hex");
-const traceRepository = new AgentTraceRepository(resolve(process.env.TRACE_STORE_DIR ?? ".local-data/agent-runs"));
+const traceRepositories = new PurposeSeparatedAgentTraceRepository(
+  resolve(process.env.PRODUCT_TRACE_STORE_DIR ?? process.env.TRACE_STORE_DIR ?? ".local-data/product-agent-runs"),
+  resolve(process.env.AGENT_EVAL_TRACE_STORE_DIR ?? ".local-data/agent-eval-agent-runs"),
+);
 const configured = Boolean(apiKey && model);
 const client = configured ? createDeepSeekClient({ apiKey, model, baseUrl, thinkingMode }) : null;
-const tools = createAgentToolExecutor({ capabilities: capabilities.capabilities, resources: resources.resources, diagnosisUrl: "http://127.0.0.1:4177/diagnose" });
 const gateway = createAgentGateway({
   configured,
   model: model || null,
   thinkingMode,
-  repository: traceRepository,
+  repository: traceRepositories,
   ...(client ? { run: async (request) => {
     const toolResults: { readonly name: string; readonly resultRef: string; readonly data: unknown }[] = [];
+    const traceRepository = traceRepositories.forPurpose(request.runPurpose);
+    const currentUserMessage = [...request.messages].reverse().find((message) => message.role === "user")?.content ?? "";
+    const tools = createAgentToolExecutor({ capabilities: capabilities.capabilities, resources: resources.resources, diagnosisUrl: "http://127.0.0.1:4177/diagnose", runPurpose: request.runPurpose, currentUserMessage });
     const traceId = `agent-trace-${randomUUID()}`; const startedAt = new Date().toISOString();
     await traceRepository.start({ traceId, request, provider: "deepseek", model, thinkingMode, prompt: { version: "1.0.0", contentHash: contentHash(systemPrompt) }, capabilityRegistry: { version: capabilities.version, contentHash: contentHash(JSON.stringify(capabilities)) }, toolDefinitions: { version: toolConfig.version, contentHash: contentHash(JSON.stringify(toolConfig)) }, startedAt });
     try {

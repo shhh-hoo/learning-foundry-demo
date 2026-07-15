@@ -1,5 +1,7 @@
 import { z } from "zod";
 import type { AgentToolExecutor, AgentToolResult } from "./run-agent";
+import { verifyProblemContextProvenance } from "./problem-context-provenance";
+import type { RunPurpose } from "./types";
 
 export interface CapabilityRecord {
   readonly id: string;
@@ -27,6 +29,8 @@ export interface ToolExecutorOptions {
   readonly capabilities: readonly CapabilityRecord[];
   readonly resources: readonly LearningResource[];
   readonly diagnosisUrl: string;
+  readonly runPurpose?: RunPurpose;
+  readonly currentUserMessage?: string;
   readonly fetcher?: typeof fetch;
   readonly createId?: () => string;
   readonly recordGap?: (gap: { readonly id: string; readonly summary: string; readonly missingEvidence: readonly string[] }) => void;
@@ -37,6 +41,7 @@ const capabilitySchema = z.object({ id: z.string().min(1) }).strict();
 const diagnosisSchema = z.object({
   componentId: z.string().min(1), componentVersion: z.string().optional(),
   problemContext: z.object({ prompt: z.string().min(20), reactionEquation: z.string().min(3), givenValues: z.array(z.object({ label: z.string().min(1), value: z.number().finite(), unit: z.string().min(1) }).strict()).min(1), targetQuantity: z.string().min(1), answerRequirement: z.string().min(1).optional() }).strict(),
+  problemContextEvidence: z.object({ promptQuote: z.string().min(1), reactionEquationQuote: z.string().min(1), givenValueQuotes: z.array(z.string().min(1)).min(1), targetQuantityQuote: z.string().min(1), answerRequirementQuote: z.string().min(1) }).strict(),
   attempt: z.object({
     attemptId: z.string().min(1), componentId: z.string().min(1), componentVersion: z.string().min(1), strategyId: z.string().min(1),
     evidencedReasoningNodeIds: z.array(z.string()), substitutedFacts: z.record(z.string(), z.number()), stoichiometricRatio: z.number().optional(), arithmeticWorkingValue: z.number().optional(),
@@ -48,6 +53,8 @@ const librarySchema = z.object({ title: z.string().min(1), content: z.string().m
 const scheduleSchema = z.object({ title: z.string().min(1), reason: z.string().min(1), delayDays: z.number().int().min(1).max(30) }).strict();
 
 function words(value: string): readonly string[] { return value.toLowerCase().split(/[^a-z0-9]+/).filter((word) => word.length > 2); }
+
+class ToolBoundaryError extends Error { constructor(readonly code: string, message: string) { super(`${code}: ${message}`); } }
 
 export function createAgentToolExecutor(options: ToolExecutorOptions): AgentToolExecutor {
   const fetcher = options.fetcher ?? globalThis.fetch;
@@ -79,7 +86,10 @@ export function createAgentToolExecutor(options: ToolExecutorOptions): AgentTool
       if (name === "run_learner_diagnosis") {
         const input = diagnosisSchema.parse(value);
         if (!input.problemContext.answerRequirement) throw new Error("INCOMPLETE_PROBLEM_CONTEXT: Answer requirement is required for this governed diagnosis tool.");
-        const response = await fetcher(options.diagnosisUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) });
+        if (!options.runPurpose || !options.currentUserMessage) throw new ToolBoundaryError("UNVERIFIED_PROBLEM_CONTEXT", "Diagnosis provenance cannot be verified without run purpose and the current user message.");
+        const provenance = verifyProblemContextProvenance(input.problemContext, input.problemContextEvidence, options.currentUserMessage);
+        if (!provenance.ok) throw new ToolBoundaryError("UNVERIFIED_PROBLEM_CONTEXT", provenance.reasons.join("; "));
+        const response = await fetcher(options.diagnosisUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...input, runPurpose: options.runPurpose }) });
         const body = await response.json() as { readonly ok?: boolean; readonly result?: { readonly traceId?: string }; readonly error?: { readonly code?: string; readonly message?: string } };
         if (!response.ok || !body.ok || !body.result?.traceId) throw new Error(`${body.error?.code ?? "TRAINER_DIAGNOSIS_FAILED"}: ${body.error?.message ?? `HTTP ${response.status}`}`);
         return { resultRef: `diagnosis-${id()}`, data: body.result, claimRefs: [body.result.traceId] };

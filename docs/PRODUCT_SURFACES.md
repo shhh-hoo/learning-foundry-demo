@@ -8,11 +8,11 @@ Learning Foundry separates four contexts that previously competed on one screen.
 
 ## Foundry Studio
 
-`?view=studio` contains Pattern Inbox, Candidate with a minimal Component Editor, Component Contract Checks, Expert Review and Registry. The editor records base version, changed field, before/after values, teacher rationale and resolvable Agent/Diagnosis provenance. Contract checks run against the modified draft, and publication requires a semantic diff from the base. Studio contains no learner Chat, Library or Schedule and no demo narration.
+`?view=studio` contains a configurable repeated-diagnosis signal, Candidate with a minimal governed Hint Editor, Component Contract Checks, Expert Review and Registry. The signal is a simple `componentId + failureCode` heuristic, not mature automated Learning Pattern Analysis. The Hint Editor is not a complete Component Studio: it edits one governed hint and records base version, changed field, before/after values, teacher rationale and resolvable Agent/Diagnosis provenance. Contract checks run against the modified draft, and publication requires a semantic diff from the base.
 
 ## Engineering Inspector
 
-`?view=inspector` contains Agent Traces, AgentEval Reports, Learner Diagnosis, Component Contract Checks, Runtime Validation, Component Registry and Boundaries. It is the only Learning Foundry surface that intentionally exposes identifiers, tool metadata, hashes, schemas and runtime boundaries.
+`?view=inspector` contains separately selectable Product and AgentEval Agent Traces/Diagnoses, AgentEval Reports, Component Contract Checks, Runtime Validation, Component Registry and Boundaries. It is the only Learning Foundry surface that intentionally exposes identifiers, tool metadata, hashes, schemas and runtime boundaries.
 
 ## Demo Shell
 

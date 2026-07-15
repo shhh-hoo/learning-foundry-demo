@@ -1,6 +1,6 @@
 import { mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
-import type { AgentResponseEnvelope, AgentRunRequest, InputOrigin, TokenUsage } from "../../src/agent/types";
+import type { AgentResponseEnvelope, AgentRunRequest, InputOrigin, RunPurpose, TokenUsage } from "../../src/agent/types";
 import type { ModelMessage } from "../../src/agent/deepseek-client";
 
 export type AgentRunStatus = "RUNNING" | "COMPLETED" | "FAILED";
@@ -15,7 +15,7 @@ export interface PersistedAgentRun extends AgentRunStart {
   readonly toolExecutions: readonly PersistedToolExecution[]; readonly tokenUsage?: TokenUsage; readonly finalResponse?: AgentResponseEnvelope;
   readonly completedAt?: string; readonly updatedAt: string; readonly terminalError?: { readonly code: string; readonly message: string };
 }
-export interface AgentRunQuery { readonly conversationId?: string; readonly status?: AgentRunStatus; readonly inputOrigin?: InputOrigin; readonly startedFrom?: string; readonly startedTo?: string }
+export interface AgentRunQuery { readonly conversationId?: string; readonly status?: AgentRunStatus; readonly inputOrigin?: InputOrigin; readonly runPurpose?: RunPurpose; readonly startedFrom?: string; readonly startedTo?: string }
 
 function safeId(value: string): string { if (!/^[a-zA-Z0-9._-]+$/u.test(value)) throw new Error("INVALID_TRACE_ID: Trace id contains unsafe characters."); return value; }
 function sanitize(value: unknown): unknown {
@@ -48,10 +48,27 @@ export class AgentTraceRepository {
   async query(query: AgentRunQuery = {}): Promise<readonly PersistedAgentRun[]> {
     await mkdir(this.directory, { recursive: true });
     const records = await Promise.all((await readdir(this.directory)).filter((file) => file.endsWith(".json")).map(async (file) => JSON.parse(await readFile(join(this.directory, file), "utf8")) as PersistedAgentRun));
-    return records.filter((record) => (!query.conversationId || record.request.conversationId === query.conversationId) && (!query.status || record.status === query.status) && (!query.inputOrigin || record.request.inputOrigin === query.inputOrigin) && (!query.startedFrom || record.startedAt >= query.startedFrom) && (!query.startedTo || record.startedAt <= query.startedTo)).sort((left, right) => right.startedAt.localeCompare(left.startedAt));
+    return records.filter((record) => (!query.conversationId || record.request.conversationId === query.conversationId) && (!query.status || record.status === query.status) && (!query.inputOrigin || record.request.inputOrigin === query.inputOrigin) && (!query.runPurpose || record.request.runPurpose === query.runPurpose) && (!query.startedFrom || record.startedAt >= query.startedFrom) && (!query.startedTo || record.startedAt <= query.startedTo)).sort((left, right) => right.startedAt.localeCompare(left.startedAt));
   }
   async clear(): Promise<void> {
     await mkdir(this.directory, { recursive: true });
     await Promise.all((await readdir(this.directory)).filter((file) => file.endsWith(".json")).map((file) => unlink(join(this.directory, file))));
   }
+}
+
+export class PurposeSeparatedAgentTraceRepository {
+  private readonly product: AgentTraceRepository;
+  private readonly agentEval: AgentTraceRepository;
+  constructor(productDirectory: string, agentEvalDirectory: string) {
+    this.product = new AgentTraceRepository(productDirectory);
+    this.agentEval = new AgentTraceRepository(agentEvalDirectory);
+  }
+  forPurpose(runPurpose: RunPurpose): AgentTraceRepository { return runPurpose === "PRODUCT" ? this.product : this.agentEval; }
+  async get(traceId: string): Promise<PersistedAgentRun | null> { return await this.product.get(traceId) ?? await this.agentEval.get(traceId); }
+  async query(query: AgentRunQuery = {}): Promise<readonly PersistedAgentRun[]> {
+    if (query.runPurpose) return this.forPurpose(query.runPurpose).query(query);
+    const records = await Promise.all([this.product.query(query), this.agentEval.query(query)]);
+    return records.flat().sort((left, right) => right.startedAt.localeCompare(left.startedAt));
+  }
+  async clear(runPurpose: RunPurpose): Promise<void> { await this.forPurpose(runPurpose).clear(); }
 }
