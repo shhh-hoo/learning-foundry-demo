@@ -118,7 +118,7 @@ export default function App() {
 
         <section className="panel studio" id="stage-2">
           <div className="panel-heading"><div><p className="stage-number">02 / COMPONENT STUDIO</p><h2>Author and generate</h2></div><div className="actions"><button onClick={() => load(generateValidStoichiometryDraft())}>Generate valid draft</button><button className="danger-outline" onClick={() => load(generateInvalidStoichiometryDraft())}>Generate invalid draft</button></div></div>
-          <div className="generator-note"><span>GENERATOR</span><strong>{component.provenance.generatorId ?? "No generator — governed source asset"}</strong><p>Simulation only. No external model call is made.</p></div>
+          <div className="generator-note"><span>GENERATOR</span><strong>{component.provenance.origin === "AI_GENERATED" ? component.provenance.generatorId : "No generator — governed source asset"}</strong><p>Simulation only. No external model call is made.</p></div>
           <label className="field">Prompt<textarea value={component.presentation.prompt} onChange={(event) => editPrompt(event.target.value)} rows={4} /></label>
           <div className="studio-grid">
             <article><h3>Authored facts <span>{component.authoredFacts.length}</span></h3>{component.authoredFacts.map((fact) => <div className="row" key={fact.id}><span>{fact.label}</span><strong>{fact.value} {fact.unit}</strong></div>)}</article>

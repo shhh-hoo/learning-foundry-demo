@@ -65,6 +65,17 @@ export const kpDraft: DiagnosticLearningComponent = {
     { id: "kp-a1", reasoningNodeId: "calculate-result", description: "Reports 450 kPa to 3 significant figures", marks: 1 },
   ],
   provenance: { origin: "MIGRATED", sourceComponentId: "KP_FROM_EQUILIBRIUM_MOLES_V2_GOLD" },
+  migration: {
+    fidelity: "SIMPLIFIED",
+    sourceContractVersion: "2.0.0-draft.2",
+    omittedCapabilities: [
+      "multimodal NormalizedAttempt contract",
+      "recognition gating",
+      "two accepted Kp strategies",
+      "independent-stage evidence semantics",
+      "assistance provenance and support outcomes",
+      "full V2 failure taxonomy",
+    ],
+  },
   review: publishedReview,
 };
-

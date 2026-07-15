@@ -48,6 +48,20 @@ describe("canonical component contract", () => {
     expect(publishedDiagnosticLearningComponentSchema.safeParse(missingHash).success).toBe(false);
   });
 
+  it("enforces origin-specific provenance and simplified migration metadata", () => {
+    const ai = clone(massDraft) as unknown as Record<string, unknown>;
+    ai.provenance = { origin: "AI_GENERATED", generatorId: "demo-only" };
+    expect(diagnosticLearningComponentSchema.safeParse(ai).success).toBe(false);
+
+    const migrated = { ...clone(kpDraft), migration: undefined };
+    expect(diagnosticLearningComponentSchema.safeParse(migrated).success).toBe(false);
+    expect(kpDraft.migration).toMatchObject({
+      fidelity: "SIMPLIFIED",
+      sourceContractVersion: "2.0.0-draft.2",
+    });
+    expect(kpDraft.migration?.omittedCapabilities).toContain("recognition gating");
+  });
+
   it("rejects a mutated immutable snapshot hash", () => {
     const mutated = { ...clone(publishedComponents[1]), presentation: { ...publishedComponents[1].presentation, prompt: `${publishedComponents[1].presentation.prompt} changed` } };
     expect(contentHashMatches(publishedComponents[1])).toBe(true);

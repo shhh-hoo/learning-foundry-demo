@@ -139,12 +139,14 @@ export interface DiagnosticLearningComponent {
     readonly hints: readonly HintDefinition[];
   };
   readonly markScheme: readonly MarkSchemePoint[];
-  readonly provenance: {
-    readonly origin: "MIGRATED" | "AI_GENERATED" | "EXPERT_AUTHORED";
-    readonly generatorId?: string;
-    readonly promptVersion?: string;
-    readonly generatedAt?: string;
-    readonly sourceComponentId?: string;
+  readonly provenance:
+    | { readonly origin: "MIGRATED"; readonly sourceComponentId: string }
+    | { readonly origin: "AI_GENERATED"; readonly generatorId: string; readonly promptVersion: string; readonly generatedAt: string }
+    | { readonly origin: "EXPERT_AUTHORED" };
+  readonly migration?: {
+    readonly fidelity: "LOSSLESS" | "SIMPLIFIED";
+    readonly sourceContractVersion?: string;
+    readonly omittedCapabilities: readonly string[];
   };
   readonly review?: {
     readonly reviewer: string;
@@ -174,4 +176,3 @@ export interface RuntimeCapabilityProfile {
   readonly supportedFailureCodes: readonly DiagnosisFailureCode[];
   readonly limitations: readonly string[];
 }
-

@@ -8,7 +8,7 @@ This repository implements a Foundry-first vertical slice for CAIE 9701 Chemistr
 
 ## Demo components
 
-- `kp-from-equilibrium-moles@1.0.0`: migrated from `KP_FROM_EQUILIBRIUM_MOLES_V2_GOLD`.
+- `kp-from-equilibrium-moles@1.0.0`: a simplified migration from `KP_FROM_EQUILIBRIUM_MOLES_V2_GOLD`, with bounded happy-path compatibility and explicit omitted V2 capabilities.
 - `stoichiometric-product-mass@1.0.0`: expert-authored mass calculation using `2Mg + O₂ → 2MgO`.
 - `deterministic-demo-generator`: emits one valid and one deliberately invalid stoichiometry draft. It is a local simulation, not a model provider.
 
@@ -51,4 +51,3 @@ The current runtime capability supports `KP` and `MASS`. The schema can describe
 The broader v0.3 product pack describes a future learner-facing Chat / Library / Schedule system. This repository is the governed component-production infrastructure slice beneath that broader product and does not claim to implement those surfaces.
 
 See [Architecture](docs/ARCHITECTURE.md), [Component Contract](docs/COMPONENT_CONTRACT.md), [Foundry Evaluation](docs/FOUNDRY_EVALUATION.md), [Expert Review](docs/EXPERT_REVIEW.md), [Trainer Integration](docs/TRAINER_INTEGRATION.md), [Demo](docs/DEMO.md), and [Case Study](docs/CASE_STUDY.md).
-

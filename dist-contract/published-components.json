@@ -536,6 +536,18 @@
         "origin": "MIGRATED",
         "sourceComponentId": "KP_FROM_EQUILIBRIUM_MOLES_V2_GOLD"
       },
+      "migration": {
+        "fidelity": "SIMPLIFIED",
+        "sourceContractVersion": "2.0.0-draft.2",
+        "omittedCapabilities": [
+          "multimodal NormalizedAttempt contract",
+          "recognition gating",
+          "two accepted Kp strategies",
+          "independent-stage evidence semantics",
+          "assistance provenance and support outcomes",
+          "full V2 failure taxonomy"
+        ]
+      },
       "review": {
         "reviewer": "Dr A. Chen, CAIE Chemistry reviewer",
         "reviewedAt": "2026-07-15T08:00:00.000Z",
@@ -544,7 +556,7 @@
       "publication": {
         "publishedAt": "2026-07-15T09:00:00.000Z",
         "publishedBy": "Learning Foundry demo publisher",
-        "contentHash": "lfh1-e23ad0b7"
+        "contentHash": "lfh1-a007587f"
       }
     },
     {

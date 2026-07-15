@@ -13,6 +13,8 @@ Supported AST nodes are `NUMBER`, `VARIABLE`, `BINARY`, and `FUNCTION:SUM`. Vari
 - a schema version supported by the downstream runtime;
 - an executable target kind and expression node set.
 
+Provenance is origin-specific: `AI_GENERATED` requires generator, prompt-version, and generation-time metadata; `MIGRATED` requires a source component ID; `EXPERT_AUTHORED` does not inherit generator fields. Migrated components also declare `migration.fidelity` and an explicit omitted-capabilities list. The current Kp component is `SIMPLIFIED`; it does not claim lossless V2 semantic migration.
+
 `KP` and `MASS` are executable in this release. Other declared target kinds remain schema-valid but runtime-incompatible. This is an intentional distinction, not a hidden fallback.
 
 The generated artifacts are:
@@ -22,4 +24,3 @@ The generated artifacts are:
 - `published-components.json`;
 - `manifest.json`;
 - one immutable JSON snapshot per published component.
-

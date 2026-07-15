@@ -81,12 +81,34 @@ export const diagnosticLearningComponentSchema = z.object({
     hints: z.array(z.object({ id: z.string().min(1), stage: categorySchema, level: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]), text: z.string().min(1), revealedReasoningNodeIds: z.array(z.string().min(1)) })),
   }),
   markScheme: z.array(z.object({ id: z.string().min(1), reasoningNodeId: z.string().min(1), description: z.string().min(1), marks: z.number().int().positive() })).min(1),
-  provenance: z.object({
-    origin: z.enum(["MIGRATED", "AI_GENERATED", "EXPERT_AUTHORED"]), generatorId: z.string().min(1).optional(),
-    promptVersion: z.string().min(1).optional(), generatedAt: z.string().datetime().optional(), sourceComponentId: z.string().min(1).optional(),
-  }),
+  provenance: z.discriminatedUnion("origin", [
+    z.object({
+      origin: z.literal("AI_GENERATED"),
+      generatorId: z.string().min(1),
+      promptVersion: z.string().min(1),
+      generatedAt: z.string().datetime(),
+    }),
+    z.object({
+      origin: z.literal("MIGRATED"),
+      sourceComponentId: z.string().min(1),
+    }),
+    z.object({ origin: z.literal("EXPERT_AUTHORED") }),
+  ]),
+  migration: z.object({
+    fidelity: z.enum(["LOSSLESS", "SIMPLIFIED"]),
+    sourceContractVersion: z.string().min(1).optional(),
+    omittedCapabilities: z.array(z.string().min(1)),
+  }).optional(),
   review: z.object({ reviewer: z.string().min(1), reviewedAt: z.string().datetime(), notes: z.string().min(1) }).optional(),
   publication: z.object({ publishedAt: z.string().datetime(), publishedBy: z.string().min(1), contentHash: z.string().min(1) }).optional(),
+}).superRefine((value, context) => {
+  if (value.provenance.origin === "MIGRATED" && !value.migration) {
+    context.addIssue({
+      code: "custom",
+      path: ["migration"],
+      message: "Migrated components must declare migration fidelity and omitted capabilities.",
+    });
+  }
 });
 
 export const publishedDiagnosticLearningComponentSchema = diagnosticLearningComponentSchema.superRefine((value, context) => {
@@ -98,4 +120,3 @@ export const publishedDiagnosticLearningComponentSchema = diagnosticLearningComp
 export function parsePublishedComponent(value: unknown): PublishedDiagnosticLearningComponent {
   return publishedDiagnosticLearningComponentSchema.parse(value) as PublishedDiagnosticLearningComponent;
 }
-

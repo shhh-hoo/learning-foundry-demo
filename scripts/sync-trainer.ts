@@ -6,9 +6,8 @@ const sourceRoot = resolve("dist-contract");
 const targetRoot = resolve(trainerRoot, "src/published-components");
 await mkdir(targetRoot, { recursive: true });
 
-for (const file of ["manifest.json", "kp-from-equilibrium-moles.json", "stoichiometric-product-mass.json"]) {
+for (const file of ["diagnostic-learning-component.schema.json", "manifest.json", "kp-from-equilibrium-moles.json", "stoichiometric-product-mass.json"]) {
   await cp(resolve(sourceRoot, file), resolve(targetRoot, file));
 }
 
 console.log(`Synced published snapshots to ${targetRoot}. Drafts, review notes and Foundry evaluation reports were excluded.`);
-
