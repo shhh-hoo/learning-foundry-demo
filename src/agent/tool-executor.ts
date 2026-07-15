@@ -14,6 +14,7 @@ export interface CapabilityRecord {
 }
 
 export interface LearningResource {
+  readonly origin: "CURATED_LOCAL_RESOURCE";
   readonly sourceId: string;
   readonly title: string;
   readonly excerpt: string;
@@ -35,6 +36,7 @@ const searchSchema = z.object({ query: z.string().min(1), syllabusCode: z.string
 const capabilitySchema = z.object({ id: z.string().min(1) }).strict();
 const diagnosisSchema = z.object({
   componentId: z.string().min(1), componentVersion: z.string().optional(),
+  problemContext: z.object({ prompt: z.string().min(20), reactionEquation: z.string().min(3), givenValues: z.array(z.object({ label: z.string().min(1), value: z.number().finite(), unit: z.string().min(1) }).strict()).min(1), targetQuantity: z.string().min(1), answerRequirement: z.string().min(1).optional() }).strict(),
   attempt: z.object({
     attemptId: z.string().min(1), componentId: z.string().min(1), componentVersion: z.string().min(1), strategyId: z.string().min(1),
     evidencedReasoningNodeIds: z.array(z.string()), substitutedFacts: z.record(z.string(), z.number()), stoichiometricRatio: z.number().optional(), arithmeticWorkingValue: z.number().optional(),
@@ -76,6 +78,7 @@ export function createAgentToolExecutor(options: ToolExecutorOptions): AgentTool
       }
       if (name === "run_learner_diagnosis") {
         const input = diagnosisSchema.parse(value);
+        if (!input.problemContext.answerRequirement) throw new Error("INCOMPLETE_PROBLEM_CONTEXT: Answer requirement is required for this governed diagnosis tool.");
         const response = await fetcher(options.diagnosisUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) });
         const body = await response.json() as { readonly ok?: boolean; readonly result?: { readonly traceId?: string }; readonly error?: { readonly code?: string; readonly message?: string } };
         if (!response.ok || !body.ok || !body.result?.traceId) throw new Error(`${body.error?.code ?? "TRAINER_DIAGNOSIS_FAILED"}: ${body.error?.message ?? `HTTP ${response.status}`}`);

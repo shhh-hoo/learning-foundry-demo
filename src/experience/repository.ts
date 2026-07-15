@@ -1,8 +1,8 @@
 import { createInitialExperienceState } from "./orchestration";
 import type { ExperienceState, FoundryCandidateHandoff } from "./types";
 
-const SESSION_KEY = "learning-foundry:experience:v3-real-agent";
-const HANDOFF_KEY = "learning-foundry:foundry-handoff:v3-real-agent";
+export const SESSION_KEY = "learning-foundry:experience:v4-persisted-evidence";
+export const HANDOFF_KEY = "learning-foundry:foundry-handoff:v4-persisted-evidence";
 
 export interface ExperienceStorage {
   getItem(key: string): string | null;
@@ -21,7 +21,7 @@ export function createExperienceRepository(storage: ExperienceStorage) {
       }
     },
     save(state: ExperienceState): void {
-      storage.setItem(SESSION_KEY, JSON.stringify(state));
+      storage.setItem(SESSION_KEY, JSON.stringify({ ...state, agentTraces: [], diagnoses: [] }));
     },
     reset(): void {
       storage.removeItem(SESSION_KEY);

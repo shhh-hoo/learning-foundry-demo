@@ -6,7 +6,7 @@ const capabilities = [
   { id: "mass", version: "1.0.0", purpose: "Mass", requiredInput: "attempt", outputContract: "trace", limitations: [], readiness: "READY", runtimeEndpoint: "http://127.0.0.1:4177/diagnose", visibility: "AGENT" as const },
   { id: "kp", version: "1.0.0", purpose: "Legacy", requiredInput: "attempt", outputContract: "trace", limitations: [], readiness: "LEGACY", runtimeEndpoint: "http://127.0.0.1:4177/diagnose", visibility: "ENGINEERING_ONLY" as const },
 ];
-const resources = [{ sourceId: "source-1", title: "Equation coefficients", excerpt: "Coefficients define mole ratios.", syllabusCode: "9701", topic: "Stoichiometry", keywords: ["coefficients"] }];
+const resources = [{ sourceId: "source-1", origin: "CURATED_LOCAL_RESOURCE" as const, title: "Equation coefficients", excerpt: "Coefficients define mole ratios.", syllabusCode: "9701", topic: "Stoichiometry", keywords: ["coefficients"] }];
 
 describe("agent tools", () => {
   it("searches real local resource metadata and keeps legacy Kp out of the agent list", async () => {
@@ -24,7 +24,7 @@ describe("agent tools", () => {
       requested = String(input);
       return Response.json({ ok: true, result: { traceId: "trainer-trace-real", diagnosis: { failureCode: "WRONG_STOICHIOMETRIC_RATIO" } } });
     } });
-    const result = await tools.execute("run_learner_diagnosis", { componentId: "mass", attempt: { attemptId: "a", componentId: "mass", componentVersion: "1.0.0", strategyId: "s", evidencedReasoningNodeIds: [], substitutedFacts: {}, stoichiometricRatio: 0.5, finalAnswer: { value: 4, unit: "g", significantFigures: 3 } } });
+    const result = await tools.execute("run_learner_diagnosis", { componentId: "mass", problemContext: { prompt: "A complete original chemistry problem prompt.", reactionEquation: "2Mg + O2 -> 2MgO", givenValues: [{ label: "mass Mg", value: 4.8, unit: "g" }], targetQuantity: "mass MgO", answerRequirement: "3 significant figures" }, attempt: { attemptId: "a", componentId: "mass", componentVersion: "1.0.0", strategyId: "s", evidencedReasoningNodeIds: [], substitutedFacts: {}, stoichiometricRatio: 0.5, finalAnswer: { value: 4, unit: "g", significantFigures: 3 } } });
     expect(requested).toBe("http://127.0.0.1:4177/diagnose");
     expect(result.claimRefs).toEqual(["trainer-trace-real"]);
   });
@@ -33,5 +33,6 @@ describe("agent tools", () => {
     const tools = createAgentToolExecutor({ capabilities, resources, diagnosisUrl: "http://127.0.0.1:4177/diagnose" });
     await expect(tools.execute("unknown", {})).rejects.toThrow("UNKNOWN_AGENT_TOOL");
     await expect(tools.execute("search_learning_resources", { query: "" })).rejects.toThrow();
+    await expect(tools.execute("run_learner_diagnosis", { componentId: "mass", problemContext: { prompt: "working only", reactionEquation: "", givenValues: [], targetQuantity: "" }, attempt: {} })).rejects.toThrow();
   });
 });

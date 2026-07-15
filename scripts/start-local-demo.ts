@@ -1,9 +1,13 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseLocalEnvironment } from "./lib/local-environment.ts";
 
 const foundryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const localEnvironmentPath = resolve(foundryRoot, ".env.local");
+const localEnvironment = parseLocalEnvironment(existsSync(localEnvironmentPath) ? await readFile(localEnvironmentPath, "utf8") : "");
 const trainerRoot = resolve(process.env.TRAINER_REPO ?? resolve(foundryRoot, "../standard-trainer-demo"));
 if (!existsSync(resolve(trainerRoot, "package.json"))) {
   console.error(`Standard Trainer sibling checkout was not found at ${trainerRoot}`);
@@ -14,7 +18,7 @@ const children: ChildProcess[] = [];
 let stopping = false;
 
 function start(label: string, cwd: string, args: readonly string[], extraEnvironment: NodeJS.ProcessEnv = {}): void {
-  const child = spawn("npm", args, { cwd, env: { ...process.env, ...extraEnvironment }, stdio: "inherit" });
+  const child = spawn("npm", args, { cwd, env: { ...process.env, ...localEnvironment, ...extraEnvironment }, stdio: "inherit" });
   child.on("error", (error) => { console.error(`${label} failed to start: ${error.message}`); stop(1); });
   child.on("exit", (code, signal) => { if (!stopping) { console.error(`${label} stopped unexpectedly (${signal ?? `exit ${code ?? 1}`}).`); stop(code ?? 1); } });
   children.push(child);

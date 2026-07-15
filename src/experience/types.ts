@@ -54,6 +54,8 @@ export interface ComponentCandidate {
   readonly id: string;
   readonly source: "ACTUAL_AGENT_RUNS";
   readonly sourceTraceIds: readonly string[];
+  readonly sourceDiagnosisTraceIds: readonly string[];
+  readonly sourceAgentTraceIds: readonly string[];
   readonly pattern: { readonly componentId: string; readonly failureCode: string; readonly occurrenceCount: number };
   readonly proposedChange: string;
   readonly status: "CREATED" | "PROMOTED_TO_FOUNDRY" | "CHECKED" | "APPROVED" | "PUBLISHED";
@@ -83,12 +85,26 @@ export interface PatternAggregate {
   readonly threshold: number;
   readonly thresholdReached: boolean;
   readonly traceIds: readonly string[];
+  readonly agentTraceIds: readonly string[];
+}
+
+export interface ComponentRevisionRecord {
+  readonly baseComponentVersion: string;
+  readonly changedField: string;
+  readonly beforeValue: string;
+  readonly afterValue: string;
+  readonly teacherRationale: string;
+  readonly sourceDiagnosisTraceIds: readonly string[];
+  readonly sourceAgentTraceIds: readonly string[];
+  readonly changedAt: string;
 }
 
 export interface FoundryCandidateHandoff {
+  readonly baseComponent: PublishedDiagnosticLearningComponent;
   readonly component: DiagnosticLearningComponent;
   readonly contractChecks: ComponentContractCheckReport | null;
-  readonly candidateSource: { readonly kind: "ACTUAL_AGENT_RUNS"; readonly traceIds: readonly string[]; readonly candidateId: string };
+  readonly revision: ComponentRevisionRecord | null;
+  readonly candidateSource: { readonly kind: "ACTUAL_AGENT_RUNS"; readonly diagnosisTraceIds: readonly string[]; readonly agentTraceIds: readonly string[]; readonly candidateId: string };
 }
 
 export interface GatewayToolResult {

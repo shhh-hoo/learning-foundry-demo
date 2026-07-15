@@ -17,6 +17,8 @@ interface RunAgentOptions {
   readonly now?: () => Date;
   readonly createId?: () => string;
   readonly onToolResult?: (result: { readonly name: string; readonly resultRef: string; readonly data: unknown }) => void;
+  readonly onModelResponse?: (message: ModelMessage, usage: TokenUsage | undefined) => void | Promise<void>;
+  readonly onToolExecution?: (execution: { readonly name: string; readonly arguments: unknown; readonly resultRef: string; readonly status: "SUCCEEDED" | "FAILED"; readonly result?: unknown; readonly error?: { readonly code: string; readonly message: string } }) => void | Promise<void>;
 }
 
 export class AgentRunError extends Error {
@@ -60,6 +62,7 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentTrace> {
 
   for (let round = 0; round < 6; round += 1) {
     const result = await options.modelClient.call({ messages, tools: options.toolDefinitions });
+    await options.onModelResponse?.(result.message, result.usage);
     tokenUsage = addUsage(tokenUsage, result.usage);
     const assistant = result.message;
     messages.push(assistant);
@@ -73,12 +76,15 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentTrace> {
           const toolResult = await options.tools.execute(call.function.name, parsed);
           options.onToolResult?.({ name: call.function.name, resultRef: toolResult.resultRef, data: toolResult.data });
           successfulToolResults.push({ name: call.function.name, data: toolResult.data });
+          await options.onToolExecution?.({ name: call.function.name, arguments: parsed, resultRef: toolResult.resultRef, status: "SUCCEEDED", result: toolResult.data });
           availableRefs.add(toolResult.resultRef);
           toolResult.claimRefs?.forEach((item) => availableRefs.add(item));
           records.push({ name: call.function.name, arguments: parsed, resultRef: toolResult.resultRef, status: "SUCCEEDED" });
           messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify({ resultRef: toolResult.resultRef, data: toolResult.data }) });
         } catch (error) {
           const resultRef = `tool-error-${call.id}`;
+          const structuredError = { code: error && typeof error === "object" && "code" in error && typeof error.code === "string" ? error.code : "TOOL_EXECUTION_FAILED", message: error instanceof Error ? error.message : String(error) };
+          await options.onToolExecution?.({ name: call.function.name, arguments: parsed, resultRef, status: "FAILED", error: structuredError });
           records.push({ name: call.function.name, arguments: parsed, resultRef, status: "FAILED" });
           messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify({ resultRef, error: error instanceof Error ? error.message : String(error) }) });
         }

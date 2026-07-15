@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { DemoShell } from "./demo/DemoShell";
 import { dispatchProductEvent } from "./demo/events";
 import { createExperienceRepository } from "./experience/repository";
+import { loadPersistedLearningEvidence } from "./experience/persisted-evidence";
 import type { ExperienceState, FoundryCandidateHandoff } from "./experience/types";
 import { InspectorView } from "./surfaces/InspectorView";
 import { LearnerView } from "./surfaces/LearnerView";
@@ -43,6 +44,13 @@ export default function App() {
 
   useEffect(() => repository.save(state), [repository, state]);
   useEffect(() => {
+    let cancelled = false;
+    loadPersistedLearningEvidence().then((evidence) => {
+      if (!cancelled) setState((current) => ({ ...current, agentTraces: evidence.agentTraces, diagnoses: evidence.diagnoses }));
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, []);
+  useEffect(() => {
     if (handoff) repository.saveHandoff(handoff);
     else repository.clearHandoff();
   }, [handoff, repository]);
@@ -58,6 +66,6 @@ export default function App() {
 
   if (view === "demo") return <DemoShell />;
   if (view === "studio") return <StudioView state={state} handoff={handoff} onChange={setState} onHandoffChange={setHandoff} initialSection={studioSection()} />;
-  if (view === "inspector") return <InspectorView state={state} handoff={handoff} />;
+  if (view === "inspector") return <InspectorView state={state} handoff={handoff} onEvidenceCleared={() => setState((current) => ({ ...current, agentTraces: [], diagnoses: [] }))} />;
   return <LearnerView state={state} onChange={setState} initialSection={learnerSection()} />;
 }

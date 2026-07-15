@@ -1,5 +1,6 @@
 import patternPolicy from "../../config/product/pattern-policy.json";
 import { publishedComponents } from "../components/published";
+import type { DiagnosticLearningComponent } from "../contracts/diagnostic-component";
 import type { AgentTrace } from "../agent/types";
 import { createDemoEvent } from "../demo/events";
 import { incrementVersion } from "../governance/publishing";
@@ -57,7 +58,7 @@ export function aggregatePatternEvidence(diagnoses: readonly LearnerDiagnosisRec
   });
   const strongest = [...groups.values()].sort((left, right) => right.length - left.length)[0] ?? [];
   const first = strongest[0];
-  return { componentId: first?.componentId ?? null, failureCode: first?.failureCode ?? null, occurrenceCount: strongest.length, threshold: patternPolicy.minimumMatchingRuns, thresholdReached: strongest.length >= patternPolicy.minimumMatchingRuns, traceIds: strongest.map((item) => item.traceId) };
+  return { componentId: first?.componentId ?? null, failureCode: first?.failureCode ?? null, occurrenceCount: strongest.length, threshold: patternPolicy.minimumMatchingRuns, thresholdReached: strongest.length >= patternPolicy.minimumMatchingRuns, traceIds: strongest.map((item) => item.traceId), agentTraceIds: strongest.map((item) => item.agentTraceId) };
 }
 
 export function confirmLibraryProposal(state: ExperienceState): ExperienceState {
@@ -81,7 +82,7 @@ export function createComponentCandidate(state: ExperienceState): ExperienceStat
   if (state.candidate) return state;
   const pattern = aggregatePatternEvidence(state.diagnoses);
   if (!pattern.thresholdReached || !pattern.componentId || !pattern.failureCode) throw new Error("A component candidate requires three matching actual local Agent runs.");
-  const candidate: ComponentCandidate = { id: id("candidate"), source: "ACTUAL_AGENT_RUNS", sourceTraceIds: pattern.traceIds, pattern: { componentId: pattern.componentId, failureCode: pattern.failureCode, occurrenceCount: pattern.occurrenceCount }, proposedChange: "Strengthen governed support for the repeated first pedagogical issue.", status: "CREATED" };
+  const candidate: ComponentCandidate = { id: id("candidate"), source: "ACTUAL_AGENT_RUNS", sourceTraceIds: pattern.traceIds, sourceDiagnosisTraceIds: pattern.traceIds, sourceAgentTraceIds: pattern.agentTraceIds, pattern: { componentId: pattern.componentId, failureCode: pattern.failureCode, occurrenceCount: pattern.occurrenceCount }, proposedChange: "Strengthen governed support for the repeated first pedagogical issue.", status: "CREATED" };
   return { ...state, candidate, eventLog: [...state.eventLog, createDemoEvent("CANDIDATE_CREATED", "TEACHER", { candidateId: candidate.id, sourceTraceIds: candidate.sourceTraceIds })] };
 }
 
@@ -90,5 +91,31 @@ export function promoteComponentCandidate(state: ExperienceState): { readonly st
   const component = publishedComponents.find((item) => item.id === state.candidate!.pattern.componentId);
   if (!component) throw new Error("The matching published component is unavailable.");
   const draft = { ...structuredClone(component), version: incrementVersion(component.version, "CONTENT"), status: "DRAFT" as const, review: undefined, publication: undefined };
-  return { state: { ...state, candidate: { ...state.candidate, status: "PROMOTED_TO_FOUNDRY" } }, handoff: { component: draft, contractChecks: null, candidateSource: { kind: "ACTUAL_AGENT_RUNS", traceIds: state.candidate.sourceTraceIds, candidateId: state.candidate.id } } };
+  return { state: { ...state, candidate: { ...state.candidate, status: "PROMOTED_TO_FOUNDRY" } }, handoff: { baseComponent: structuredClone(component), component: draft, contractChecks: null, revision: null, candidateSource: { kind: "ACTUAL_AGENT_RUNS", diagnosisTraceIds: state.candidate.sourceDiagnosisTraceIds, agentTraceIds: state.candidate.sourceAgentTraceIds, candidateId: state.candidate.id } } };
+}
+
+function semanticComponent(component: DiagnosticLearningComponent) {
+  const { version: _version, status: _status, review: _review, publication: _publication, ...semantic } = component;
+  return semantic;
+}
+
+export function hasSemanticComponentDiff(base: DiagnosticLearningComponent, draft: DiagnosticLearningComponent): boolean {
+  return JSON.stringify(semanticComponent(base)) !== JSON.stringify(semanticComponent(draft));
+}
+
+export function applyComponentRevision(handoff: FoundryCandidateHandoff, hintId: string, afterValue: string, teacherRationale: string): FoundryCandidateHandoff {
+  const rationale = teacherRationale.trim(); const changedValue = afterValue.trim();
+  if (!rationale) throw new Error("A teacher rationale is required for a component revision.");
+  const hint = handoff.component.hintPolicy.hints.find((item) => item.id === hintId);
+  if (!hint) throw new Error(`Governed hint ${hintId} does not exist.`);
+  if (!changedValue || changedValue === hint.text) throw new Error("The draft must contain a real semantic content change.");
+  const component: DiagnosticLearningComponent = { ...handoff.component, hintPolicy: { ...handoff.component.hintPolicy, hints: handoff.component.hintPolicy.hints.map((item) => item.id === hintId ? { ...item, text: changedValue } : item) } };
+  if (!hasSemanticComponentDiff(handoff.baseComponent, component)) throw new Error("The draft must differ semantically from the base component.");
+  return {
+    ...handoff, component, contractChecks: null,
+    revision: {
+      baseComponentVersion: handoff.baseComponent.version, changedField: `hintPolicy.hints.${hintId}.text`, beforeValue: hint.text, afterValue: changedValue,
+      teacherRationale: rationale, sourceDiagnosisTraceIds: handoff.candidateSource.diagnosisTraceIds, sourceAgentTraceIds: handoff.candidateSource.agentTraceIds, changedAt: new Date().toISOString(),
+    },
+  };
 }

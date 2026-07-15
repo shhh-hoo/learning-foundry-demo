@@ -8,7 +8,7 @@ Learning Foundry separates four contexts that previously competed on one screen.
 
 ## Foundry Studio
 
-`?view=studio` contains Pattern Inbox, Candidate, Component Contract Checks, Expert Review and Registry. It owns evidence-backed component improvement and governance, but contains no learner Chat, Library or Schedule and no demo narration.
+`?view=studio` contains Pattern Inbox, Candidate with a minimal Component Editor, Component Contract Checks, Expert Review and Registry. The editor records base version, changed field, before/after values, teacher rationale and resolvable Agent/Diagnosis provenance. Contract checks run against the modified draft, and publication requires a semantic diff from the base. Studio contains no learner Chat, Library or Schedule and no demo narration.
 
 ## Engineering Inspector
 

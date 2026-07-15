@@ -7,4 +7,5 @@ coverage/
 .env.local
 .env.*.local
 .agent-eval-results/
+.local-data/
 demo-recording/frames/

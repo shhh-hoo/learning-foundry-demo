@@ -19,7 +19,7 @@ No key means no model answer, tool result, Trace, pattern, candidate, Library ar
 4177  Trainer Diagnosis API
 ```
 
-Copy `.env.example` values into your shell or a private local environment file. `DEEPSEEK_API_KEY` and `DEEPSEEK_MODEL` are both required for Agent runs. Never expose the key through Vite variables or browser storage.
+Export the values shown in `docs/DEEPSEEK_LOCAL_SETUP.md`, or copy `.env.local.example` to the gitignored `.env.local`. `DEEPSEEK_API_KEY` and `DEEPSEEK_MODEL` are both required for Agent runs. Never expose the key through Vite variables or browser storage.
 
 ```bash
 npm install
@@ -37,6 +37,7 @@ npm run check
 npm run build
 npm run agenteval:live
 npm run agenteval:report
+npm run agenteval:compare -- --baseline <evalRunId> --candidate <evalRunId>
 ```
 
 `agenteval:live` requires the real server-side DeepSeek configuration and returns non-zero if it is absent. Automated Tests validate the harness with controlled fixtures; they do not claim that a live AgentEval passed.

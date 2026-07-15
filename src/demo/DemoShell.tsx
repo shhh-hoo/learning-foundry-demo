@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { HANDOFF_KEY, SESSION_KEY } from "../experience/repository";
 import { isDemoEvent, type DemoEvent, type DemoEventType } from "./events";
 
 type DemoMode = "GUIDED" | "FREE";
@@ -65,7 +66,7 @@ export function DemoShell() {
     if (!isDemoEvent(event)) return;
     if (data.source === "standard-trainer-product") {
       try {
-        const key = "learning-foundry:experience:v2";
+        const key = SESSION_KEY;
         const stored = window.localStorage.getItem(key);
         if (stored) {
           const productState = JSON.parse(stored) as { eventLog?: DemoEvent[] };
@@ -85,8 +86,8 @@ export function DemoShell() {
   }, [route]);
 
   async function restart() {
-    window.localStorage.removeItem("learning-foundry:experience:v2");
-    window.localStorage.removeItem("learning-foundry:foundry-handoff:v2");
+    window.localStorage.removeItem(SESSION_KEY);
+    window.localStorage.removeItem(HANDOFF_KEY);
     setEvents([]);
     setStep(0);
     setFrameKey((value) => value + 1);
