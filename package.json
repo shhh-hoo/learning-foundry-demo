@@ -20,8 +20,12 @@
     "sync:trainer": "tsx scripts/sync-trainer.ts"
   },
   "dependencies": {
+    "katex": "^0.17.0",
     "react": "19.2.7",
     "react-dom": "19.2.7",
+    "react-markdown": "^10.1.0",
+    "rehype-katex": "^7.0.1",
+    "remark-math": "^6.0.0",
     "zod": "4.3.6"
   },
   "devDependencies": {

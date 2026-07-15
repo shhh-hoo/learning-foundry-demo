@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../src/App";
+import { createInitialExperienceState } from "../src/experience/orchestration";
+import { LearnerView } from "../src/surfaces/LearnerView";
 
 describe("real Agent product boundaries", () => {
   beforeEach(() => {
@@ -31,6 +33,15 @@ describe("real Agent product boundaries", () => {
     expect((screen.getByLabelText("Message Learning Foundry") as HTMLTextAreaElement).value).toContain("4.80 / 24.0");
     expect(screen.getByText("Input origin: PRESET_INPUT")).toBeVisible();
     expect(screen.getByText(/No Agent runs yet/)).toBeVisible();
+  });
+
+  it("renders Agent Markdown emphasis and block chemistry math", async () => {
+    const state = { ...createInitialExperienceState(), agentConfigured: true, messages: [{ id: "agent-markdown", role: "AGENT" as const, content: "Coefficients represent relative **moles**.\n\n$$2\\text{H}_2 + \\text{O}_2 \\rightarrow 2\\text{H}_2\\text{O}$$\n\n<script>window.agentMarkdownExecuted=true</script>" }] };
+    render(<LearnerView state={state} onChange={vi.fn()} />);
+    await waitFor(() => expect(screen.getByText("moles").tagName).toBe("STRONG"));
+    expect(document.querySelector(".katex-display")).toBeInTheDocument();
+    expect(screen.queryByText(/\$\$/)).not.toBeInTheDocument();
+    expect(document.querySelector(".tutor-bubble script")).not.toBeInTheDocument();
   });
 
   it("starts Pattern Inbox empty and cannot create a candidate", () => {
