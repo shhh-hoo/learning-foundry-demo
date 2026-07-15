@@ -23,4 +23,18 @@ describe("AgentEval deterministic graders", () => {
     expect(grade.passed).toBe(true);
     expect(grade.checks.inventedContextRejected).toBe(true);
   });
+
+  it("rejects a sourced why-answer that states mole ratios without the particle-to-mole mechanism", () => {
+    const whyCase: AgentEvalCase = { caseId: "retrieval-why", category: "retrieval", input: "Why do coefficients in a balanced equation give mole ratios?", inputOrigin: "PRESET_INPUT", expectedStatus: ["ANSWERED"], requiredTools: ["search_learning_resources"], forbiddenTools: ["run_learner_diagnosis"], allowedCapabilities: [], requiredSourceIds: ["CAIE-9701-STOICHIOMETRY-COEFFICIENTS"], tags: [AGENT_EVAL_CASE, "WHY_EXPLANATION"] };
+    const whyTrace: AgentTrace = { ...trace, toolCalls: [{ name: "search_learning_resources", arguments: { query: "coefficients mole ratios" }, resultRef: "resource-search", status: "SUCCEEDED" }], finalResponse: { status: "ANSWERED", learnerMessage: "The coefficients represent the relative number of moles. Conservation of mass ensures the equation is balanced, so the coefficients give mole ratios.", sourceRefs: ["CAIE-9701-STOICHIOMETRY-COEFFICIENTS"] } };
+    const grade = gradeAgentCase(whyCase, whyTrace, [{ name: "search_learning_resources", resultRef: "resource-search", data: [{ sourceId: "CAIE-9701-STOICHIOMETRY-COEFFICIENTS" }] }]);
+    expect(grade.errors).toEqual(expect.arrayContaining(["whyMechanism", "whyMoleScaling", "whyConceptDistinctions", "whyConclusion", "whyCausalPriority"]));
+  });
+
+  it("accepts a sourced why-answer that connects particle ratios to mole ratios causally", () => {
+    const whyCase: AgentEvalCase = { caseId: "retrieval-why", category: "retrieval", input: "Why do coefficients in a balanced equation give mole ratios?", inputOrigin: "PRESET_INPUT", expectedStatus: ["ANSWERED"], requiredTools: ["search_learning_resources"], forbiddenTools: ["run_learner_diagnosis"], allowedCapabilities: [], requiredSourceIds: ["CAIE-9701-STOICHIOMETRY-COEFFICIENTS"], tags: [AGENT_EVAL_CASE, "WHY_EXPLANATION"] };
+    const learnerMessage = "At the particle level, the coefficients describe the particle ratio in one reaction pattern: two H2 molecules react with one O2 molecule. The equation must be balanced because it must show the same number of each type of atom on both sides; that explains atom accounting, not by itself why the ratio is a mole ratio. A mole is a fixed number of particles, Avogadro's constant. Scaling every particle count by Avogadro's constant preserves the ratio: (2 × N_A):(1 × N_A) is still 2:1, so the microscopic particle ratio becomes the macroscopic mole ratio. Therefore, the statement that equation coefficients give mole ratios is true because scaling each stoichiometric particle count by Avogadro's constant preserves the particle ratio.";
+    const whyTrace: AgentTrace = { ...trace, toolCalls: [{ name: "search_learning_resources", arguments: { query: "coefficients mole ratios" }, resultRef: "resource-search", status: "SUCCEEDED" }], finalResponse: { status: "ANSWERED", learnerMessage, sourceRefs: ["CAIE-9701-STOICHIOMETRY-COEFFICIENTS"] } };
+    expect(gradeAgentCase(whyCase, whyTrace, [{ name: "search_learning_resources", resultRef: "resource-search", data: [{ sourceId: "CAIE-9701-STOICHIOMETRY-COEFFICIENTS" }] }]).passed).toBe(true);
+  });
 });

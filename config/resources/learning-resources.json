@@ -5,10 +5,10 @@
       "sourceId": "CAIE-9701-STOICHIOMETRY-COEFFICIENTS",
       "origin": "CURATED_LOCAL_RESOURCE",
       "title": "CAIE 9701 Stoichiometry · equation coefficients",
-      "excerpt": "Balanced-equation coefficients give relative reacting amounts in moles; simplify both coefficients to obtain the mole ratio used in a calculation.",
+      "excerpt": "At particle level, balanced-equation coefficients specify the relative counts, or particle ratio, of reacting molecules or formula units in the reaction pattern. A mole is a fixed number of particles: Avogadro's constant, N_A. Scaling every coefficient count by the same N_A preserves the ratio, so the microscopic particle ratio is also the macroscopic mole ratio. Balancing separately ensures the same number of each type of atom appears on both sides; atom accounting is not the cause of the particle-to-mole scaling.",
       "syllabusCode": "9701",
       "topic": "Stoichiometry",
-      "keywords": ["coefficients", "mole ratio", "balanced equation", "stoichiometry"]
+      "keywords": ["coefficients", "particle ratio", "mole ratio", "Avogadro constant", "balanced equation", "microscopic", "macroscopic", "stoichiometry"]
     },
     {
       "sourceId": "CAIE-9701-LIMITING-REAGENT",

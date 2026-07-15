@@ -22,4 +22,6 @@ npm run agenteval:compare -- --baseline <evalRunId> --candidate <evalRunId>
 
 Reports include completeness, pass rate, required-tool accuracy, forbidden-tool rate, source-grounded diagnosis fidelity, latency, token use, estimated cost and every failed check.
 
+The `WHY_EXPLANATION` case rejects answers that merely restate a rule. For the coefficient-to-mole-ratio question it requires the particle mechanism, fixed-particle meaning of a mole, Avogadro scaling that preserves the ratio, separation of balancing from ratio causation, causal priority over conservation-of-mass shorthand and a final `Therefore, X is true because Y.` sentence.
+
 Automated Tests verify parsing, graders and failure behavior with `TEST_FIXTURE` data. They do not substitute for a live run.

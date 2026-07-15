@@ -46,7 +46,7 @@ function validateClaims(response: ReturnType<typeof agentResponseEnvelopeSchema.
   if (response.proposedFollowUp && !matchesProposal("propose_schedule_followup", response.proposedFollowUp)) throw new AgentRunError("AGENT_UNSUPPORTED_CLAIM", "Schedule proposal was not produced by its tool.");
 }
 
-export const AGENT_PROMPT_VERSION = "1.1.0";
+export const AGENT_PROMPT_VERSION = "1.2.0";
 
 const finalResponseContract = [
   "Return only one JSON object after all required tools have succeeded.",

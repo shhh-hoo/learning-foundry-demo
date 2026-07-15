@@ -24,6 +24,13 @@ export function gradeAgentCase(testCase: AgentEvalCase, trace: AgentTrace, toolR
     const argumentsValue = item.arguments as { problemContext?: ProblemContext; problemContextEvidence?: ProblemContextEvidence };
     return Boolean(argumentsValue.problemContext && argumentsValue.problemContextEvidence && verifyProblemContextProvenance(argumentsValue.problemContext, argumentsValue.problemContextEvidence, testCase.input).ok);
   });
+  const learnerText = trace.finalResponse.learnerMessage.trim();
+  const lowerLearnerText = learnerText.toLowerCase();
+  const requiresWhyExplanation = testCase.tags.includes("WHY_EXPLANATION");
+  const particleIndex = lowerLearnerText.search(/particles?|molecules?|formula units?/u);
+  const conservationIndex = lowerLearnerText.indexOf("conservation of mass");
+  const hasParticleRatio = /particle ratio|ratio (?:of|between) (?:the )?(?:particles|molecules|formula units)|(?:particles|molecules|formula units).{0,80}ratio/isu.test(learnerText);
+  const hasBalanceReason = /balanc\w*.{0,100}(?:same|equal) number of (?:each )?(?:type of )?atom|(?:same|equal) number of (?:each )?(?:type of )?atom.{0,100}balanc\w*/isu.test(learnerText);
   const checks = {
     requiredTools: testCase.requiredTools.every((name) => names.includes(name)),
     forbiddenTools: testCase.forbiddenTools.every((name) => !names.includes(name)),
@@ -40,6 +47,11 @@ export function gradeAgentCase(testCase: AgentEvalCase, trace: AgentTrace, toolR
     incompleteContextHasNoDiagnosis: testCase.category !== "diagnosis-missing-context" || (diagnosisCalls.length === 0 && trace.finalResponse.diagnosisTraceId === undefined),
     incompleteContextNamesMissingEvidence: testCase.category !== "diagnosis-missing-context" || ["original problem", "reaction condition", "target", "answer requirement"].every((term) => trace.finalResponse.learnerMessage.toLowerCase().includes(term)),
     inventedContextRejected: testCase.category !== "diagnosis-invented-context" || (diagnosisCalls.every((item) => item.status === "FAILED") && diagnosisResult === undefined && trace.finalResponse.diagnosisTraceId === undefined),
+    whyMechanism: !requiresWhyExplanation || (lowerLearnerText.includes("coefficient") && hasParticleRatio),
+    whyMoleScaling: !requiresWhyExplanation || (lowerLearnerText.includes("mole") && lowerLearnerText.includes("fixed number") && lowerLearnerText.includes("avogadro") && /scal|multipl|divid|preserv/iu.test(learnerText) && lowerLearnerText.includes("ratio")),
+    whyConceptDistinctions: !requiresWhyExplanation || (hasBalanceReason && hasParticleRatio && lowerLearnerText.includes("mole ratio")),
+    whyConclusion: !requiresWhyExplanation || /Therefore,\s+.+\s+is true because\s+.+[.!?]$/su.test(learnerText),
+    whyCausalPriority: !requiresWhyExplanation || conservationIndex === -1 || (particleIndex !== -1 && particleIndex < conservationIndex),
     agentEvalRunPurpose: trace.runPurpose === "AGENT_EVAL",
   };
   const errors = Object.entries(checks).filter(([, passed]) => !passed).map(([name]) => name);

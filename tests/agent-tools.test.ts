@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createAgentToolExecutor } from "../src/agent/tool-executor";
+import resourceConfig from "../config/resources/learning-resources.json";
 
 const TEST_FIXTURE = "TEST_FIXTURE" as const;
 const capabilities = [
@@ -16,6 +17,15 @@ describe("agent tools", () => {
     const listed = await tools.execute("list_capabilities", {});
     expect(listed.data).toEqual([expect.objectContaining({ id: "mass" })]);
     await expect(tools.execute("get_capability", { id: "kp" })).rejects.toThrow("CAPABILITY_NOT_AVAILABLE");
+  });
+
+  it("returns a causal particle-to-mole explanation for coefficient-ratio questions", async () => {
+    const tools = createAgentToolExecutor({ capabilities, resources: resourceConfig.resources as typeof resources, diagnosisUrl: "http://127.0.0.1:4177/diagnose", createId: () => "test" });
+    const result = await tools.execute("search_learning_resources", { query: "coefficients particle mole ratio Avogadro" });
+    const content = JSON.stringify(result.data);
+    expect(content).toMatch(/particle ratio/iu);
+    expect(content).toMatch(/fixed number/iu);
+    expect(content).toMatch(/Avogadro/iu);
   });
 
   it("calls the Trainer endpoint and preserves its diagnosis trace id", async () => {
