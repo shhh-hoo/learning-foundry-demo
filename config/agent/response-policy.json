@@ -1,0 +1,6 @@
+{
+  "version": "1.0.0",
+  "statuses": ["ANSWERED", "NEEDS_MORE_EVIDENCE", "CAPABILITY_GAP"],
+  "required": ["status", "learnerMessage", "sourceRefs"],
+  "rule": "All sourceRefs, diagnosisTraceId and capabilityGapId must come from tool results in this run. Proposals require later human confirmation."
+}

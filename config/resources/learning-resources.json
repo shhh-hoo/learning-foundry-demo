@@ -1,0 +1,29 @@
+{
+  "version": "1.0.0",
+  "resources": [
+    {
+      "sourceId": "CAIE-9701-STOICHIOMETRY-COEFFICIENTS",
+      "title": "CAIE 9701 Stoichiometry · equation coefficients",
+      "excerpt": "Balanced-equation coefficients give relative reacting amounts in moles; simplify both coefficients to obtain the mole ratio used in a calculation.",
+      "syllabusCode": "9701",
+      "topic": "Stoichiometry",
+      "keywords": ["coefficients", "mole ratio", "balanced equation", "stoichiometry"]
+    },
+    {
+      "sourceId": "CAIE-9701-LIMITING-REAGENT",
+      "title": "CAIE 9701 Stoichiometry · limiting reagent",
+      "excerpt": "Compare available amounts using the balanced equation before identifying the reagent that limits product formation.",
+      "syllabusCode": "9701",
+      "topic": "Stoichiometry",
+      "keywords": ["limiting reagent", "purity", "product", "moles"]
+    },
+    {
+      "sourceId": "CAIE-9701-TITRATION",
+      "title": "CAIE 9701 Analysis · titration evidence",
+      "excerpt": "A titration calculation needs the balanced reaction, measured volume and concentration evidence before a bounded numerical conclusion is supported.",
+      "syllabusCode": "9701",
+      "topic": "Titration",
+      "keywords": ["titration", "concentration", "volume", "purity"]
+    }
+  ]
+}

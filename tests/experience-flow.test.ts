@@ -1,71 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { createComponentCandidate, createInitialExperienceState, diagnoseStoichiometryConversation, promoteComponentCandidate } from "../src/experience/orchestration";
+import type { AgentTrace } from "../src/agent/types";
+import { applyAgentRun, confirmLibraryProposal, confirmScheduleProposal, createInitialExperienceState } from "../src/experience/orchestration";
 
-describe("product experience flow", () => {
-  it("routes the learner attempt through the published component and returns a grounded ratio diagnosis", () => {
-    const result = diagnoseStoichiometryConversation(createInitialExperienceState(), "2026-07-15T09:00:00.000Z");
-
-    expect(result.conversation.messages[0]?.content).toContain("multiplied by 0.5");
-    expect(result.conversation.selectedComponentId).toBe("stoichiometric-product-mass@1.0.0");
-    expect(result.diagnosis?.stage).toBe("FORMULA");
-    expect(result.diagnosis?.failureCode).toBe("WRONG_STOICHIOMETRIC_RATIO");
-    expect(result.diagnosis?.groundedResponse).toContain("1:1—not 0.5");
-    expect(result.diagnosis?.groundedResponse).toContain("8.00 g");
-    expect(result.eventLog.map((event) => event.type)).toEqual(expect.arrayContaining([
-      "LEARNER_ATTEMPT_SUBMITTED",
-      "CAPABILITY_SELECTED",
-      "LEARNER_DIAGNOSIS_COMPLETED",
-      "EVIDENCE_PERSISTED",
-      "RETRY_SCHEDULED",
-      "PATTERN_THRESHOLD_REACHED",
-    ]));
-  });
-
-  it("saves diagnostic evidence, a worked correction, and a delayed retry", () => {
-    const result = diagnoseStoichiometryConversation(createInitialExperienceState(), "2026-07-15T09:00:00.000Z");
-
-    expect(result.evidence.find((item) => item.id === "evidence-mgo-ratio-current")).toMatchObject({
-        componentId: "stoichiometric-product-mass",
-        componentVersion: "1.0.0",
-        stage: "FORMULA",
-        failureCode: "WRONG_STOICHIOMETRIC_RATIO",
-        observedEvidence: { observedRatio: 0.5, expectedRatio: 1 },
-      });
-    expect(result.learningArtifacts[0]?.steps).toEqual([
-      "4.80 g Mg",
-      "0.200 mol Mg",
-      "1:1 Mg:MgO",
-      "0.200 mol MgO",
-      "8.00 g MgO",
-    ]);
-    expect(result.schedule).toMatchObject([
-      {
-        title: "Retry: Stoichiometric product mass",
-        dueAt: "2026-07-18T09:00:00.000Z",
-        status: "SCHEDULED",
-      },
-    ]);
-  });
-
-  it("promotes the threshold reached by current evidence into a draft-only Foundry handoff", () => {
-    const initial = createInitialExperienceState();
-    const diagnosed = diagnoseStoichiometryConversation(initial, "2026-07-15T09:00:00.000Z");
-    const candidateState = createComponentCandidate(diagnosed);
-    const { state, handoff } = promoteComponentCandidate(candidateState);
-
-    expect(candidateState.candidate?.pattern).toEqual({
-      stage: "FORMULA",
-      failureCode: "WRONG_STOICHIOMETRIC_RATIO",
-      occurrenceCount: 3,
-    });
-    expect(state.candidate?.status).toBe("PROMOTED_TO_FOUNDRY");
-    expect(handoff.component.status).toBe("DRAFT");
-    expect(handoff.component.version).toBe("1.1.0");
-    expect(handoff.evaluation).toBeNull();
-    expect(handoff.candidateSource).toMatchObject({
-      kind: "CONVERSATION_DERIVED",
-      conversationIds: candidateState.candidate?.sourceConversationIds,
-      evidenceIds: candidateState.candidate?.sourceEvidenceIds,
-    });
+describe("human-confirmed product writes", () => {
+  it("does not write a Library artifact or Schedule item until the user confirms proposals", () => {
+    const trace: AgentTrace = { traceId: "agent-trace", conversationId: "conversation", inputOrigin: "USER_INPUT", provider: "deepseek", model: "configured", thinkingMode: "disabled", promptVersion: "1", capabilityRegistryVersion: "1", startedAt: "2026-07-16T10:00:00.000Z", completedAt: "2026-07-16T10:00:01.000Z", toolCalls: [], finalResponse: { status: "ANSWERED", learnerMessage: "Here is a proposal.", sourceRefs: [], proposedLibraryArtifact: { title: "Ratio note", content: "Use balanced coefficients." }, proposedFollowUp: { title: "Retry ratio", reason: "Check transfer", delayDays: 3 } }, latencyMs: 1000 };
+    let state = applyAgentRun(createInitialExperienceState(), "help", trace, []);
+    expect(state.library).toHaveLength(0); expect(state.schedule).toHaveLength(0);
+    state = confirmLibraryProposal(state); expect(state.library).toEqual([expect.objectContaining({ title: "Ratio note", origin: "HUMAN_ACTION" })]);
+    state = confirmScheduleProposal(state); expect(state.schedule).toEqual([expect.objectContaining({ title: "Retry ratio", origin: "HUMAN_ACTION" })]);
   });
 });

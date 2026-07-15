@@ -52,11 +52,11 @@ try {
   frame = await liveFrame(page);
   await frame.getByRole("button", { name: "Pattern Inbox" }).click();
   await frame.getByRole("button", { name: "Create component candidate" }).click();
-  await frame.getByRole("button", { name: "Continue to evaluation" }).click();
-  await frame.getByRole("button", { name: "Run 15 checks" }).click();
+  await frame.getByRole("button", { name: "Open Component Contract Checks" }).click();
+  await frame.getByRole("button", { name: "Run Component Contract Checks" }).click();
   await frame.getByRole("button", { name: "Expert Review" }).click();
   await frame.getByRole("button", { name: "Approve component" }).click();
-  await frame.getByRole("button", { name: "Foundry Evaluation" }).click();
+  await frame.getByRole("button", { name: "Component Contract Checks" }).click();
   await page.getByText("Expert authority recorded", { exact: true }).waitFor();
   await frame.evaluate(() => window.scrollTo(0, 0));
   await shot("04-candidate-and-governance.png");

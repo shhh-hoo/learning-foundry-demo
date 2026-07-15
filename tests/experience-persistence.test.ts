@@ -1,25 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { createInitialExperienceState, diagnoseStoichiometryConversation, setScheduleItemStatus } from "../src/experience/orchestration";
 import { createExperienceRepository } from "../src/experience/repository";
 
-describe("experience session persistence", () => {
-  it("restores evidence and a completed retry, while reset returns the initial session", () => {
-    const memory = new Map<string, string>();
-    const storage = {
-      getItem: (key: string) => memory.get(key) ?? null,
-      setItem: (key: string, value: string) => { memory.set(key, value); },
-      removeItem: (key: string) => { memory.delete(key); },
-    };
-    const repository = createExperienceRepository(storage);
-    const diagnosed = diagnoseStoichiometryConversation(createInitialExperienceState(), "2026-07-15T09:00:00.000Z");
-    const completed = setScheduleItemStatus(diagnosed, "retry-stoichiometry-001", "COMPLETED");
-
-    repository.save(completed);
-    const restored = repository.load();
-    expect(restored.evidence.find((item) => item.id === "evidence-mgo-ratio-current")).toMatchObject({ failureCode: "WRONG_STOICHIOMETRIC_RATIO" });
-    expect(restored.schedule).toMatchObject([{ status: "COMPLETED" }]);
-
-    repository.reset();
-    expect(repository.load()).toEqual(createInitialExperienceState());
+describe("real product-state persistence", () => {
+  it("starts empty and round-trips confirmed records without importing old sessions", () => {
+    const values = new Map<string, string>();
+    const repository = createExperienceRepository({ getItem: (key) => values.get(key) ?? null, setItem: (key, value) => values.set(key, value), removeItem: (key) => values.delete(key) });
+    const initial = repository.load();
+    expect(initial.agentTraces).toEqual([]); expect(initial.diagnoses).toEqual([]); expect(initial.library).toEqual([]);
+    repository.save({ ...initial, agentConfigured: true, gatewayModel: "configured-model" });
+    expect(repository.load()).toMatchObject({ agentConfigured: true, gatewayModel: "configured-model" });
+    repository.reset(); expect(repository.load().agentTraces).toEqual([]);
   });
 });

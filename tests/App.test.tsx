@@ -29,9 +29,10 @@ describe("role-separated product routes", () => {
   it("makes engineering evidence visible only in Inspector", () => {
     window.history.replaceState({}, "", "/?view=inspector");
     render(<App />);
-    expect(screen.getByRole("heading", { name: "Engineering Inspector" })).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "Registry" }));
-    expect(screen.getByText("Content hash")).toBeVisible();
-    expect(screen.getByText("Schema")).toBeVisible();
+    expect(screen.getByRole("navigation", { name: "Engineering Inspector" })).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Component Registry" }));
+    expect(screen.getByText("stoichiometric-product-mass")).toBeVisible();
+    expect(screen.getByText("kp-from-equilibrium-moles")).toBeVisible();
+    expect(screen.getByText("Legacy regression")).toBeVisible();
   });
 });

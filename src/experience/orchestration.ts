@@ -1,219 +1,94 @@
+import patternPolicy from "../../config/product/pattern-policy.json";
 import { publishedComponents } from "../components/published";
-import type { DiagnosticLearningComponent } from "../contracts/diagnostic-component";
-import { incrementVersion } from "../governance/publishing";
-import { evaluatePreviewAttempt } from "../runtime/preview-adapter";
+import type { AgentTrace } from "../agent/types";
 import { createDemoEvent } from "../demo/events";
-import type { DiagnosticEvidenceArtifact, ExperienceState, FoundryCandidateHandoff, PatternAggregate } from "./types";
+import { incrementVersion } from "../governance/publishing";
+import type { ComponentCandidate, ExperienceState, FoundryCandidateHandoff, GatewayToolResult, LearnerDiagnosisRecord, PatternAggregate } from "./types";
 
-const learnerMessage = `I calculated the mass of MgO as 4.00 g.
-I used 4.80 / 24.0 and then multiplied by 0.5.
-Where did I go wrong?`;
-
-const groundedResponse = `Your conversion from 4.80 g Mg to 0.200 mol Mg is correct.
-
-The first error is the mole ratio. In 2Mg + O₂ → 2MgO, the Mg:MgO ratio is 2:2, or 1:1—not 0.5.
-
-So 0.200 mol Mg forms 0.200 mol MgO, giving 0.200 × 40.0 = 8.00 g.`;
+const id = (prefix: string) => `${prefix}-${globalThis.crypto?.randomUUID?.() ?? Date.now().toString(36)}`;
 
 export function createInitialExperienceState(): ExperienceState {
-  const historicalEvidence: readonly DiagnosticEvidenceArtifact[] = [
-    {
-      id: "historical-case-001",
-      conversationId: "historical-conversation-001",
-      componentId: "stoichiometric-product-mass",
-      componentVersion: "1.0.0",
-      stage: "FORMULA",
-      failureCode: "WRONG_STOICHIOMETRIC_RATIO",
-      observedEvidence: { observedRatio: 2, expectedRatio: 1 },
-      createdAt: "2026-06-20T09:00:00.000Z",
-    },
-    {
-      id: "historical-case-002",
-      conversationId: "historical-conversation-002",
-      componentId: "stoichiometric-product-mass",
-      componentVersion: "1.0.0",
-      stage: "FORMULA",
-      failureCode: "WRONG_STOICHIOMETRIC_RATIO",
-      observedEvidence: { observedRatio: 0.5, expectedRatio: 1 },
-      createdAt: "2026-07-03T09:00:00.000Z",
-    },
-  ];
   return {
-    conversation: {
-      id: "conversation-mgo-001",
-      messages: [{ id: "message-student-001", role: "STUDENT", content: learnerMessage }],
-      retrievedSourceIds: ["CAIE-9701-SYLLABUS-CONCEPTS"],
-      selectedCapabilityId: "standard-trainer@1.0.0",
-      selectedComponentId: "stoichiometric-product-mass@1.0.0",
-    },
-    diagnosis: null,
-    evidence: historicalEvidence,
-    learningArtifacts: [],
-    schedule: [],
-    candidate: null,
-    publishedCandidate: null,
-    registryAccepted: false,
-    eventLog: [],
+    conversationId: id("conversation"), messages: [], agentConfigured: null, gatewayModel: null,
+    agentTraces: [], diagnoses: [], library: [], schedule: [], capabilityGaps: [], pendingResponse: null,
+    candidate: null, publishedCandidate: null, registryAccepted: false, eventLog: [],
   };
 }
 
-export function aggregatePatternEvidence(
-  evidence: readonly DiagnosticEvidenceArtifact[],
-): PatternAggregate {
-  const matching = evidence.filter(
-    (item) =>
-      item.componentId === "stoichiometric-product-mass" &&
-      item.stage === "FORMULA" &&
-      item.failureCode === "WRONG_STOICHIOMETRIC_RATIO",
-  );
-  return {
-    stage: "FORMULA",
-    failureCode: "WRONG_STOICHIOMETRIC_RATIO",
-    componentId: "stoichiometric-product-mass",
-    occurrenceCount: matching.length,
-    threshold: 3,
-    thresholdReached: matching.length >= 3,
-    evidenceIds: matching.map((item) => item.id),
-  };
-}
+function isRecord(value: unknown): value is Record<string, unknown> { return Boolean(value) && typeof value === "object" && !Array.isArray(value); }
 
-export function diagnoseStoichiometryConversation(state: ExperienceState, diagnosedAt = new Date().toISOString()): ExperienceState {
-  const component = publishedComponents.find((item) => item.id === "stoichiometric-product-mass");
-  if (!component) throw new Error("Published Stoichiometric Product Mass component is unavailable.");
-  const runtimeDiagnosis = evaluatePreviewAttempt(component, { value: 4, unit: "g", significantFigures: 3, strategy: "WRONG_RATIO" });
-  if (runtimeDiagnosis.firstFailureCode !== "WRONG_STOICHIOMETRIC_RATIO" || runtimeDiagnosis.stage !== "FORMULA") {
-    throw new Error("The published runtime did not return the expected bounded ratio diagnosis.");
-  }
-  const retryDueAt = new Date(diagnosedAt);
-  retryDueAt.setUTCDate(retryDueAt.getUTCDate() + 3);
-  const alreadyDiagnosed = state.evidence.some((item) => item.conversationId === state.conversation.id);
-
-  const nextEvidence = alreadyDiagnosed ? state.evidence : [...state.evidence, {
-    id: "evidence-mgo-ratio-current",
-    conversationId: state.conversation.id,
-    componentId: component.id,
-    componentVersion: component.version,
-    stage: "FORMULA" as const,
-    failureCode: runtimeDiagnosis.firstFailureCode,
-    observedEvidence: { observedRatio: 0.5, expectedRatio: 1 },
-    createdAt: diagnosedAt,
-  }];
-  const threshold = aggregatePatternEvidence(nextEvidence);
-  const newEvents = alreadyDiagnosed ? [] : [
-    createDemoEvent("LEARNER_ATTEMPT_SUBMITTED", "LEARNER", { conversationId: state.conversation.id }, { occurredAt: diagnosedAt }),
-    createDemoEvent("CAPABILITY_SELECTED", "FOUNDRY", { capabilityId: state.conversation.selectedCapabilityId, componentId: state.conversation.selectedComponentId }, { occurredAt: diagnosedAt }),
-    createDemoEvent("LEARNER_DIAGNOSIS_COMPLETED", "FOUNDRY", { stage: "FORMULA", failureCode: runtimeDiagnosis.firstFailureCode, observed: 0.5, expected: 1 }, { occurredAt: diagnosedAt }),
-    createDemoEvent("EVIDENCE_PERSISTED", "FOUNDRY", { evidenceId: "evidence-mgo-ratio-current" }, { occurredAt: diagnosedAt }),
-    createDemoEvent("RETRY_SCHEDULED", "FOUNDRY", { scheduleItemId: "retry-stoichiometry-001", dueAt: retryDueAt.toISOString() }, { occurredAt: diagnosedAt }),
-    ...(threshold.thresholdReached ? [createDemoEvent("PATTERN_THRESHOLD_REACHED", "FOUNDRY", { occurrenceCount: threshold.occurrenceCount, threshold: threshold.threshold, evidenceIds: threshold.evidenceIds }, { occurredAt: diagnosedAt })] : []),
-  ];
-
+export function applyAgentRun(state: ExperienceState, userInput: string, trace: AgentTrace, toolResults: readonly GatewayToolResult[]): ExperienceState {
+  const diagnoses = toolResults.filter((item) => item.name === "run_learner_diagnosis" && isRecord(item.data)).flatMap((item): LearnerDiagnosisRecord[] => {
+    const data = item.data as Record<string, unknown>;
+    const diagnosis = isRecord(data.diagnosis) ? data.diagnosis : null;
+    if (!diagnosis || typeof data.traceId !== "string" || typeof data.componentId !== "string" || typeof data.componentVersion !== "string") return [];
+    return [{
+      traceId: data.traceId, agentTraceId: trace.traceId, inputOrigin: trace.inputOrigin, origin: "TOOL_OUTPUT",
+      componentId: data.componentId, componentVersion: data.componentVersion,
+      decision: diagnosis.decision as LearnerDiagnosisRecord["decision"],
+      firstPedagogicalIssue: typeof diagnosis.firstPedagogicalIssue === "string" ? diagnosis.firstPedagogicalIssue : null,
+      failureCode: typeof diagnosis.failureCode === "string" ? diagnosis.failureCode : null,
+      evidence: Array.isArray(diagnosis.evidence) ? diagnosis.evidence.filter((value): value is string => typeof value === "string") : [],
+      recommendedSupport: typeof data.recommendedSupport === "string" ? data.recommendedSupport : null,
+      createdAt: trace.completedAt,
+    }];
+  });
+  const gaps = toolResults.filter((item) => item.name === "record_capability_gap" && isRecord(item.data)).flatMap((item) => {
+    const data = item.data as Record<string, unknown>;
+    return typeof data.id === "string" && typeof data.summary === "string" ? [{ id: data.id, summary: data.summary, missingEvidence: Array.isArray(data.missingEvidence) ? data.missingEvidence.filter((value): value is string => typeof value === "string") : [], origin: "TOOL_OUTPUT" as const }] : [];
+  });
+  const allDiagnoses = [...state.diagnoses, ...diagnoses];
+  const previousPattern = aggregatePatternEvidence(state.diagnoses);
+  const nextPattern = aggregatePatternEvidence(allDiagnoses);
+  const newEvents = [createDemoEvent("LEARNER_ATTEMPT_SUBMITTED", "LEARNER", { conversationId: state.conversationId, inputOrigin: trace.inputOrigin }), ...diagnoses.map((diagnosis) => createDemoEvent("LEARNER_DIAGNOSIS_COMPLETED", "FOUNDRY", { traceId: diagnosis.traceId, failureCode: diagnosis.failureCode, componentId: diagnosis.componentId })), ...(!previousPattern.thresholdReached && nextPattern.thresholdReached ? [createDemoEvent("PATTERN_THRESHOLD_REACHED", "FOUNDRY", { occurrenceCount: nextPattern.occurrenceCount, threshold: nextPattern.threshold, traceIds: nextPattern.traceIds })] : [])];
   return {
     ...state,
-    diagnosis: {
-      stage: "FORMULA",
-      failureCode: runtimeDiagnosis.firstFailureCode,
-      groundedResponse,
-      observedRatio: 0.5,
-      expectedRatio: 1,
-    },
-    conversation: {
-      ...state.conversation,
-      messages: alreadyDiagnosed ? state.conversation.messages : [...state.conversation.messages, { id: "message-system-001", role: "SYSTEM", content: groundedResponse }],
-    },
-    evidence: nextEvidence,
-    learningArtifacts: alreadyDiagnosed ? state.learningArtifacts : [...state.learningArtifacts, {
-      id: "artifact-mgo-correction-001",
-      title: "Worked correction · Magnesium to magnesium oxide",
-      steps: ["4.80 g Mg", "0.200 mol Mg", "1:1 Mg:MgO", "0.200 mol MgO", "8.00 g MgO"],
-      createdAt: diagnosedAt,
-    }],
-    schedule: alreadyDiagnosed ? state.schedule : [...state.schedule, {
-      id: "retry-stoichiometry-001",
-      title: "Retry: Stoichiometric product mass",
-      dueAt: retryDueAt.toISOString(),
-      reason: "Recheck mole-ratio transfer without viewing the worked answer",
-      status: "SCHEDULED",
-    }],
+    messages: [...state.messages, { id: id("message"), role: "USER", content: userInput, inputOrigin: trace.inputOrigin }, { id: id("message"), role: "AGENT", content: trace.finalResponse.learnerMessage, sourceRefs: trace.finalResponse.sourceRefs }],
+    agentTraces: [...state.agentTraces, trace], diagnoses: allDiagnoses, capabilityGaps: [...state.capabilityGaps, ...gaps], pendingResponse: trace.finalResponse,
     eventLog: [...state.eventLog, ...newEvents],
   };
 }
 
+export function aggregatePatternEvidence(diagnoses: readonly LearnerDiagnosisRecord[]): PatternAggregate {
+  const groups = new Map<string, LearnerDiagnosisRecord[]>();
+  diagnoses.filter((item) => item.failureCode).forEach((item) => {
+    const key = `${item.componentId}::${item.failureCode}`;
+    groups.set(key, [...(groups.get(key) ?? []), item]);
+  });
+  const strongest = [...groups.values()].sort((left, right) => right.length - left.length)[0] ?? [];
+  const first = strongest[0];
+  return { componentId: first?.componentId ?? null, failureCode: first?.failureCode ?? null, occurrenceCount: strongest.length, threshold: patternPolicy.minimumMatchingRuns, thresholdReached: strongest.length >= patternPolicy.minimumMatchingRuns, traceIds: strongest.map((item) => item.traceId) };
+}
+
+export function confirmLibraryProposal(state: ExperienceState): ExperienceState {
+  const proposal = state.pendingResponse?.proposedLibraryArtifact;
+  if (!proposal) return state;
+  const artifact = { id: id("library"), ...proposal, origin: "HUMAN_ACTION" as const, createdAt: new Date().toISOString() };
+  return { ...state, library: [...state.library, artifact], pendingResponse: { ...state.pendingResponse, proposedLibraryArtifact: undefined }, eventLog: [...state.eventLog, createDemoEvent("EVIDENCE_PERSISTED", "LEARNER", { artifactId: artifact.id, origin: artifact.origin })] };
+}
+
+export function confirmScheduleProposal(state: ExperienceState): ExperienceState {
+  const proposal = state.pendingResponse?.proposedFollowUp;
+  if (!proposal) return state;
+  const due = new Date(); due.setUTCDate(due.getUTCDate() + proposal.delayDays);
+  const item = { id: id("schedule"), title: proposal.title, reason: proposal.reason, dueAt: due.toISOString(), status: "SCHEDULED" as const, origin: "HUMAN_ACTION" as const };
+  return { ...state, schedule: [...state.schedule, item], pendingResponse: { ...state.pendingResponse, proposedFollowUp: undefined }, eventLog: [...state.eventLog, createDemoEvent("RETRY_SCHEDULED", "LEARNER", { scheduleItemId: item.id, dueAt: item.dueAt, origin: item.origin })] };
+}
+
+export function setScheduleItemStatus(state: ExperienceState, itemId: string, status: "SCHEDULED" | "COMPLETED"): ExperienceState { return { ...state, schedule: state.schedule.map((item) => item.id === itemId ? { ...item, status } : item) }; }
+
 export function createComponentCandidate(state: ExperienceState): ExperienceState {
   if (state.candidate) return state;
-  const pattern = aggregatePatternEvidence(state.evidence);
-  if (!pattern.thresholdReached) {
-    throw new Error("A component candidate requires three matching evidence traces.");
-  }
-  const sourceEvidence = state.evidence.filter((item) =>
-    pattern.evidenceIds.includes(item.id),
-  );
-  return {
-    ...state,
-    candidate: {
-      id: "candidate-ratio-transfer-001",
-      source: "CONVERSATION_DERIVED",
-      sourceConversationIds: sourceEvidence.map((item) => item.conversationId),
-      sourceEvidenceIds: pattern.evidenceIds,
-      pattern: {
-        stage: pattern.stage,
-        failureCode: pattern.failureCode,
-        occurrenceCount: pattern.occurrenceCount,
-      },
-      proposedChange:
-        "Strengthen the FORMULA-stage mole-ratio hint with the explicit 2:2 to 1:1 transfer.",
-      status: "CREATED",
-    },
-    eventLog: [
-      ...state.eventLog,
-      createDemoEvent("CANDIDATE_CREATED", "TEACHER", {
-        candidateId: "candidate-ratio-transfer-001",
-        sourceEvidenceIds: pattern.evidenceIds,
-        version: "1.1.0",
-      }),
-    ],
-  };
+  const pattern = aggregatePatternEvidence(state.diagnoses);
+  if (!pattern.thresholdReached || !pattern.componentId || !pattern.failureCode) throw new Error("A component candidate requires three matching actual local Agent runs.");
+  const candidate: ComponentCandidate = { id: id("candidate"), source: "ACTUAL_AGENT_RUNS", sourceTraceIds: pattern.traceIds, pattern: { componentId: pattern.componentId, failureCode: pattern.failureCode, occurrenceCount: pattern.occurrenceCount }, proposedChange: "Strengthen governed support for the repeated first pedagogical issue.", status: "CREATED" };
+  return { ...state, candidate, eventLog: [...state.eventLog, createDemoEvent("CANDIDATE_CREATED", "TEACHER", { candidateId: candidate.id, sourceTraceIds: candidate.sourceTraceIds })] };
 }
 
 export function promoteComponentCandidate(state: ExperienceState): { readonly state: ExperienceState; readonly handoff: FoundryCandidateHandoff } {
-  if (!state.candidate) throw new Error("Create a component candidate before opening it in Foundry Studio.");
-  const component = publishedComponents.find((item) => item.id === "stoichiometric-product-mass");
-  if (!component) throw new Error("Published Stoichiometric Product Mass component is unavailable.");
-  const ratioHint = component.hintPolicy.hints.find((hint) => hint.id === "mass-ratio");
-  if (!ratioHint) throw new Error("The published component has no governed mole-ratio hint to strengthen.");
-  const draft: DiagnosticLearningComponent = {
-    ...structuredClone(component),
-    version: incrementVersion(component.version, "CONTENT"),
-    status: "DRAFT",
-    review: undefined,
-    publication: undefined,
-    hintPolicy: {
-      ...component.hintPolicy,
-      hints: component.hintPolicy.hints.map((hint) => hint.id === ratioHint.id ? {
-        ...hint,
-        text: "2Mg : 2MgO simplifies to 1:1. Each mole of Mg forms one mole of MgO.",
-      } : hint),
-    },
-  };
-
-  return {
-    state: { ...state, candidate: { ...state.candidate, status: "PROMOTED_TO_FOUNDRY" } },
-    handoff: {
-      component: draft,
-      evaluation: null,
-      candidateSource: {
-        kind: "CONVERSATION_DERIVED",
-        conversationIds: state.candidate.sourceConversationIds,
-        evidenceIds: state.candidate.sourceEvidenceIds,
-        candidateId: state.candidate.id,
-      },
-    },
-  };
-}
-
-export function setScheduleItemStatus(state: ExperienceState, itemId: string, status: "SCHEDULED" | "COMPLETED"): ExperienceState {
-  return {
-    ...state,
-    schedule: state.schedule.map((item) => item.id === itemId ? { ...item, status } : item),
-  };
+  if (!state.candidate) throw new Error("Create a component candidate first.");
+  const component = publishedComponents.find((item) => item.id === state.candidate!.pattern.componentId);
+  if (!component) throw new Error("The matching published component is unavailable.");
+  const draft = { ...structuredClone(component), version: incrementVersion(component.version, "CONTENT"), status: "DRAFT" as const, review: undefined, publication: undefined };
+  return { state: { ...state, candidate: { ...state.candidate, status: "PROMOTED_TO_FOUNDRY" } }, handoff: { component: draft, contractChecks: null, candidateSource: { kind: "ACTUAL_AGENT_RUNS", traceIds: state.candidate.sourceTraceIds, candidateId: state.candidate.id } } };
 }

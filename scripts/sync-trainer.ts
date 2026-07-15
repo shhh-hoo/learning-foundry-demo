@@ -10,4 +10,4 @@ for (const file of ["diagnostic-learning-component.schema.json", "manifest.json"
   await cp(resolve(sourceRoot, file), resolve(targetRoot, file));
 }
 
-console.log(`Synced published snapshots to ${targetRoot}. Drafts, review notes and Foundry evaluation reports were excluded.`);
+console.log(`Synced published snapshots to ${targetRoot}. Drafts, review notes and Component Contract Check reports were excluded.`);

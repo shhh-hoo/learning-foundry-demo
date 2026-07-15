@@ -8,11 +8,11 @@ Learning Foundry separates four contexts that previously competed on one screen.
 
 ## Foundry Studio
 
-`?view=studio` contains Pattern Inbox, Candidate Review, Component Studio, Foundry Evaluation, Expert Review and Published Registry. It owns evidence-backed component improvement and governance, but contains no learner Chat, Library or Schedule and no demo narration.
+`?view=studio` contains Pattern Inbox, Candidate, Component Contract Checks, Expert Review and Registry. It owns evidence-backed component improvement and governance, but contains no learner Chat, Library or Schedule and no demo narration.
 
 ## Engineering Inspector
 
-`?view=inspector` contains Events, Learner Trace, Pattern Evidence, Component Diff, Evaluation, Registry, Runtime and Boundaries. It is the only Learning Foundry surface that intentionally exposes identifiers, event payloads, hashes, schemas, runtime metadata and seeded/local-only limitations.
+`?view=inspector` contains Agent Traces, AgentEval Reports, Learner Diagnosis, Component Contract Checks, Runtime Validation, Component Registry and Boundaries. It is the only Learning Foundry surface that intentionally exposes identifiers, tool metadata, hashes, schemas and runtime boundaries.
 
 ## Demo Shell
 

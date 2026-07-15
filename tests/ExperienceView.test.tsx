@@ -1,53 +1,43 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import App from "../src/App";
 
-describe("separated product experience", () => {
+describe("real Agent product boundaries", () => {
   beforeEach(() => {
     window.localStorage.clear();
     window.history.replaceState({}, "", "/?view=learner");
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL, init?: RequestInit) => {
+      if (String(input).endsWith("/health")) return Response.json({ configured: false, provider: "deepseek", model: null, thinkingMode: "disabled" });
+      if (init?.method === "POST") return Response.json({ ok: false, error: { code: "AGENT_NOT_CONFIGURED", message: "Set DEEPSEEK_API_KEY and DEEPSEEK_MODEL on the server." } }, { status: 503 });
+      return Response.json({}, { status: 404 });
+    }));
   });
-  afterEach(() => window.history.replaceState({}, "", "/"));
+  afterEach(() => { window.history.replaceState({}, "", "/"); vi.unstubAllGlobals(); });
 
-  it("returns a student-facing diagnosis and saves a clean learning artifact", () => {
+  it("shows a configuration error and creates no fake answer or product record", async () => {
     render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: "Check my working" }));
-    expect(screen.getByText(/first error is the mole ratio/i)).toBeVisible();
-    fireEvent.click(screen.getByText("Why this answer?"));
-    expect(screen.getByText("Mole-ratio error")).toBeVisible();
-    expect(screen.queryByText("WRONG_STOICHIOMETRIC_RATIO")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("Agent not configured")).toBeVisible());
+    fireEvent.change(screen.getByLabelText("Message Learning Foundry"), { target: { value: "Explain coefficients" } });
+    fireEvent.click(screen.getByRole("button", { name: "Run Agent" }));
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("DEEPSEEK_API_KEY"));
+    expect(screen.getByText(/No Agent runs yet/)).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Library" }));
-    expect(screen.getByRole("heading", { name: "Magnesium to magnesium oxide" })).toBeVisible();
-    expect(screen.queryByText("evidence-mgo-ratio-current")).not.toBeInTheDocument();
+    expect(screen.getByText(/Nothing saved/)).toBeVisible();
   });
 
-  it("offers meaningful review actions without an immediate reopen loop", () => {
+  it("uses a preset only to fill input and labels its origin", () => {
     render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: "Check my working" }));
-    fireEvent.click(screen.getByRole("button", { name: "Schedule" }));
-    expect(screen.getByRole("button", { name: "Start review" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "Start transfer problem" })).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "Mark complete" }));
-    expect(screen.getByRole("button", { name: "Completed" })).toBeDisabled();
-    expect(screen.queryByRole("button", { name: "Reopen" })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Fill input from preset"), { target: { value: "diagnosis" } });
+    expect((screen.getByLabelText("Message Learning Foundry") as HTMLTextAreaElement).value).toContain("4.80 / 24.0");
+    expect(screen.getByText("Input origin: PRESET_INPUT")).toBeVisible();
+    expect(screen.getByText(/No Agent runs yet/)).toBeVisible();
   });
 
-  it("creates a draft only after current learner evidence reaches the threshold", () => {
-    const learner = render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: "Check my working" }));
-    learner.unmount();
-
+  it("starts Pattern Inbox empty and cannot create a candidate", () => {
     window.history.replaceState({}, "", "/?view=studio");
     render(<App />);
-    expect(screen.getByText("3 / 3")).toBeVisible();
-    expect(screen.getByText("1 current learner trace")).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "Create component candidate" }));
-    expect(screen.getByText(/evidence-mgo-ratio-current/)).toBeVisible();
-    expect(screen.getByText("PROMOTED_TO_FOUNDRY")).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "Continue to evaluation" }));
-    expect(screen.getByText("NOT RUN")).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "Run 15 checks" }));
-    fireEvent.click(screen.getByRole("button", { name: "Expert Review" }));
-    expect(screen.getByRole("button", { name: "Approve component" })).toBeEnabled();
+    expect(screen.getByText((_, element) => element?.classList.contains("empty-state") === true && element.textContent?.includes("No learning patterns yet.") === true)).toBeVisible();
+    expect(screen.getByText((_, element) => element?.classList.contains("empty-state") === true && element.textContent?.includes("Patterns appear only after actual Agent runs") === true)).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Create component candidate" })).not.toBeInTheDocument();
   });
 });

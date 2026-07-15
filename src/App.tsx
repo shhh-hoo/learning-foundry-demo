@@ -24,7 +24,7 @@ function learnerSection() {
 
 function studioSection() {
   const value = new URLSearchParams(window.location.search).get("section")?.toUpperCase();
-  if (value === "CANDIDATE" || value === "COMPONENT" || value === "EVALUATION" || value === "REVIEW" || value === "REGISTRY") return value;
+  if (value === "CANDIDATE" || value === "CONTRACT_CHECKS" || value === "REVIEW" || value === "REGISTRY") return value;
   return "PATTERNS";
 }
 

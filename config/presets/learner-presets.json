@@ -1,0 +1,8 @@
+{
+  "version": "1.0.0",
+  "presets": [
+    { "id": "retrieval", "label": "Equation coefficients", "input": "Why do coefficients in a balanced equation give mole ratios?" },
+    { "id": "diagnosis", "label": "MgO working", "input": "I calculated MgO from 4.80 g Mg. My working is 4.80 / 24.0 = 0.200 mol Mg; 0.200 × 0.5 = 0.100 mol MgO; 0.100 × 40.0 = 4.00 g MgO. Where is my first mistake?" },
+    { "id": "gap", "label": "Multi-stage evidence gap", "input": "A sample has an unknown purity. I think I need a limiting-reagent step and then a titration result, but I only have part of the working. Can you diagnose the whole route?" }
+  ]
+}

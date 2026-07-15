@@ -3,4 +3,8 @@ dist/
 coverage/
 *.tsbuildinfo
 .DS_Store
+.env
+.env.local
+.env.*.local
+.agent-eval-results/
 demo-recording/frames/

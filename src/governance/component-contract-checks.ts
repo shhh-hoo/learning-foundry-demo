@@ -3,23 +3,23 @@ import type { DiagnosticLearningComponent, RuntimeCapabilityProfile } from "../c
 import { diagnosticLearningComponentSchema } from "../contracts/published-component";
 import type { StandardPack } from "../standards/caie-9701";
 
-export interface FoundryEvaluationCheck {
+export interface ComponentContractCheck {
   readonly id: string;
   readonly status: "PASS" | "FAIL" | "WARNING";
   readonly evidence: readonly string[];
   readonly recommendation?: string;
 }
 
-export interface FoundryEvaluationReport {
+export interface ComponentContractCheckReport {
   readonly componentId: string;
   readonly componentVersion: string;
-  readonly evaluatedAt: string;
-  readonly checks: readonly FoundryEvaluationCheck[];
+  readonly checkedAt: string;
+  readonly checks: readonly ComponentContractCheck[];
   readonly outcome: "PASSED" | "FAILED";
 }
 
-const pass = (id: string, evidence: string): FoundryEvaluationCheck => ({ id, status: "PASS", evidence: [evidence] });
-const fail = (id: string, evidence: string, recommendation: string): FoundryEvaluationCheck => ({ id, status: "FAIL", evidence: [evidence], recommendation });
+const pass = (id: string, evidence: string): ComponentContractCheck => ({ id, status: "PASS", evidence: [evidence] });
+const fail = (id: string, evidence: string, recommendation: string): ComponentContractCheck => ({ id, status: "FAIL", evidence: [evidence], recommendation });
 
 function identityFromUnknown(value: unknown): { readonly id: string; readonly version: string } {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -81,7 +81,7 @@ export function recomputeComponent(component: DiagnosticLearningComponent): Read
   return quantities;
 }
 
-export function evaluateRuntimeCompatibility(component: DiagnosticLearningComponent, capability: RuntimeCapabilityProfile): FoundryEvaluationCheck {
+export function runRuntimeCompatibilityCheck(component: DiagnosticLearningComponent, capability: RuntimeCapabilityProfile): ComponentContractCheck {
   const reasons: string[] = [];
   if (!capability.supportedSchemaVersions.includes(component.schemaVersion)) reasons.push(`Schema ${component.schemaVersion} is unsupported.`);
   if (!capability.supportedTargetKinds.includes(component.target.kind)) reasons.push(`Target ${component.target.kind} has no runtime adapter.`);
@@ -92,19 +92,19 @@ export function evaluateRuntimeCompatibility(component: DiagnosticLearningCompon
   return reasons.length === 0 ? pass("runtime_capability_compatibility", `${capability.runtimeId}@${capability.runtimeVersion} can execute this component.`) : { id: "runtime_capability_compatibility", status: "FAIL", evidence: reasons, recommendation: "Select a compatible runtime or add and verify a bounded target adapter." };
 }
 
-export function evaluateComponent(value: unknown, standardPack: StandardPack, capability: RuntimeCapabilityProfile, evaluatedAt = new Date().toISOString()): FoundryEvaluationReport {
-  const checks: FoundryEvaluationCheck[] = [];
+export function runComponentContractChecks(value: unknown, standardPack: StandardPack, capability: RuntimeCapabilityProfile, checkedAt = new Date().toISOString()): ComponentContractCheckReport {
+  const checks: ComponentContractCheck[] = [];
   const parsed = diagnosticLearningComponentSchema.safeParse(value);
   if (!parsed.success) {
     const identity = identityFromUnknown(value);
     return {
       componentId: identity.id,
       componentVersion: identity.version,
-      evaluatedAt,
+      checkedAt,
       checks: [fail(
         "schema_validity",
         parsed.error.issues.map((item) => `${item.path.join(".") || "$root"}: ${item.message}`).join("; "),
-        "Resolve all canonical schema errors before dependent evaluation checks run.",
+        "Resolve all canonical schema errors before dependent contract checks run.",
       )],
       outcome: "FAILED",
     };
@@ -193,7 +193,7 @@ export function evaluateComponent(value: unknown, standardPack: StandardPack, ca
 
   const invalidHints = component.hintPolicy.hints.flatMap((hint) => hint.revealedReasoningNodeIds.filter((id) => !component.reasoningGraph.nodes[id]));
   checks.push(invalidHints.length === 0 ? pass("hint_policy_integrity", "Every hint reveals only authored reasoning nodes.") : fail("hint_policy_integrity", invalidHints.join(", "), "Resolve hint node references."));
-  checks.push(evaluateRuntimeCompatibility(component, capability));
+  checks.push(runRuntimeCompatibilityCheck(component, capability));
   checks.push({ id: "duplicate_similarity_risk", status: "WARNING", evidence: ["Demo uses title-and-objective metadata only; production similarity screening requires a larger registry."], recommendation: "Compare against the full published registry before production release." });
-  return { componentId: component.id, componentVersion: component.version, evaluatedAt, checks, outcome: checks.some((check) => check.status === "FAIL") ? "FAILED" : "PASSED" };
+  return { componentId: component.id, componentVersion: component.version, checkedAt, checks, outcome: checks.some((check) => check.status === "FAIL") ? "FAILED" : "PASSED" };
 }

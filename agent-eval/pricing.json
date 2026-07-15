@@ -1,0 +1,8 @@
+{
+  "source": "DeepSeek official Models & Pricing, checked 2026-07-16",
+  "currency": "USD",
+  "perMillionTokens": {
+    "deepseek-v4-flash": { "cacheHitInput": 0.0028, "cacheMissInput": 0.14, "output": 0.28 },
+    "deepseek-v4-pro": { "cacheHitInput": 0.003625, "cacheMissInput": 0.435, "output": 0.87 }
+  }
+}

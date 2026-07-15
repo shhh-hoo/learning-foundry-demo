@@ -1,8 +1,8 @@
 import { createInitialExperienceState } from "./orchestration";
 import type { ExperienceState, FoundryCandidateHandoff } from "./types";
 
-const SESSION_KEY = "learning-foundry:experience:v2";
-const HANDOFF_KEY = "learning-foundry:foundry-handoff:v2";
+const SESSION_KEY = "learning-foundry:experience:v3-real-agent";
+const HANDOFF_KEY = "learning-foundry:foundry-handoff:v3-real-agent";
 
 export interface ExperienceStorage {
   getItem(key: string): string | null;
