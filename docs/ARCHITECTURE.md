@@ -1,17 +1,21 @@
 # Architecture
 
-## Authority and flow
+## Product relationship
 
-Learning Foundry owns the canonical component contract, standard packs, authoring provenance, content evaluation, review gate, versioning, publication hash, and exported registry. Standard Trainer owns learner-attempt diagnosis and evidence traces. Shared payloads do not move Trainer domain logic into Foundry.
+The Product Experience captures a learner need, routes it through trusted standards and a published component, preserves bounded evidence, and schedules follow-up. The Governance Workbench turns reusable evidence patterns into reviewed, versioned components. Standard Trainer executes those published contracts.
 
 ```mermaid
 flowchart TD
-  S["Curriculum Standard Pack"] --> A["Component authoring or deterministic generation"]
-  A --> E["Foundry evaluation"]
-  E --> R["Expert review"]
-  R --> P["Published component registry"]
+  X["Product Experience: Chat, Library, Schedule"] --> C["Capability routing"]
+  C --> S["Trusted Standard Pack"]
+  C --> P["Published component registry"]
   P --> T["Standard Trainer target adapter"]
-  T --> L["Immutable learner evidence trace"]
+  T --> X
+  X --> D["Conversation-derived draft candidate"]
+  D --> E["Foundry evaluation"]
+  E --> R["Expert review"]
+  R --> N["Versioned publication"]
+  N --> P
 ```
 
 The system has two distinct evaluators:
@@ -27,10 +31,12 @@ The system has two distinct evaluators:
 - `src/generation`: deterministic mock generation only.
 - `src/governance`: evaluation, lifecycle, semantic versioning, immutability, and hashes.
 - `src/runtime`: downstream capability profile and preview adapter.
-- `scripts`: export and sibling-sync commands.
+- `src/experience`: conversation, evidence, schedule, candidate domain flow, local repository, and experience UI.
+- `scripts`: export, sibling-sync, and fixed-port local demo commands.
 - `dist-contract`: generated consumer artifacts.
 
 ## Static boundary
 
-The workbench is fully deployable as static Vite output. There is no server, account system, database, model provider, or durable multi-user workflow. UI edits are local session state. The demo registry is rebuilt from reviewed source definitions using fixed publication metadata.
+Both query-routed views are fully deployable as static Vite output. Browser `localStorage` preserves one demo session only. There is no server, account system, database, model provider, cross-user analytics, or durable multi-user workflow. The online build remains a portfolio convenience; localhost is the authoritative demo because it can run Foundry and the sibling Trainer together.
 
+Conversation-derived provenance does not extend the published schema. It is Foundry draft metadata containing candidate, conversation, and evidence IDs. Publication still uses the existing expert-authored origin and executable contract boundary.
