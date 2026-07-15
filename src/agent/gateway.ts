@@ -18,8 +18,10 @@ interface GatewayOptions {
 
 type AgentRunQuery = Parameters<NonNullable<GatewayOptions["repository"]>["query"]>[0];
 
+const corsHeaders = { "access-control-allow-origin": "http://127.0.0.1:4173", "access-control-allow-headers": "content-type", "access-control-allow-methods": "GET,POST,DELETE,OPTIONS" } as const;
+
 function json(status: number, body: unknown): Response {
-  return Response.json(body, { status, headers: { "access-control-allow-origin": "http://127.0.0.1:4173", "access-control-allow-headers": "content-type", "access-control-allow-methods": "GET,POST,DELETE,OPTIONS" } });
+  return Response.json(body, { status, headers: corsHeaders });
 }
 
 function errorCode(error: unknown): string {
@@ -42,7 +44,7 @@ export function createAgentGateway(options: GatewayOptions) {
     traces,
     async handle(request: Request): Promise<Response> {
       const url = new URL(request.url);
-      if (request.method === "OPTIONS") return json(204, null);
+      if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
       if (request.method === "GET" && url.pathname === "/health") return json(200, { configured: options.configured, provider: "deepseek", model: options.model, thinkingMode: options.thinkingMode });
       if (request.method === "GET" && url.pathname.startsWith("/agent/runs/")) {
         const traceId = decodeURIComponent(url.pathname.slice("/agent/runs/".length));

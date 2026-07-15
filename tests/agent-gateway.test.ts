@@ -3,6 +3,14 @@ import { createAgentGateway } from "../src/agent/gateway";
 import type { AgentTrace } from "../src/agent/types";
 
 describe("DeepSeek Agent Gateway", () => {
+  it("returns a bodyless 204 response for CORS preflight", async () => {
+    const gateway = createAgentGateway({ configured: false, model: null, thinkingMode: "disabled" });
+    const response = await gateway.handle(new Request("http://127.0.0.1:4176/agent/runs", { method: "OPTIONS" }));
+    expect(response.status).toBe(204);
+    expect(await response.text()).toBe("");
+    expect(response.headers.get("access-control-allow-methods")).toContain("OPTIONS");
+  });
+
   it("stays healthy but refuses runs when server configuration is missing", async () => {
     const gateway = createAgentGateway({ configured: false, model: null, thinkingMode: "disabled" });
     const health = await gateway.handle(new Request("http://127.0.0.1:4176/health"));
