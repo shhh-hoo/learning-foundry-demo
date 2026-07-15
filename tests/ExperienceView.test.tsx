@@ -2,64 +2,52 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import App from "../src/App";
 
-describe("Product Experience", () => {
+describe("separated product experience", () => {
   beforeEach(() => {
     window.localStorage.clear();
-    window.history.replaceState({}, "", "/?view=experience");
+    window.history.replaceState({}, "", "/?view=learner");
   });
-
   afterEach(() => window.history.replaceState({}, "", "/"));
 
-  it("shows the learner journey and saves the bounded diagnosis", () => {
+  it("returns a student-facing diagnosis and saves a clean learning artifact", () => {
     render(<App />);
-
-    expect(screen.getByText(/I calculated the mass of MgO as 4.00 g/)).toBeInTheDocument();
-    expect(screen.getByText("Stoichiometric Product Mass Trainer")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Diagnose learner attempt" }));
-    expect(screen.getByText("WRONG_STOICHIOMETRIC_RATIO")).toBeInTheDocument();
-    expect(screen.getByText(/1:1—not 0.5/)).toBeInTheDocument();
-
+    fireEvent.click(screen.getByRole("button", { name: "Check my working" }));
+    expect(screen.getByText(/first error is the mole ratio/i)).toBeVisible();
+    fireEvent.click(screen.getByText("Why this answer?"));
+    expect(screen.getByText("Mole-ratio error")).toBeVisible();
+    expect(screen.queryByText("WRONG_STOICHIOMETRIC_RATIO")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Library" }));
-    expect(screen.getByText("Worked correction · Magnesium to magnesium oxide")).toBeInTheDocument();
-    expect(screen.getByText("Observed ratio: 0.5")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Magnesium to magnesium oxide" })).toBeVisible();
+    expect(screen.queryByText("evidence-mgo-ratio-current")).not.toBeInTheDocument();
   });
 
-  it("schedules a delayed retry, supports completion, and resets the session", () => {
+  it("offers meaningful review actions without an immediate reopen loop", () => {
     render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: "Diagnose learner attempt" }));
+    fireEvent.click(screen.getByRole("button", { name: "Check my working" }));
     fireEvent.click(screen.getByRole("button", { name: "Schedule" }));
-    expect(screen.getByText("Retry: Stoichiometric product mass")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Jump back to Chat" }));
-    expect(screen.getByText(/I calculated the mass of MgO as 4.00 g/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Schedule" }));
+    expect(screen.getByRole("button", { name: "Start review" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Start transfer problem" })).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Mark complete" }));
-    expect(screen.getByText("COMPLETED")).toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "Reset demo" }));
-    expect(screen.getByRole("button", { name: "Diagnose learner attempt" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Schedule" }));
-    expect(screen.getByText(/Run the diagnosis to schedule a retry/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Completed" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Reopen" })).not.toBeInTheDocument();
   });
 
-  it("moves a candidate through governance and returns the published revision to Library", () => {
+  it("creates a draft only after current learner evidence reaches the threshold", () => {
+    const learner = render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Check my working" }));
+    learner.unmount();
+
+    window.history.replaceState({}, "", "/?view=studio");
     render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: "Component Lifecycle" }));
-    expect(screen.getAllByText("WRONG_STOICHIOMETRIC_RATIO", { selector: ".trace-grid code" })).toHaveLength(3);
-    fireEvent.click(screen.getByRole("button", { name: "Promote to Foundry candidate" }));
-
-    expect(screen.getByText("Ratio-transfer improvement candidate")).toBeInTheDocument();
-    expect(screen.getByRole("combobox", { name: "Component" })).toHaveDisplayValue("Stoichiometric product mass");
-    expect(screen.getByText("1.1.0", { selector: ".command-bar strong" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Approve component" })).toBeDisabled();
-    expect(screen.getAllByText("NOT RUN").length).toBeGreaterThan(0);
-
+    expect(screen.getByText("3 / 3")).toBeVisible();
+    expect(screen.getByText("1 current learner trace")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Create component candidate" }));
+    expect(screen.getByText(/evidence-mgo-ratio-current/)).toBeVisible();
+    expect(screen.getByText("PROMOTED_TO_FOUNDRY")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Continue to evaluation" }));
+    expect(screen.getByText("NOT RUN")).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Run 15 checks" }));
+    fireEvent.click(screen.getByRole("button", { name: "Expert Review" }));
     expect(screen.getByRole("button", { name: "Approve component" })).toBeEnabled();
-    fireEvent.click(screen.getByRole("button", { name: "Approve component" }));
-    fireEvent.click(screen.getByRole("button", { name: "Publish 1.1.0" }));
-    fireEvent.click(screen.getByRole("link", { name: "Product Experience" }));
-    fireEvent.click(screen.getByRole("button", { name: "Library" }));
-    expect(screen.getByText(/stoichiometric-product-mass@1.1.0/)).toBeInTheDocument();
-    expect(screen.getByText(/Published from learner evidence/)).toBeInTheDocument();
   });
 });

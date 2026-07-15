@@ -1,5 +1,6 @@
 import type { DiagnosisCategory, DiagnosisFailureCode, DiagnosticLearningComponent, PublishedDiagnosticLearningComponent } from "../contracts/diagnostic-component";
 import type { FoundryEvaluationReport } from "../governance/evaluation";
+import type { DemoEvent } from "../demo/events";
 
 export interface ConversationMessage {
   readonly id: string;
@@ -60,7 +61,17 @@ export interface ComponentCandidate {
     readonly occurrenceCount: number;
   };
   readonly proposedChange: string;
-  readonly status: "DETECTED" | "PROMOTED_TO_FOUNDRY" | "EVALUATED" | "APPROVED" | "PUBLISHED";
+  readonly status: "CREATED" | "PROMOTED_TO_FOUNDRY" | "EVALUATED" | "APPROVED" | "PUBLISHED";
+}
+
+export interface PatternAggregate {
+  readonly stage: "FORMULA";
+  readonly failureCode: "WRONG_STOICHIOMETRIC_RATIO";
+  readonly componentId: "stoichiometric-product-mass";
+  readonly occurrenceCount: number;
+  readonly threshold: 3;
+  readonly thresholdReached: boolean;
+  readonly evidenceIds: readonly string[];
 }
 
 export interface ExperienceState {
@@ -69,8 +80,10 @@ export interface ExperienceState {
   readonly evidence: readonly DiagnosticEvidenceArtifact[];
   readonly learningArtifacts: readonly LearningArtifact[];
   readonly schedule: readonly ScheduleItem[];
-  readonly candidate: ComponentCandidate;
+  readonly candidate: ComponentCandidate | null;
   readonly publishedCandidate: PublishedDiagnosticLearningComponent | null;
+  readonly registryAccepted: boolean;
+  readonly eventLog: readonly DemoEvent[];
 }
 
 export interface FoundryCandidateHandoff {

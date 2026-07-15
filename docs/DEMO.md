@@ -1,16 +1,14 @@
-# Local product demo
+# Demo
 
-Run `npm run demo:local`, then begin at `http://localhost:4173/?view=experience`.
+The canonical demo is `http://127.0.0.1:4173/?view=demo`. It is a live Demo Shell around real product routes, not a video or a set of presentation overlays inside the products.
 
-1. Show the learner’s incorrect 4.00 g MgO calculation in Chat.
-2. Point out CAIE 9701 retrieval, capability selection, the published component, the routing reason, and `standard-trainer@1.0.0`.
-3. Diagnose the attempt and show `FORMULA / WRONG_STOICHIOMETRIC_RATIO` plus the grounded 1:1 correction.
-4. Open Library to show the evidence record and worked correction card.
-5. Open Schedule to show the immediate review and delayed transfer retry; mark it complete and reopen it.
-6. Open Component Lifecycle and call out the three seeded demonstration traces and the non-production-analytics label.
-7. Promote the pattern. In Governance, show the `CONVERSATION_DERIVED` draft source, `1.1.0`, `NOT RUN`, and locked approval.
-8. Run 15 checks, approve, and publish.
-9. Return to Product Experience → Library and show `stoichiometric-product-mass@1.1.0`.
-10. Open the local Standard Trainer at `http://localhost:4174/` and run bounded learner evidence.
+Guided Story has six scenes:
 
-Close with: Product Experience captures learning needs and evidence. Foundry Governance turns reusable patterns into reliable components. Standard Trainer executes those published contracts.
+1. Student clicks **Check my working**; `LEARNER_DIAGNOSIS_COMPLETED` explains the bounded diagnosis outside the frame.
+2. Library and Schedule prove that evidence, correction and delayed transfer were preserved.
+3. Foundry Studio shows `2 historical + 1 current = 3` after `PATTERN_THRESHOLD_REACHED`.
+4. Teacher creates the candidate; Foundry evaluation and expert approval remain separate gates.
+5. Publishing emits `COMPONENT_PUBLISHED`; the local bridge must emit `REGISTRY_COMPONENT_ACCEPTED` before the scene completes.
+6. Standard Trainer loads v1.1.0, diagnoses the same ratio error and renders the governed strengthened hint.
+
+Free Explore opens Learner Workspace, Foundry Studio, Engineering Inspector or Standard Trainer without step gates. Run `npm run storyboard` to reproduce the canonical seven-frame image story. `demo-recording/learning-foundry-product-demo-zh.mp4` is a previous walkthrough, not the authoritative demo.

@@ -29,3 +29,7 @@ The previous exact serialized-fixture gate is replaced by two boundaries: legacy
 The result demonstrates a complete product relationship: Experience captures the need and evidence, Governance converts reusable patterns into reliable components, and Trainer executes published contracts. It remains deliberately deterministic and bounded.
 
 This is a portfolio engineering demonstration, not a production deployment, autonomous component creator, real LLM product, cross-user analytics system, or multi-user LMS.
+
+## Structural repair
+
+The earlier experience mixed learner, governance, engineering and presentation concerns. The refactor separates those audiences and repairs both causal gaps. Conversation → Candidate now requires the current persisted evidence to move the aggregate from two to three. Publish → Runtime now crosses a validating local registry and is proven by Standard Trainer executing v1.1.0's strengthened hint. The seven-frame storyboard is the canonical evidence asset; the MP4 is retained only as a previous walkthrough.

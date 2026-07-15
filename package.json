@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "demo:local": "tsx scripts/start-local-demo.ts",
+    "registry:demo": "tsx scripts/demo-registry-server.ts",
+    "storyboard": "tsx scripts/capture-storyboard.ts",
     "check": "tsc -b --pretty false",
     "test": "vitest run",
     "build": "tsc -b && vite build",
@@ -26,6 +28,7 @@
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.3",
     "jsdom": "29.1.1",
+    "playwright": "^1.61.1",
     "tsx": "4.21.0",
     "typescript": "7.0.2",
     "vite": "8.1.4",

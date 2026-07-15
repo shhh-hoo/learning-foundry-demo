@@ -15,10 +15,9 @@ describe("experience session persistence", () => {
     const completed = setScheduleItemStatus(diagnosed, "retry-stoichiometry-001", "COMPLETED");
 
     repository.save(completed);
-    expect(repository.load()).toMatchObject({
-      evidence: [{ failureCode: "WRONG_STOICHIOMETRIC_RATIO" }],
-      schedule: [{ status: "COMPLETED" }],
-    });
+    const restored = repository.load();
+    expect(restored.evidence.find((item) => item.id === "evidence-mgo-ratio-current")).toMatchObject({ failureCode: "WRONG_STOICHIOMETRIC_RATIO" });
+    expect(restored.schedule).toMatchObject([{ status: "COMPLETED" }]);
 
     repository.reset();
     expect(repository.load()).toEqual(createInitialExperienceState());

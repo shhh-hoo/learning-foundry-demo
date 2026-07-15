@@ -40,3 +40,9 @@ The system has two distinct evaluators:
 Both query-routed views are fully deployable as static Vite output. Browser `localStorage` preserves one demo session only. There is no server, account system, database, model provider, cross-user analytics, or durable multi-user workflow. The online build remains a portfolio convenience; localhost is the authoritative demo because it can run Foundry and the sibling Trainer together.
 
 Conversation-derived provenance does not extend the published schema. It is Foundry draft metadata containing candidate, conversation, and evidence IDs. Publication still uses the existing expert-authored origin and executable contract boundary.
+
+## Product and demo separation
+
+The current architecture exposes Learner Workspace, Foundry Studio and Engineering Inspector as independent query-routed products. Demo Shell embeds those routes and listens to the typed event protocol; it cannot invoke domain actions. The evidence repository begins with two historical fixtures. Current learner diagnosis adds the third trace, and only the resulting threshold permits candidate creation.
+
+The local registry bridge is a separate in-memory process on port 4175. Foundry publishes through the existing immutable publication function and then POSTs the snapshot. Standard Trainer independently validates, merges and selects the highest compatible version. Static builds omit this connection and retain bundled components.

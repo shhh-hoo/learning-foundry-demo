@@ -5,52 +5,50 @@ import { fileURLToPath } from "node:url";
 
 const foundryRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const trainerRoot = resolve(foundryRoot, "../standard-trainer-demo");
-const trainerPackage = resolve(trainerRoot, "package.json");
-
-if (!existsSync(trainerPackage)) {
-  console.error(`Standard Trainer sibling checkout was not found at:\n${trainerRoot}\n\nClone it beside this repository:\ngit clone https://github.com/shhh-hoo/standard-trainer-demo.git "${trainerRoot}"`);
+if (!existsSync(resolve(trainerRoot, "package.json"))) {
+  console.error(`Standard Trainer sibling checkout was not found at ${trainerRoot}`);
   process.exit(1);
 }
 
 const children: ChildProcess[] = [];
 let stopping = false;
 
-function start(label: string, cwd: string, port: string, extraEnvironment: NodeJS.ProcessEnv = {}): ChildProcess {
-  const child = spawn("npm", ["run", "dev", "--", "--host", "127.0.0.1", "--port", port, "--strictPort"], {
-    cwd,
-    env: { ...process.env, ...extraEnvironment },
-    stdio: "inherit",
-  });
-  child.on("error", (error) => {
-    console.error(`${label} failed to start: ${error.message}`);
-    stop(1);
-  });
-  child.on("exit", (code, signal) => {
-    if (stopping) return;
-    console.error(`${label} stopped unexpectedly (${signal ?? `exit ${code ?? 1}`}).`);
-    stop(code ?? 1);
-  });
+function start(label: string, cwd: string, args: readonly string[], extraEnvironment: NodeJS.ProcessEnv = {}): void {
+  const child = spawn("npm", args, { cwd, env: { ...process.env, ...extraEnvironment }, stdio: "inherit" });
+  child.on("error", (error) => { console.error(`${label} failed to start: ${error.message}`); stop(1); });
+  child.on("exit", (code, signal) => { if (!stopping) { console.error(`${label} stopped unexpectedly (${signal ?? `exit ${code ?? 1}`}).`); stop(code ?? 1); } });
   children.push(child);
-  return child;
 }
 
 function stop(code = 0): void {
   if (stopping) return;
   stopping = true;
-  for (const child of children) {
-    if (!child.killed) child.kill("SIGTERM");
+  for (const child of children) if (!child.killed) child.kill("SIGTERM");
+  setTimeout(() => process.exit(code), 300);
+}
+
+async function waitForRegistry(): Promise<void> {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    try {
+      const health = await fetch("http://127.0.0.1:4175/health");
+      if (health.ok) {
+        const reset = await fetch("http://127.0.0.1:4175/session", { method: "DELETE" });
+        if (!reset.ok) throw new Error("Registry session reset failed.");
+        return;
+      }
+    } catch { /* wait for the child process */ }
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 150));
   }
-  setTimeout(() => process.exit(code), 250);
+  throw new Error("Local Demo Registry did not become healthy on port 4175.");
 }
 
 process.on("SIGINT", () => stop(0));
 process.on("SIGTERM", () => stop(0));
-process.on("uncaughtException", (error) => {
-  console.error(error);
-  stop(1);
-});
+process.on("uncaughtException", (error) => { console.error(error); stop(1); });
 
-start("Learning Foundry", foundryRoot, "4173", { VITE_TRAINER_URL: "http://localhost:4174/" });
-start("Standard Trainer", trainerRoot, "4174");
+start("Local Demo Registry", foundryRoot, ["run", "registry:demo"]);
+start("Learning Foundry", foundryRoot, ["run", "dev", "--", "--host", "127.0.0.1", "--port", "4173", "--strictPort"], { VITE_TRAINER_URL: "http://127.0.0.1:4174/", VITE_DEMO_REGISTRY_URL: "http://127.0.0.1:4175" });
+start("Standard Trainer", trainerRoot, ["run", "dev", "--", "--host", "127.0.0.1", "--port", "4174", "--strictPort"], { VITE_DEMO_REGISTRY_URL: "http://127.0.0.1:4175", VITE_FOUNDRY_ORIGIN: "http://127.0.0.1:4173" });
 
-console.log(`\nLocal Learning Foundry product demo\n\nFoundry Experience:  http://localhost:4173/?view=experience\nFoundry Governance:  http://localhost:4173/?view=governance\nStandard Trainer:    http://localhost:4174/\n\nPress Ctrl+C to stop both applications.\n`);
+await waitForRegistry();
+console.log(`\nLearning Foundry local product story\n\nDemo Shell:             http://127.0.0.1:4173/?view=demo\nLearner Workspace:      http://127.0.0.1:4173/?view=learner\nFoundry Studio:         http://127.0.0.1:4173/?view=studio\nEngineering Inspector: http://127.0.0.1:4173/?view=inspector\nStandard Trainer:       http://127.0.0.1:4174/\nLocal Demo Registry:    http://127.0.0.1:4175/health\n\nPress Ctrl+C to stop all three processes.\n`);

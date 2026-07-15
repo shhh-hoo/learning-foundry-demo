@@ -1,70 +1,57 @@
-# Learning Foundry Demo
+# Learning Foundry
 
-Learning Foundry connects learner-facing product experience to governed learning components. Standard Trainer is one downstream deterministic runtime.
+Learning Foundry is a small, runnable product system for improving governed learning tools from real learner evidence.
 
-This repository implements two query-routed surfaces for a CAIE 9701 Chemistry vertical slice:
+- **Learner Workspace** helps an individual learner ask for a bounded diagnosis, save a correction and schedule delayed practice.
+- **Foundry Studio** helps teachers and learning-product teams turn repeated evidence into an evaluated, expert-approved component revision.
+- **Standard Trainer** executes immutable learning contracts and returns the first pedagogical error.
+- **Demo Shell** explains the relationship without contaminating any product interface with portfolio narration.
 
-- `?view=experience`: Chat, Library, Schedule, learning evidence, and Conversation-to-Component promotion.
-- `?view=governance`: standard packs, deterministic authoring, Foundry evaluation, expert review, immutable publication, and runtime preview.
+The canonical demo is the localhost, event-driven product story. The previous MP4 remains in `demo-recording/` as an archived walkthrough.
 
-> Automated component evaluation does not replace subject-expert approval. It detects structural, numerical and runtime-compatibility failures before expert review.
+## Run the product story
 
-## Demo components
-
-- `kp-from-equilibrium-moles@1.0.0`: a simplified migration from `KP_FROM_EQUILIBRIUM_MOLES_V2_GOLD`, with bounded happy-path compatibility and explicit omitted V2 capabilities.
-- `stoichiometric-product-mass@1.0.0`: expert-authored mass calculation using `2Mg + O₂ → 2MgO`.
-- `deterministic-demo-generator`: emits one valid and one deliberately invalid stoichiometry draft. It is a local simulation, not a model provider.
-
-## Architecture
-
-```text
-Product Experience (Chat / Library / Schedule / Evidence)
-→ capability routing through trusted standards and published components
-→ Conversation-to-Component candidate
-→ Governance (evaluation / expert review / publication)
-→ Standard Trainer deterministic runtime
-```
-
-The canonical TypeScript contract and Zod runtime schema live in `src/contracts`. `dist-contract` is generated and is the only cross-repository integration surface. Experience session state uses browser `localStorage`; no database or identity claim is introduced.
-
-## Run and verify
+Place `learning-foundry-demo` and `standard-trainer-demo` beside each other, then run:
 
 ```bash
-npm ci
+npm install
 npm run demo:local
 ```
 
-The local demo starts:
+The launcher starts and monitors:
 
-```text
-Foundry Experience: http://localhost:4173/?view=experience
-Foundry Governance: http://localhost:4173/?view=governance
-Standard Trainer:   http://localhost:4174/
-```
+- Demo Shell — `http://127.0.0.1:4173/?view=demo`
+- Learner Workspace — `http://127.0.0.1:4173/?view=learner`
+- Foundry Studio — `http://127.0.0.1:4173/?view=studio`
+- Engineering Inspector — `http://127.0.0.1:4173/?view=inspector`
+- Standard Trainer — `http://127.0.0.1:4174/`
+- Local Demo Registry — `http://127.0.0.1:4175/health`
 
-The sibling `../standard-trainer-demo` checkout is required. The launcher reports an explicit clone instruction when it is absent and shuts both processes down together.
+`npm run storyboard` drives the complete six-scene flow with Playwright and refreshes the seven 1920×1080 images in [`demo-storyboard/`](demo-storyboard/storyboard.md).
 
-Verification commands:
+## Product causality
+
+The initial repository contains exactly two historical ratio-error fixtures and no candidate. The current learner diagnosis persists `evidence-mgo-ratio-current`; aggregation then reaches three matching traces, emits `PATTERN_THRESHOLD_REACHED`, and enables explicit candidate creation.
+
+After evaluation and expert approval, publishing creates an immutable v1.1.0 snapshot. The localhost registry validates its schema, status and content hash before accepting it. Standard Trainer independently fetches and validates that snapshot, merges it with bundled components, selects the highest compatible version and renders its strengthened hint after a deterministic diagnosis.
+
+## Verification
 
 ```bash
-npm run check
 npm test
+npm run check
 npm run build
-npm run export:components
 ```
 
-To sync only published artifacts into a sibling Trainer checkout:
+The static build remains compatible with GitHub Pages and does not require the local registry. Dynamic cross-repository publication is intentionally localhost-only.
 
-```bash
-npm run sync:trainer
-```
+## Documentation
 
-Set `TRAINER_REPO=/path/to/checkout` when the sibling checkout is not at `../standard-trainer-demo`.
-
-## Product boundaries
-
-Chat is deterministic orchestration, not a general assistant and not an external model call. The three similar learner traces are seeded fixtures, not production analytics. The demo has no multi-user backend, authentication, student database, or production identity. The current runtime supports `KP` and `MASS`; other target kinds fail compatibility until a verified adapter exists.
-
-Conversation-derived provenance is draft-only metadata. Published components retain the existing `EXPERT_AUTHORED` contract origin and require the existing evaluation, approval, versioning, and publication path.
-
-See [Product Experience](docs/PRODUCT_EXPERIENCE.md), [Conversation to Component](docs/CONVERSATION_TO_COMPONENT.md), [Local Demo](docs/LOCAL_DEMO.md), [Architecture](docs/ARCHITECTURE.md), [Demo](docs/DEMO.md), and [Case Study](docs/CASE_STUDY.md).
+- [Product surfaces](docs/PRODUCT_SURFACES.md)
+- [Demo Shell](docs/DEMO_SHELL.md)
+- [Typed event protocol](docs/DEMO_EVENT_PROTOCOL.md)
+- [Local registry bridge](docs/LOCAL_REGISTRY_BRIDGE.md)
+- [Storyboard](docs/STORYBOARD.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Case study](docs/CASE_STUDY.md)
+- [Local demo operations](docs/LOCAL_DEMO.md)

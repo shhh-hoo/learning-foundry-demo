@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createInitialExperienceState, diagnoseStoichiometryConversation, promoteComponentCandidate } from "../src/experience/orchestration";
+import { createComponentCandidate, createInitialExperienceState, diagnoseStoichiometryConversation, promoteComponentCandidate } from "../src/experience/orchestration";
 
 describe("product experience flow", () => {
   it("routes the learner attempt through the published component and returns a grounded ratio diagnosis", () => {
@@ -11,20 +11,26 @@ describe("product experience flow", () => {
     expect(result.diagnosis?.failureCode).toBe("WRONG_STOICHIOMETRIC_RATIO");
     expect(result.diagnosis?.groundedResponse).toContain("1:1—not 0.5");
     expect(result.diagnosis?.groundedResponse).toContain("8.00 g");
+    expect(result.eventLog.map((event) => event.type)).toEqual(expect.arrayContaining([
+      "LEARNER_ATTEMPT_SUBMITTED",
+      "CAPABILITY_SELECTED",
+      "LEARNER_DIAGNOSIS_COMPLETED",
+      "EVIDENCE_PERSISTED",
+      "RETRY_SCHEDULED",
+      "PATTERN_THRESHOLD_REACHED",
+    ]));
   });
 
   it("saves diagnostic evidence, a worked correction, and a delayed retry", () => {
     const result = diagnoseStoichiometryConversation(createInitialExperienceState(), "2026-07-15T09:00:00.000Z");
 
-    expect(result.evidence).toMatchObject([
-      {
+    expect(result.evidence.find((item) => item.id === "evidence-mgo-ratio-current")).toMatchObject({
         componentId: "stoichiometric-product-mass",
         componentVersion: "1.0.0",
         stage: "FORMULA",
         failureCode: "WRONG_STOICHIOMETRIC_RATIO",
         observedEvidence: { observedRatio: 0.5, expectedRatio: 1 },
-      },
-    ]);
+      });
     expect(result.learningArtifacts[0]?.steps).toEqual([
       "4.80 g Mg",
       "0.200 mol Mg",
@@ -41,23 +47,25 @@ describe("product experience flow", () => {
     ]);
   });
 
-  it("promotes three seeded traces into a draft-only conversation-derived Foundry handoff", () => {
+  it("promotes the threshold reached by current evidence into a draft-only Foundry handoff", () => {
     const initial = createInitialExperienceState();
-    const { state, handoff } = promoteComponentCandidate(initial);
+    const diagnosed = diagnoseStoichiometryConversation(initial, "2026-07-15T09:00:00.000Z");
+    const candidateState = createComponentCandidate(diagnosed);
+    const { state, handoff } = promoteComponentCandidate(candidateState);
 
-    expect(initial.candidate.pattern).toEqual({
+    expect(candidateState.candidate?.pattern).toEqual({
       stage: "FORMULA",
       failureCode: "WRONG_STOICHIOMETRIC_RATIO",
       occurrenceCount: 3,
     });
-    expect(state.candidate.status).toBe("PROMOTED_TO_FOUNDRY");
+    expect(state.candidate?.status).toBe("PROMOTED_TO_FOUNDRY");
     expect(handoff.component.status).toBe("DRAFT");
     expect(handoff.component.version).toBe("1.1.0");
     expect(handoff.evaluation).toBeNull();
     expect(handoff.candidateSource).toMatchObject({
       kind: "CONVERSATION_DERIVED",
-      conversationIds: initial.candidate.sourceConversationIds,
-      evidenceIds: initial.candidate.sourceEvidenceIds,
+      conversationIds: candidateState.candidate?.sourceConversationIds,
+      evidenceIds: candidateState.candidate?.sourceEvidenceIds,
     });
   });
 });

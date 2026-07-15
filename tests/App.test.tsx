@@ -1,28 +1,37 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import App from "../src/App";
 
-describe("Learning Foundry workbench", () => {
-  it("keeps Foundry production as the primary surface", () => {
+describe("role-separated product routes", () => {
+  beforeEach(() => window.localStorage.clear());
+  afterEach(() => window.history.replaceState({}, "", "/"));
+
+  it("keeps governance and engineering metadata out of Learner Workspace", () => {
+    window.history.replaceState({}, "", "/?view=learner");
     render(<App />);
-    expect(screen.getByRole("heading", { name: /Turn curriculum intent/i })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Author and generate" })).toBeInTheDocument();
-    expect(screen.queryByText("deterministic-demo-generator", { exact: false })).not.toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "Learner workspace" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Chat" })).toBeVisible();
+    expect(screen.queryByText("Pattern Inbox")).not.toBeInTheDocument();
+    expect(screen.queryByText(/content hash/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/schema version/i)).not.toBeInTheDocument();
   });
 
-  it("generates and rejects an invalid deterministic draft", () => {
+  it("keeps learner tools out of Foundry Studio", () => {
+    window.history.replaceState({}, "", "/?view=studio");
     render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: "Generate invalid draft" }));
-    expect(screen.getByText("deterministic-demo-generator")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Run 15 checks" }));
-    expect(screen.getAllByText("FAIL").length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: "Approve component" })).toBeDisabled();
+    expect(screen.getByText("Foundry Studio")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Pattern Inbox" })).toBeVisible();
+    expect(screen.queryByRole("navigation", { name: "Learner workspace" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Chat" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Schedule" })).not.toBeInTheDocument();
   });
 
-  it("opens a new minor revision when published content is edited", () => {
+  it("makes engineering evidence visible only in Inspector", () => {
+    window.history.replaceState({}, "", "/?view=inspector");
     render(<App />);
-    fireEvent.change(screen.getByLabelText("Prompt"), { target: { value: "A revised bounded prompt with enough authored detail." } });
-    expect(screen.getByText("1.1.0", { selector: ".command-bar strong" })).toBeInTheDocument();
-    expect(screen.getByText("DRAFT", { selector: ".command-bar strong" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Engineering Inspector" })).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Registry" }));
+    expect(screen.getByText("Content hash")).toBeVisible();
+    expect(screen.getByText("Schema")).toBeVisible();
   });
 });
