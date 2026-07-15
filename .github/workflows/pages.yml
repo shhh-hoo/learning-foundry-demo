@@ -29,6 +29,8 @@ jobs:
       - run: npm test
       - run: npm run build
       - if: github.event_name != 'pull_request'
+        uses: actions/configure-pages@v5
+      - if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v3
         with:
           path: dist
