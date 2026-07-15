@@ -1,5 +1,6 @@
 import { agentResponseEnvelopeSchema, type AgentRunRequest, type AgentTrace, type TokenUsage } from "./types";
 import type { AgentModelClient, ModelMessage } from "./deepseek-client";
+import { ZodError } from "zod";
 
 export interface AgentToolResult { readonly resultRef: string; readonly data: unknown; readonly claimRefs?: readonly string[] }
 export interface AgentToolExecutor { execute(name: string, argumentsValue: unknown): Promise<AgentToolResult> }
@@ -45,13 +46,36 @@ function validateClaims(response: ReturnType<typeof agentResponseEnvelopeSchema.
   if (response.proposedFollowUp && !matchesProposal("propose_schedule_followup", response.proposedFollowUp)) throw new AgentRunError("AGENT_UNSUPPORTED_CLAIM", "Schedule proposal was not produced by its tool.");
 }
 
+export const AGENT_PROMPT_VERSION = "1.1.0";
+
+const finalResponseContract = [
+  "Return only one JSON object after all required tools have succeeded.",
+  "Required exact field types: status is ANSWERED, NEEDS_MORE_EVIDENCE, or CAPABILITY_GAP; learnerMessage is a non-empty string; sourceRefs is an array of string IDs.",
+  "Every sourceRefs entry must be an exact ID returned by a successful tool in this run. sourceRefs must never contain objects, citations, queries, summaries, or invented metadata.",
+  "Optional fields: diagnosisTraceId and capabilityGapId are tool-returned string IDs; proposedLibraryArtifact is {title:string,content:string}; proposedFollowUp is {title:string,reason:string,delayDays:integer}.",
+].join(" ");
+
+export function buildAgentSystemPrompt(systemPrompt: string): string {
+  return `${systemPrompt}\n${finalResponseContract}`;
+}
+
+function validationDetail(error: unknown): string {
+  return error instanceof ZodError
+    ? error.issues.map((issue) => `${issue.path.join(".") || "response"}: ${issue.message}`).join("; ")
+    : error instanceof SyntaxError ? "response: empty or invalid JSON" : "response: invalid response contract";
+}
+
+function correctionForMalformedResponse(error: unknown): string {
+  return `Your previous final response failed validation: ${validationDetail(error)}. ${finalResponseContract} If the answer requires source-grounded course evidence and search_learning_resources has not succeeded in this run, call search_learning_resources now instead of returning a final response. Do not repeat the invalid response and do not add markdown.`;
+}
+
 export async function runAgent(options: RunAgentOptions): Promise<AgentTrace> {
   if (!options.model.trim()) throw new AgentRunError("AGENT_NOT_CONFIGURED", "DEEPSEEK_MODEL is required.");
   if (!options.request.messages.length) throw new AgentRunError("INVALID_AGENT_REQUEST", "At least one conversation message is required.");
   const start = options.now?.() ?? new Date();
   const traceId = options.createId?.() ?? `agent-trace-${globalThis.crypto?.randomUUID?.() ?? Date.now().toString(36)}`;
   const messages: ModelMessage[] = [
-    { role: "system", content: `${options.systemPrompt}\nReturn a json object with status, learnerMessage and sourceRefs. Optional fields are diagnosisTraceId, proposedLibraryArtifact, proposedFollowUp and capabilityGapId.` },
+    { role: "system", content: buildAgentSystemPrompt(options.systemPrompt) },
     ...options.request.messages,
   ];
   const records: AgentTrace["toolCalls"][number][] = [];
@@ -114,9 +138,9 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentTrace> {
       };
     } catch (error) {
       if (error instanceof AgentRunError) throw error;
-      if (malformedRetries >= 1) throw new AgentRunError("INVALID_AGENT_RESPONSE", "DeepSeek returned malformed or empty JSON twice.");
+      if (malformedRetries >= 1) throw new AgentRunError("INVALID_AGENT_RESPONSE", `DeepSeek final response failed validation twice. Last error: ${validationDetail(error)}.`);
       malformedRetries += 1;
-      messages.push({ role: "user", content: "Return one non-empty valid json object that matches the response contract. Do not add markdown." });
+      messages.push({ role: "user", content: correctionForMalformedResponse(error) });
       round -= 1;
     }
   }

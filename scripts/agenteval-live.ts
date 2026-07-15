@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { gradeAgentCase, type AgentEvalCase, type AgentEvalToolResult } from "../src/agent/agenteval.ts";
+import { AGENT_PROMPT_VERSION, buildAgentSystemPrompt } from "../src/agent/run-agent.ts";
 import type { AgentTrace, TokenUsage } from "../src/agent/types.ts";
 import { AgentEvalRepository, type PersistedAgentEvalCase, type PersistedAgentEvalRun } from "./lib/agent-eval-repository.ts";
 
@@ -41,7 +42,7 @@ try {
   const running: PersistedAgentEvalRun = {
     schemaVersion: "1.0.0", evalRunId, runPurpose: "AGENT_EVAL", status: "RUNNING", totalPlannedCases: cases.length, suiteVersion: "1.0.0", caseFileHash: hash(caseFile),
     provider: health.provider ?? "deepseek", model: health.model, thinkingMode: health.thinkingMode ?? "unknown",
-    prompt: { version: "1.0.0", contentHash: hash(`${instructions}\nResponse policy: ${responsePolicy}`) }, capabilityRegistry: { version: capability.version, contentHash: hash(capabilityText) }, toolDefinitions: { version: tools.version, contentHash: hash(toolText) },
+    prompt: { version: AGENT_PROMPT_VERSION, contentHash: hash(buildAgentSystemPrompt(`${instructions}\nResponse policy: ${responsePolicy}`)) }, capabilityRegistry: { version: capability.version, contentHash: hash(capabilityText) }, toolDefinitions: { version: tools.version, contentHash: hash(toolText) },
     startedAt, cases: [],
   };
   await repository.start(running); activeEvalRunId = evalRunId; await pointer(evalRunId);

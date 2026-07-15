@@ -33,7 +33,29 @@ describe("real agent orchestration contract", () => {
       { message: { role: "assistant", content: "still not json" } },
     ]);
     await expect(runAgent({ ...base, modelClient, tools: { execute: async () => { throw new Error("unused"); } } }))
-      .rejects.toMatchObject({ code: "INVALID_AGENT_RESPONSE" });
+      .rejects.toMatchObject({ code: "INVALID_AGENT_RESPONSE", message: expect.stringContaining("empty or invalid JSON") });
+  });
+
+  it("gives actionable schema feedback and permits recovery through a required source tool", async () => {
+    let callIndex = 0;
+    const modelClient: AgentModelClient = { call: async ({ messages }) => {
+      callIndex += 1;
+      if (callIndex === 1) {
+        expect(messages[0]?.content).toContain("sourceRefs is an array of string IDs");
+        return { message: { role: "assistant", content: JSON.stringify({ status: "ANSWERED", learnerMessage: "Coefficients give mole ratios.", sourceRefs: [{ source: "search_learning_resources", result: "invented" }] }) } };
+      }
+      if (callIndex === 2) {
+        const correction = messages.at(-1)?.content ?? "";
+        expect(correction).toContain("sourceRefs.0");
+        expect(correction).toContain("array of string IDs");
+        expect(correction).toContain("search_learning_resources");
+        return { message: { role: "assistant", content: null, tool_calls: [{ id: "call-recovery", type: "function", function: { name: "search_learning_resources", arguments: '{"query":"balanced equation coefficients mole ratios"}' } }] } };
+      }
+      return { message: { role: "assistant", content: JSON.stringify({ status: "ANSWERED", learnerMessage: "Coefficients give relative mole amounts.", sourceRefs: ["CAIE-SOURCE-1"] }) } };
+    } };
+    const trace = await runAgent({ ...base, modelClient, tools: { execute: async () => ({ resultRef: "search-result", claimRefs: ["CAIE-SOURCE-1"], data: [{ sourceId: "CAIE-SOURCE-1" }] }) } });
+    expect(trace.finalResponse.sourceRefs).toEqual(["CAIE-SOURCE-1"]);
+    expect(trace.toolCalls).toEqual([expect.objectContaining({ name: "search_learning_resources", status: "SUCCEEDED" })]);
   });
 
   it("rejects final references that were never returned by a tool", async () => {

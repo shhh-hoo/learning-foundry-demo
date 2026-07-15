@@ -4,7 +4,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { createDeepSeekClient } from "../src/agent/deepseek-client.ts";
 import { createAgentGateway } from "../src/agent/gateway.ts";
-import { runAgent } from "../src/agent/run-agent.ts";
+import { AGENT_PROMPT_VERSION, buildAgentSystemPrompt, runAgent } from "../src/agent/run-agent.ts";
 import { createAgentToolExecutor, type CapabilityRecord, type LearningResource } from "../src/agent/tool-executor.ts";
 import { PurposeSeparatedAgentTraceRepository } from "./lib/agent-trace-repository.ts";
 
@@ -21,6 +21,7 @@ const resources = await readJson<{ readonly resources: readonly LearningResource
 const toolConfig = await readJson<{ readonly version: string; readonly tools: readonly unknown[] }>("config/tools/tool-descriptions.json");
 const responsePolicy = await readText("config/agent/response-policy.json");
 const systemPrompt = `${await readText("config/agent/instructions.md")}\nResponse policy: ${responsePolicy}`;
+const observableSystemPrompt = buildAgentSystemPrompt(systemPrompt);
 const contentHash = (value: string) => createHash("sha256").update(value).digest("hex");
 const traceRepositories = new PurposeSeparatedAgentTraceRepository(
   resolve(process.env.PRODUCT_TRACE_STORE_DIR ?? process.env.TRACE_STORE_DIR ?? ".local-data/product-agent-runs"),
@@ -39,9 +40,9 @@ const gateway = createAgentGateway({
     const currentUserMessage = [...request.messages].reverse().find((message) => message.role === "user")?.content ?? "";
     const tools = createAgentToolExecutor({ capabilities: capabilities.capabilities, resources: resources.resources, diagnosisUrl: "http://127.0.0.1:4177/diagnose", runPurpose: request.runPurpose, currentUserMessage });
     const traceId = `agent-trace-${randomUUID()}`; const startedAt = new Date().toISOString();
-    await traceRepository.start({ traceId, request, provider: "deepseek", model, thinkingMode, prompt: { version: "1.0.0", contentHash: contentHash(systemPrompt) }, capabilityRegistry: { version: capabilities.version, contentHash: contentHash(JSON.stringify(capabilities)) }, toolDefinitions: { version: toolConfig.version, contentHash: contentHash(JSON.stringify(toolConfig)) }, startedAt });
+    await traceRepository.start({ traceId, request, provider: "deepseek", model, thinkingMode, prompt: { version: AGENT_PROMPT_VERSION, contentHash: contentHash(observableSystemPrompt) }, capabilityRegistry: { version: capabilities.version, contentHash: contentHash(JSON.stringify(capabilities)) }, toolDefinitions: { version: toolConfig.version, contentHash: contentHash(JSON.stringify(toolConfig)) }, startedAt });
     try {
-      const trace = await runAgent({ request, model, thinkingMode, systemPrompt, promptVersion: "1.0.0", capabilityRegistryVersion: capabilities.version, toolDefinitions: toolConfig.tools, modelClient: client, tools, createId: () => traceId, onToolResult: (result) => toolResults.push(result), onModelResponse: (message, usage) => traceRepository.appendModelResponse(traceId, message, usage), onToolExecution: (execution) => traceRepository.appendToolExecution(traceId, execution) });
+      const trace = await runAgent({ request, model, thinkingMode, systemPrompt, promptVersion: AGENT_PROMPT_VERSION, capabilityRegistryVersion: capabilities.version, toolDefinitions: toolConfig.tools, modelClient: client, tools, createId: () => traceId, onToolResult: (result) => toolResults.push(result), onModelResponse: (message, usage) => traceRepository.appendModelResponse(traceId, message, usage), onToolExecution: (execution) => traceRepository.appendToolExecution(traceId, execution) });
       await traceRepository.complete(traceId, trace.finalResponse, trace.completedAt);
       return { trace, toolResults };
     } catch (error) {
