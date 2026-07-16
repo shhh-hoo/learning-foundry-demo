@@ -4,9 +4,10 @@ import path from "node:path";
 import { AGENT_EVAL_SUITE_VERSION, gradeAgentCase, type AgentEvalCase, type AgentEvalToolResult } from "../src/agent/agenteval.ts";
 import { buildAgentEvalCheckpoint } from "../src/agent/agenteval-checkpoint.ts";
 import { buildAgentEvalReliabilitySprint } from "../src/agent/agenteval-reliability.ts";
+import { buildAgentEvalSuitePlan, parseAgentEvalDimension, parseAgentEvalLayer, selectAgentEvalBaseline, selectAgentEvalDimension, selectAgentEvalLayer, validateAgentEvalSuite, type AgentEvalBehaviorContract } from "../src/agent/agenteval-suite.ts";
 import { AGENT_PROMPT_VERSION, buildAgentSystemPrompt } from "../src/agent/run-agent.ts";
 import type { AgentTrace, TokenUsage } from "../src/agent/types.ts";
-import { AgentEvalRepository, type AgentEvalEligibility, type PersistedAgentEvalCase, type PersistedAgentEvalRun } from "./lib/agent-eval-repository.ts";
+import { AgentEvalRepository, type AgentEvalEligibility, type AgentEvalRunSelection, type PersistedAgentEvalCase, type PersistedAgentEvalRun } from "./lib/agent-eval-repository.ts";
 
 interface Price { readonly cacheHitInput: number; readonly cacheMissInput: number; readonly output: number }
 const gateway = process.env.AGENT_GATEWAY_URL ?? "http://127.0.0.1:4176";
@@ -39,11 +40,29 @@ try {
   const evalRunId = `agenteval-${startedAt.replace(/[:.]/g, "-")}-${randomUUID().slice(0, 8)}`;
   const caseFile = await readFile(new URL("../agent-eval/cases.jsonl", import.meta.url), "utf8");
   const fullCases = caseFile.trim().split(/\r?\n/).map((line) => JSON.parse(line) as AgentEvalCase);
-  const cases = process.env.AGENT_EVAL_CHECKPOINT === "1"
-    ? buildAgentEvalCheckpoint(fullCases)
-    : process.env.AGENT_EVAL_RELIABILITY === "1"
-      ? buildAgentEvalReliabilitySprint(fullCases)
-      : fullCases;
+  validateAgentEvalSuite(fullCases);
+  let selection: AgentEvalRunSelection = { mode: "FULL" };
+  let cases: readonly AgentEvalCase[] = fullCases;
+  if (process.env.AGENT_EVAL_CHECKPOINT === "1") {
+    selection = { mode: "CHECKPOINT" };
+    cases = buildAgentEvalCheckpoint(fullCases);
+  } else if (process.env.AGENT_EVAL_BASELINE === "1") {
+    selection = { mode: "BASELINE", value: "1.2.0" };
+    const baselineText = await readFile(new URL("../agent-eval/baselines/1.2.0-contract.jsonl", import.meta.url), "utf8");
+    const baseline = baselineText.trim().split(/\r?\n/).map((line) => JSON.parse(line) as AgentEvalBehaviorContract);
+    cases = selectAgentEvalBaseline(fullCases, baseline);
+  } else if (process.env.AGENT_EVAL_RELIABILITY === "1") {
+    selection = { mode: "BASELINE", value: "1.2.0-reliability-sprint" };
+    cases = buildAgentEvalReliabilitySprint(fullCases);
+  } else if (process.env.AGENT_EVAL_LAYER) {
+    const layer = parseAgentEvalLayer(process.env.AGENT_EVAL_LAYER);
+    selection = { mode: "LAYER", value: layer };
+    cases = selectAgentEvalLayer(fullCases, layer);
+  } else if (process.env.AGENT_EVAL_DIMENSION) {
+    const dimension = parseAgentEvalDimension(process.env.AGENT_EVAL_DIMENSION);
+    selection = { mode: "DIMENSION", value: dimension };
+    cases = selectAgentEvalDimension(fullCases, dimension);
+  }
   const pricing = JSON.parse(await readFile(new URL("../agent-eval/pricing.json", import.meta.url), "utf8")) as { perMillionTokens: Readonly<Record<string, Price>> };
   const price = pricing.perMillionTokens[health.model];
   const instructions = await readFile(new URL("../config/agent/instructions.md", import.meta.url), "utf8");
@@ -53,7 +72,7 @@ try {
   const toolText = await readFile(new URL("../config/tools/tool-descriptions.json", import.meta.url), "utf8");
   const tools = JSON.parse(toolText) as { version: string };
   const running: PersistedAgentEvalRun = {
-    schemaVersion: "1.0.0", evalRunId, runPurpose: "AGENT_EVAL", status: "RUNNING", totalPlannedCases: cases.length, suiteVersion: AGENT_EVAL_SUITE_VERSION, caseFileHash: hash(`${caseFile}\n${cases.map((item) => item.caseId).join(",")}`),
+    schemaVersion: "1.1.0", evalRunId, runPurpose: "AGENT_EVAL", status: "RUNNING", totalPlannedCases: cases.length, selection, suitePlan: buildAgentEvalSuitePlan(fullCases), suiteVersion: AGENT_EVAL_SUITE_VERSION, caseFileHash: hash(`${caseFile}\n${cases.map((item) => item.caseId).join(",")}`),
     provider: health.provider ?? "deepseek", model: health.model, thinkingMode: health.thinkingMode ?? "unknown",
     prompt: { version: AGENT_PROMPT_VERSION, contentHash: hash(buildAgentSystemPrompt(`${instructions}\nResponse policy: ${responsePolicy}`)) }, capabilityRegistry: { version: capability.version, contentHash: hash(capabilityText) }, toolDefinitions: { version: tools.version, contentHash: hash(toolText) },
     startedAt, cases: [],
@@ -64,14 +83,24 @@ try {
   for (const testCase of cases) {
     const caseStarted = Date.now();
     const eligibility = eligibilityFor(testCase);
+    const caseMetadata = {
+      caseId: testCase.caseId,
+      ...(testCase.sourceCaseId ? { sourceCaseId: testCase.sourceCaseId } : {}),
+      category: testCase.category,
+      ...(testCase.suiteLayers ? { suiteLayers: testCase.suiteLayers } : {}),
+      ...(testCase.evaluationDimensions ? { evaluationDimensions: testCase.evaluationDimensions } : {}),
+      ...(testCase.retrievalVariant ? { retrievalVariant: testCase.retrievalVariant } : {}),
+      ...(testCase.diagnosisDimensions ? { diagnosisDimensions: testCase.diagnosisDimensions } : {}),
+      ...(testCase.expectedCapabilityResolution ? { expectedCapabilityResolution: testCase.expectedCapabilityResolution } : {}),
+    };
     const response = await fetch(`${gateway}/agent/runs`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ conversationId: `${evalRunId}-${testCase.caseId}`, inputOrigin: testCase.inputOrigin, runPurpose: "AGENT_EVAL", messages: [{ role: "user", content: testCase.input }] }) });
     const body = await response.json() as { ok?: boolean; trace?: AgentTrace; toolResults?: readonly AgentEvalToolResult[]; error?: { code?: string; message?: string } };
     let result: PersistedAgentEvalCase;
     if (!response.ok || !body.ok || !body.trace) {
-      result = { caseId: testCase.caseId, category: testCase.category, runPurpose: "AGENT_EVAL", eligibility, passed: false, checks: {}, errors: [body.error?.code ?? "AGENT_RUN_FAILED"], latencyMs: Date.now() - caseStarted, estimatedCostUsd: null, terminalError: { code: body.error?.code ?? "AGENT_RUN_FAILED", message: body.error?.message ?? "Agent run did not return a trace." } };
+      result = { ...caseMetadata, runPurpose: "AGENT_EVAL", eligibility, passed: false, checks: {}, errors: [body.error?.code ?? "AGENT_RUN_FAILED"], latencyMs: Date.now() - caseStarted, estimatedCostUsd: null, terminalError: { code: body.error?.code ?? "AGENT_RUN_FAILED", message: body.error?.message ?? "Agent run did not return a trace." } };
     } else {
       const grade = gradeAgentCase(testCase, body.trace, body.toolResults ?? []);
-      result = { caseId: testCase.caseId, category: testCase.category, runPurpose: "AGENT_EVAL", agentTraceId: body.trace.traceId, eligibility, ...grade, latencyMs: body.trace.latencyMs, tokenUsage: body.trace.tokenUsage, estimatedCostUsd: estimateCost(body.trace.tokenUsage, price) };
+      result = { ...caseMetadata, runPurpose: "AGENT_EVAL", agentTraceId: body.trace.traceId, eligibility, ...grade, latencyMs: body.trace.latencyMs, tokenUsage: body.trace.tokenUsage, estimatedCostUsd: estimateCost(body.trace.tokenUsage, price) };
     }
     await repository.appendCase(evalRunId, result); results.push(result);
   }

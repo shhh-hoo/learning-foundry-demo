@@ -1,13 +1,18 @@
 import type { AgentTrace } from "./types";
 import { verifyProblemContextProvenance, type ProblemContext, type ProblemContextEvidence } from "./problem-context-provenance";
 
-export const AGENT_EVAL_SUITE_VERSION = "1.2.0";
+export const AGENT_EVAL_SUITE_VERSION = "2.0.0";
 
 export interface AgentEvalCase {
-  readonly caseId: string; readonly category: string; readonly input: string; readonly inputOrigin: "USER_INPUT" | "PRESET_INPUT";
+  readonly caseId: string; readonly sourceCaseId?: string; readonly category: string; readonly input: string; readonly inputOrigin: "USER_INPUT" | "PRESET_INPUT";
   readonly expectedStatus: readonly string[]; readonly requiredTools: readonly string[]; readonly forbiddenTools: readonly string[];
   readonly allowedCapabilities: readonly string[]; readonly expectedFailureCode?: string | null; readonly forbiddenClaims?: readonly string[]; readonly tags: readonly string[];
   readonly requiredSourceIds?: readonly string[];
+  readonly suiteLayers?: readonly import("./agenteval-suite").AgentEvalLayer[];
+  readonly evaluationDimensions?: readonly import("./agenteval-suite").AgentEvalDimension[];
+  readonly retrievalVariant?: import("./agenteval-suite").RetrievalGeneralizationVariant;
+  readonly diagnosisDimensions?: readonly import("./agenteval-suite").DiagnosisGeneralizationDimension[];
+  readonly expectedCapabilityResolution?: import("./agenteval-suite").ExpectedCapabilityResolution;
 }
 export interface AgentEvalToolResult { readonly name: string; readonly resultRef: string; readonly data: unknown }
 export interface AgentEvalGrade { readonly passed: boolean; readonly checks: Readonly<Record<string, boolean>>; readonly errors: readonly string[] }

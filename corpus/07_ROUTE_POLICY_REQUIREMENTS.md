@@ -1,6 +1,6 @@
 # Route Policy Requirements
 
-The first live Product traces and 18-case AgentEval showed that prompt-only tool routing is insufficient. The application layer must validate the route.
+The first live Product traces and bounded 18-case AgentEval showed that prompt-only tool routing is insufficient. The application layer must validate the route.
 
 ## Route classes
 
