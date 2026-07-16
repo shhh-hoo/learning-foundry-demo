@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import type { CorpusChunk, CorpusIndexManifest, CorpusSearchFilters, CorpusSearchResponse, CorpusSourceStatus, EvidenceSearch } from "../../src/corpus/types";
+import type { CorpusChunk, CorpusIndexManifest, CorpusSearchFilters, CorpusSearchResponse, CorpusSearchService, CorpusSourceStatus } from "../../src/corpus/types";
 
 const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
 const normaliseToken = (token: string) => token.toLowerCase().replace(/(?:ing|ed|es|s)$/u, "");
@@ -74,7 +74,7 @@ function excerpt(text: string, query: string): string {
   return `${start > 0 ? "… " : ""}${words.slice(start, start + 80).join(" ")}${start + 80 < words.length ? " …" : ""}`;
 }
 
-export class CorpusRepository implements EvidenceSearch {
+export class CorpusRepository implements CorpusSearchService {
   private constructor(
     readonly rootDirectory: string,
     readonly manifest: CorpusIndexManifest,

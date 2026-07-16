@@ -1,13 +1,13 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { publishedComponents } from "../src/components/published";
-import { LocalShowcaseComponentRepository, type ComponentRepository } from "../src/demo-registry/registry-store";
+import { acceptPublishedDiagnosticComponent, LocalShowcaseComponentRepository, type DiagnosticComponentRepository } from "../src/demo-registry/registry-store";
 
 const port = 4175;
 const allowedOrigins = new Set([
   "http://127.0.0.1:4173", "http://localhost:4173",
   "http://127.0.0.1:4174", "http://localhost:4174",
 ]);
-const store: ComponentRepository = new LocalShowcaseComponentRepository(publishedComponents);
+const store: DiagnosticComponentRepository = new LocalShowcaseComponentRepository(publishedComponents);
 
 function json(response: ServerResponse, status: number, body: unknown, origin?: string): void {
   response.statusCode = status;
@@ -49,7 +49,7 @@ const server = createServer(async (request, response) => {
   }
   if (request.method === "POST" && url.pathname === "/components") {
     try {
-      const result = store.accept(await readJson(request));
+      const result = acceptPublishedDiagnosticComponent(store, await readJson(request));
       return json(response, result.ok ? 201 : 422, result, origin);
     } catch (error) {
       return json(response, 400, { ok: false, error: { code: "INVALID_JSON", message: error instanceof Error ? error.message : "Invalid JSON body." } }, origin);

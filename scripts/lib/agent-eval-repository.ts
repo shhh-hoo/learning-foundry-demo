@@ -211,7 +211,7 @@ export function buildAgentEvalReport(run: PersistedAgentEvalRun): AgentEvalRepor
   return {
     evalRunId: run.evalRunId, suiteVersion: run.suiteVersion, provider: run.provider, model: run.model, startedAt: run.startedAt, completedAt: run.completedAt ?? null,
     runStatus: run.status, isComplete: run.status === "COMPLETED" && run.cases.length === run.totalPlannedCases,
-    fullSuiteCoverageComplete: run.selection?.mode === "FULL" && run.status === "COMPLETED" && run.cases.length === run.totalPlannedCases,
+    fullSuiteCoverageComplete: run.selection?.mode === "FULL" && run.totalPlannedCases > 0 && run.status === "COMPLETED" && run.cases.length === run.totalPlannedCases,
     completedCases: run.cases.length, totalPlannedCases: run.totalPlannedCases,
     totalCases: run.cases.length, passedCases: run.cases.filter((item) => item.passed).length, failedCases: run.cases.filter((item) => !item.passed).length,
     passRate: run.cases.length ? run.cases.filter((item) => item.passed).length / run.cases.length : 0,

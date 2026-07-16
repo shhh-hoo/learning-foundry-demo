@@ -13,3 +13,20 @@ Thinking mode defaults to disabled. When enabled, the client passes DeepSeek's t
 Every request has a required `runPurpose`: `PRODUCT` from Learner Workspace or `AGENT_EVAL` from the live harness. Gateway and Trainer preserve it in traces and select separate physical namespaces. Product evidence uses `.local-data/product-agent-runs/` and `.local-data/product-diagnoses/`; AgentEval evidence uses `.local-data/agent-eval-agent-runs/` and `.local-data/agent-eval-diagnoses/`. Product queries explicitly request `runPurpose=PRODUCT`.
 
 Diagnosis also requires `problemContextEvidence`. Every quote must occur exactly in the latest user message; the structured equation, numeric values, units, target and answer requirement must agree with their quotes. Gateway performs this check before calling port 4177. Capability metadata cannot supply omitted problem facts.
+
+## Replaceable runtime boundaries
+
+The current product path is wired through these minimal contracts and concrete adapters:
+
+| Responsibility | Contract | Current adapter |
+|---|---|---|
+| Agent / workflow execution | `AgentExecution` | `legacyDeepSeekAgentExecution` |
+| Evidence Search | existing `CorpusSearchService` | `LegacyLexicalEvidenceSearch` |
+| Learning Capability Runtime | `LearningCapabilityRuntime` | `LegacyTrainerCapabilityRuntime` |
+| Eval execution | `AgentEvalHarness` | `LegacyAgentEvalHarness` |
+| Agent trace persistence | `AgentTraceStore` | `FileAgentTraceStore` |
+| diagnostic Component persistence | `DiagnosticComponentRepository` | `LocalShowcaseComponentRepository` |
+
+Route classification, obligations, tool order, provenance, reference-class validation, corpus delivery policy, Component acceptance checks, AgentEval cases and graders remain outside commodity adapters. `CorpusSearchService` and the current diagnostic Component contract still expose Chemistry Reference Pack shapes; this milestone does not claim that they are domain-neutral Core contracts.
+
+No candidate runtime or framework is integrated, no authority has switched, and Legacy deletion is not authorized. See [RUNTIME_BOUNDARY_ACCEPTANCE.md](RUNTIME_BOUNDARY_ACCEPTANCE.md) for acceptance evidence and rollback scope.

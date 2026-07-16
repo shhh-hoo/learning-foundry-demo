@@ -52,11 +52,14 @@ Every new run persists its selection mode (`FULL`, `CHECKPOINT`, `BASELINE`, `LA
 
 | Status | Meaning | Rate |
 |---|---|---|
-| `NOT_RUN` | no planned case in that category was executed, including an empty planned category | `null` |
+| `UNPLANNED` | the category has zero planned cases | `null` |
+| `NOT_RUN` | the category has planned cases but none were executed | `null` |
 | `PARTIAL` | only part of the complete category plan was executed | `null` |
 | `COMPLETE` | every planned case in that category was executed | passed/planned |
 
-This prevents a retrieval-dimension subset from presenting its `CORE_CONTRACT` intersection as a complete contract pass. An empty `LEARNING_LOOP` is represented as `plannedCases=0`, `status=NOT_RUN`, `rate=null`.
+Completion is selection-aware. A full run or an explicitly selected complete layer/dimension may report `COMPLETE`; checkpoint and baseline subsets cannot present their intersections as complete full-suite coverage. `fullSuiteCoverageComplete` is true only for a completed `FULL` selection. An empty `LEARNING_LOOP` is represented as `plannedCases=0`, `status=UNPLANNED`, `rate=null` during a full run.
+
+An explicitly selected empty layer or dimension is an invalid run request and exits non-zero before provider health is checked. This currently applies to `LEARNING_LOOP`, `REFERENCE_PACK` and `PEDAGOGY`; no placeholder cases are added to avoid `UNPLANNED`.
 
 No full-suite live `2.0.0` pass is claimed by this document. Automated tests verify suite integrity and harness behavior; a live result must come from the configured gateway, provider and real tools.
 

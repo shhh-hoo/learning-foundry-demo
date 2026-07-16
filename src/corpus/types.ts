@@ -36,11 +36,9 @@ export interface CorpusSearchResponse {
   readonly results: readonly CorpusSearchResult[];
 }
 
-export interface EvidenceSearch {
+export interface CorpusSearchService {
   search(query: string, filters: CorpusSearchFilters, context?: { readonly conversationId?: string; readonly conversationEvidenceHash?: string; readonly route?: string }): Promise<CorpusSearchResponse>;
 }
-
-export type CorpusSearchService = EvidenceSearch;
 
 export interface CorpusChunk {
   readonly chunkId: string;

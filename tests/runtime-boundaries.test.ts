@@ -26,6 +26,16 @@ describe("replaceable runtime boundaries", () => {
     expect(JSON.parse(String(requests[0]?.init?.body))).toEqual({ learnerAttempt: "evidenced input", runPurpose: "PRODUCT" });
   });
 
+  it("preserves the structured failure when a Legacy Trainer trace cannot be resolved", async () => {
+    const runtime = new LegacyTrainerCapabilityRuntime("http://127.0.0.1:4177/diagnose", async (_input, init) => init?.method === "POST"
+      ? Response.json({ ok: true, result: { traceId: "missing-trace" } })
+      : Response.json({ ok: false }, { status: 404 }));
+
+    await expect(runtime.execute({ capabilityId: "capability", input: {}, runPurpose: "PRODUCT" })).rejects.toMatchObject({
+      code: "UNRESOLVABLE_DIAGNOSIS_TRACE",
+    });
+  });
+
   it("executes AgentEval cases through the Legacy gateway without owning Foundry grading", async () => {
     const harness = new LegacyAgentEvalHarness("http://127.0.0.1:4176", async (input) => {
       const url = String(input);

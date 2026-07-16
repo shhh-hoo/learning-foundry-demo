@@ -63,11 +63,14 @@ npm run agenteval:compare -- --baseline <evalRunId> --candidate <evalRunId>
 
 Product and AgentEval evidence have required `runPurpose` classification and separate physical stores. Diagnosis problem facts must be backed by exact quotes from the current user message before the Trainer API is called.
 
+Current runtime infrastructure is reached through narrow contracts for Agent execution, corpus search, Learning Capability execution, AgentEval execution, trace storage and the local diagnostic Component Repository. The current DeepSeek, lexical corpus, Standard Trainer, file-store and local-showcase implementations remain authoritative Legacy adapters; no candidate framework has authority.
+
 ## Documentation
 
 - [Real Agent architecture](docs/REAL_AGENT_ARCHITECTURE.md)
 - [DeepSeek local setup](docs/DEEPSEEK_LOCAL_SETUP.md)
 - [AgentEval](docs/AGENT_EVAL.md)
+- [Runtime-boundary acceptance](docs/RUNTIME_BOUNDARY_ACCEPTANCE.md)
 - [Data-origin policy](docs/DATA_ORIGIN_POLICY.md)
 - [Terminology](docs/TERMINOLOGY.md)
 - [Capability Registry](docs/CAPABILITY_REGISTRY.md)

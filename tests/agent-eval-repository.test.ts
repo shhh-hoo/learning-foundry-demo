@@ -107,6 +107,7 @@ describe("AgentEvalRepository", () => {
     const candidate = buildAgentEvalReport(run("run-b", true));
     expect(baseline.passRate).toBe(0);
     expect(candidate.passRate).toBe(1);
+    expect(candidate.fullSuiteCoverageComplete).toBe(true);
     expect(candidate.layerMetrics).toMatchObject({
       SMOKE: { plannedCases: 0, executedCases: 0, passedCases: 0, rate: null, status: "UNPLANNED" },
       CORE_CONTRACT: { plannedCases: 1, executedCases: 1, passedCases: 1, rate: 1, status: "COMPLETE" },

@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { AgentToolExecutor, AgentToolResult } from "./run-agent";
 import { verifyProblemContextProvenance } from "./problem-context-provenance";
 import type { RunPurpose } from "./types";
-import type { EvidenceSearch } from "../corpus/types";
+import type { CorpusSearchService } from "../corpus/types";
 import { deliverCorpusSearchResponse, type CorpusDeliveryPolicyRuntime } from "../corpus/delivery-policy";
 import { LegacyTrainerCapabilityRuntime, type LearningCapabilityRuntime } from "../runtime/learning-capability-runtime";
 
@@ -20,7 +20,7 @@ export interface CapabilityRecord {
 
 export interface ToolExecutorOptions {
   readonly capabilities: readonly CapabilityRecord[];
-  readonly corpus: EvidenceSearch;
+  readonly corpus: CorpusSearchService;
   readonly corpusDeliveryPolicy?: CorpusDeliveryPolicyRuntime;
   readonly provider?: string;
   readonly capabilityRuntime?: LearningCapabilityRuntime;

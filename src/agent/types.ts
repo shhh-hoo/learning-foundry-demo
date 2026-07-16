@@ -53,7 +53,7 @@ export interface AgentTrace {
   readonly initialRoute?: AgentRoute;
   readonly route?: AgentRoute;
   readonly obligations?: AgentObligations;
-  readonly provider: "deepseek";
+  readonly provider: string;
   readonly model: string;
   readonly thinkingMode: "enabled" | "disabled";
   readonly promptVersion: string;

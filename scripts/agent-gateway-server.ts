@@ -9,7 +9,7 @@ import { AGENT_PROMPT_VERSION, buildAgentSystemPrompt, runAgent } from "../src/a
 import { createAgentToolExecutor, type CapabilityRecord } from "../src/agent/tool-executor.ts";
 import { PurposeSeparatedAgentTraceRepository } from "./lib/agent-trace-repository.ts";
 import { LegacyLexicalEvidenceSearch, inspectCorpus } from "./lib/corpus-repository.ts";
-import type { EvidenceSearch } from "../src/corpus/types.ts";
+import type { CorpusSearchService } from "../src/corpus/types.ts";
 import { createCorpusDeliveryPolicyRuntime } from "../src/corpus/delivery-policy.ts";
 import { LegacyTrainerCapabilityRuntime } from "../src/runtime/learning-capability-runtime.ts";
 
@@ -30,7 +30,7 @@ const corpusDeliveryPolicy = createCorpusDeliveryPolicyRuntime(JSON.parse(corpus
 const systemPrompt = `${await readText("config/agent/instructions.md")}\nResponse policy: ${responsePolicy}`;
 function contentHash(value: string): string { return createHash("sha256").update(value).digest("hex"); }
 const corpusReport = await inspectCorpus();
-let corpus: EvidenceSearch;
+let corpus: CorpusSearchService;
 try { corpus = await LegacyLexicalEvidenceSearch.open(); }
 catch { corpus = { search: async () => { throw new Error("CORPUS_INDEX_MISSING: run npm run corpus:ingest before starting the Agent Gateway."); } }; }
 const traceRepositories = new PurposeSeparatedAgentTraceRepository(

@@ -11,6 +11,10 @@ export interface LearningCapabilityRuntime {
   execute(execution: LearningCapabilityExecution): Promise<{ readonly traceId: string; readonly result: Record<string, unknown> }>;
 }
 
+class LearningCapabilityRuntimeError extends Error {
+  constructor(readonly code: string, message: string) { super(`${code}: ${message}`); }
+}
+
 export class LegacyTrainerCapabilityRuntime implements LearningCapabilityRuntime {
   constructor(
     private readonly diagnosisUrl: string,
@@ -28,7 +32,7 @@ export class LegacyTrainerCapabilityRuntime implements LearningCapabilityRuntime
 
     const resolution = await this.fetcher(`${this.diagnosisUrl.replace(/\/diagnose\/?$/u, "")}/diagnoses/${encodeURIComponent(body.result.traceId)}`);
     const resolved = await resolution.json() as { readonly ok?: boolean; readonly diagnosis?: { readonly traceId?: string } };
-    if (!resolution.ok || !resolved.ok || resolved.diagnosis?.traceId !== body.result.traceId) throw new Error(`UNRESOLVABLE_DIAGNOSIS_TRACE: Diagnosis trace ${body.result.traceId} did not resolve after persistence.`);
+    if (!resolution.ok || !resolved.ok || resolved.diagnosis?.traceId !== body.result.traceId) throw new LearningCapabilityRuntimeError("UNRESOLVABLE_DIAGNOSIS_TRACE", `Diagnosis trace ${body.result.traceId} did not resolve after persistence.`);
     return { traceId: body.result.traceId, result: body.result };
   }
 }
