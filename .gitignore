@@ -9,5 +9,6 @@ coverage/
 .env.*.local
 .agent-eval-results/
 .local-data/
+.runtime-parity-results/
 private-sources/
 demo-recording/frames/

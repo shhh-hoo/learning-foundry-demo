@@ -5,8 +5,11 @@ const requestSchema = z.object({
   conversationId: z.string().min(1),
   inputOrigin: inputOriginSchema,
   runPurpose: runPurposeSchema,
+  evalCaseId: z.string().min(1).optional(),
   messages: z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().min(1) })).min(1),
-}).strict();
+}).strict().superRefine((request, context) => {
+  if (request.evalCaseId && request.runPurpose !== "AGENT_EVAL") context.addIssue({ code: "custom", path: ["evalCaseId"], message: "evalCaseId is reserved for AGENT_EVAL requests." });
+});
 
 export interface AgentExecution {
   execute(request: AgentRunRequest): Promise<AgentTrace | { readonly trace: AgentTrace; readonly toolResults: readonly { readonly name: string; readonly resultRef: string; readonly data: unknown }[] }>;

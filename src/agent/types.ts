@@ -72,5 +72,6 @@ export interface AgentRunRequest {
   readonly conversationId: string;
   readonly inputOrigin: InputOrigin;
   readonly runPurpose: RunPurpose;
+  readonly evalCaseId?: string;
   readonly messages: readonly AgentConversationMessage[];
 }

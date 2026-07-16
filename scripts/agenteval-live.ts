@@ -93,7 +93,7 @@ try {
       ...(testCase.diagnosisDimensions ? { diagnosisDimensions: testCase.diagnosisDimensions } : {}),
       ...(testCase.expectedCapabilityResolution ? { expectedCapabilityResolution: testCase.expectedCapabilityResolution } : {}),
     };
-    const body = await target.execute({ conversationId: `${evalRunId}-${testCase.caseId}`, inputOrigin: testCase.inputOrigin, runPurpose: "AGENT_EVAL", messages: [{ role: "user", content: testCase.input }] });
+    const body = await target.execute({ conversationId: `${evalRunId}-${testCase.caseId}`, inputOrigin: testCase.inputOrigin, runPurpose: "AGENT_EVAL", evalCaseId: testCase.caseId, messages: [{ role: "user", content: testCase.input }] });
     let result: PersistedAgentEvalCase;
     if (!body.ok) {
       result = { ...caseMetadata, runPurpose: "AGENT_EVAL", eligibility, passed: false, checks: {}, errors: [body.error.code], latencyMs: Date.now() - caseStarted, estimatedCostUsd: null, terminalError: body.error };

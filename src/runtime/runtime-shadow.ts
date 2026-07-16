@@ -48,6 +48,7 @@ export interface RuntimeExecutionRecord {
   readonly runPurpose: RunPurpose;
   readonly conversationId: string;
   readonly caseId?: string;
+  readonly agentTraceId?: string;
   readonly runtimeAdapterId: string;
   readonly runtimeAdapterVersion: string;
   readonly providerId: string;
@@ -58,6 +59,9 @@ export interface RuntimeExecutionRecord {
   readonly sourceRefs: readonly string[];
   readonly evidenceRefs: readonly string[];
   readonly diagnosisTraceId?: string;
+  readonly diagnosisResult?: unknown;
+  readonly diagnosisFailureCode?: string;
+  readonly finalResponse?: AgentResponseEnvelope;
   readonly finalResponseStatus?: AgentResponseEnvelope["status"];
   readonly latencyMs?: number;
   readonly tokenUsage?: TokenUsage;
@@ -111,6 +115,11 @@ function completedRecord(
   completedAt: string,
   parentAuthoritativeExecutionId?: string,
 ): RuntimeExecutionRecord {
+  const diagnosisCall = [...result.trace.toolCalls].reverse().find((call) => call.name === "run_learner_diagnosis" && call.status === "SUCCEEDED");
+  const diagnosisResult = diagnosisCall ? result.toolResults.find((item) => item.resultRef === diagnosisCall.resultRef)?.data : undefined;
+  const diagnosisFailureCode = diagnosisResult && typeof diagnosisResult === "object" && "diagnosis" in diagnosisResult
+    && diagnosisResult.diagnosis && typeof diagnosisResult.diagnosis === "object" && "failureCode" in diagnosisResult.diagnosis
+    && typeof diagnosisResult.diagnosis.failureCode === "string" ? diagnosisResult.diagnosis.failureCode : undefined;
   return {
     schemaVersion: "1.0.0",
     executionId,
@@ -119,6 +128,7 @@ function completedRecord(
     runPurpose: input.request.runPurpose,
     conversationId: input.request.conversationId,
     ...(input.caseId ? { caseId: input.caseId } : {}),
+    agentTraceId: result.trace.traceId,
     runtimeAdapterId: executor.identity.adapterId,
     runtimeAdapterVersion: executor.identity.adapterVersion,
     providerId: result.trace.provider,
@@ -129,6 +139,9 @@ function completedRecord(
     sourceRefs: result.trace.finalResponse.sourceRefs,
     evidenceRefs: result.trace.finalResponse.evidenceRefs ?? [],
     ...(result.trace.finalResponse.diagnosisTraceId ? { diagnosisTraceId: result.trace.finalResponse.diagnosisTraceId } : {}),
+    ...(diagnosisResult === undefined ? {} : { diagnosisResult }),
+    ...(diagnosisFailureCode ? { diagnosisFailureCode } : {}),
+    finalResponse: result.trace.finalResponse,
     finalResponseStatus: result.trace.finalResponse.status,
     latencyMs: result.trace.latencyMs,
     ...(result.trace.tokenUsage ? { tokenUsage: result.trace.tokenUsage } : {}),
