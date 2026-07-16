@@ -24,7 +24,6 @@ export function startNewLearningTask(state: ExperienceState): ExperienceState {
     conversationId,
     messages: [],
     pendingResponse: null,
-    capabilityGaps: [],
     eventLog: [...state.eventLog, createDemoEvent("TASK_CREATED", "LEARNER", { conversationId, previousConversationId })],
   };
 }
