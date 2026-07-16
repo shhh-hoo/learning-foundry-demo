@@ -40,7 +40,7 @@ export function classifyAgentRoute(request: AgentRunRequest, response?: AgentRes
 export function routeInstruction(route: AgentRoute): string {
   if (route === "COURSE_EXPLANATION") return "Application route: COURSE_EXPLANATION. You must call search_learning_resources and cite governed learner-facing sources before returning ANSWERED.";
   if (route === "SOLVE_WITH_CHECKS") return "Application route: SOLVE_WITH_CHECKS. Solve only from the evidenced problem. Use bounded arithmetic, unit, formula and precision checks when available. Do not present a Learner Diagnosis unless the learner supplied working and the route changes through governed policy.";
-  if (route === "LEARNER_DIAGNOSIS_COMPLETE") return "Application route: LEARNER_DIAGNOSIS_COMPLETE. Do not replace the governed judgment with your own calculation. Resolve the capability, run Learner Diagnosis, and reference the persisted Diagnosis trace before returning ANSWERED.";
+  if (route === "LEARNER_DIAGNOSIS_COMPLETE") return "Application route: LEARNER_DIAGNOSIS_COMPLETE. Do not replace the governed judgment with your own calculation. Call list_capabilities, then get_capability for a returned learner-facing ID, then run Learner Diagnosis. Reference the persisted Diagnosis trace before returning ANSWERED.";
   if (route === "LEARNER_DIAGNOSIS_INCOMPLETE") return "Application route: LEARNER_DIAGNOSIS_INCOMPLETE. Do not run Learner Diagnosis. Return NEEDS_MORE_EVIDENCE and name the missing problem or learner-working evidence.";
   return "Application route: CAPABILITY_GAP. Inspect the real Capability Registry before recording or returning a capability gap. Do not invent a capability or use registry metadata to fill missing problem facts.";
 }
@@ -79,8 +79,14 @@ export function enforceRoutePolicy(
   }
 
   if (route === "LEARNER_DIAGNOSIS_COMPLETE" && response.status === "ANSWERED") {
+    const listIndex = successfulCalls.findIndex((call) => call.name === "list_capabilities");
+    const getIndex = successfulCalls.findIndex((call) => call.name === "get_capability");
+    const diagnosisIndex = successfulCalls.findIndex((call) => call.name === "run_learner_diagnosis");
     const traceIds = diagnosisTraceIds(successfulToolResults);
-    if (!successfulCalls.some((call) => call.name === "run_learner_diagnosis") || !response.diagnosisTraceId || !traceIds.includes(response.diagnosisTraceId) || !response.evidenceRefs?.includes(response.diagnosisTraceId)) {
+    if (listIndex < 0 || getIndex < 0 || diagnosisIndex < 0 || !(listIndex < getIndex && getIndex < diagnosisIndex)) {
+      throw new RoutePolicyError(route, "ANSWERED requires ordered capability resolution: list_capabilities, get_capability, then run_learner_diagnosis.");
+    }
+    if (!response.diagnosisTraceId || !traceIds.includes(response.diagnosisTraceId) || !response.evidenceRefs?.includes(response.diagnosisTraceId)) {
       throw new RoutePolicyError(route, "ANSWERED requires a successful governed Diagnosis with a resolvable trace id.");
     }
   }
