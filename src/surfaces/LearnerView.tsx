@@ -1,7 +1,7 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import presetsConfig from "../../config/presets/learner-presets.json";
 import type { AgentTrace, InputOrigin } from "../agent/types";
-import { applyAgentRun, confirmLibraryProposal, confirmScheduleProposal, setScheduleItemStatus } from "../experience/orchestration";
+import { applyAgentRun, confirmLibraryProposal, confirmScheduleProposal, setScheduleItemStatus, startNewLearningTask } from "../experience/orchestration";
 import type { ExperienceState, GatewayToolResult } from "../experience/types";
 
 type LearnerSection = "CHAT" | "LIBRARY" | "SCHEDULE";
@@ -32,25 +32,37 @@ export function LearnerView({ state, onChange, initialSection = "CHAT" }: Learne
     setInput(preset.input); setInputOrigin("PRESET_INPUT"); setError(null);
   }
 
+  function beginNewTask() {
+    if (busy) return;
+    onChange(startNewLearningTask(state));
+    setInput("");
+    setInputOrigin("USER_INPUT");
+    setError(null);
+    setSection("CHAT");
+  }
+
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     if (!input.trim() || busy) return;
     setBusy(true); setError(null);
+    const activeConversationId = state.conversationId;
     try {
-      const response = await fetch(`${gatewayUrl}/agent/runs`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ conversationId: state.conversationId, inputOrigin, runPurpose: "PRODUCT", messages: [...state.messages.map((item) => ({ role: item.role === "USER" ? "user" : "assistant", content: item.content })), { role: "user", content: input.trim() }] }) });
+      const response = await fetch(`${gatewayUrl}/agent/runs`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ conversationId: activeConversationId, inputOrigin, runPurpose: "PRODUCT", messages: [...state.messages.map((item) => ({ role: item.role === "USER" ? "user" : "assistant", content: item.content })), { role: "user", content: input.trim() }] }) });
       const body = await response.json() as { readonly ok?: boolean; readonly trace?: AgentTrace; readonly toolResults?: readonly GatewayToolResult[]; readonly error?: { readonly message?: string } };
       if (!response.ok || !body.ok || !body.trace) throw new Error(body.error?.message ?? "The Agent run failed.");
+      if (body.trace.conversationId !== activeConversationId) throw new Error("The Agent response belongs to a different learning task.");
       onChange(applyAgentRun(state, input.trim(), body.trace, body.toolResults ?? []));
       setInput(""); setInputOrigin("USER_INPUT");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "The Agent run failed."); }
     finally { setBusy(false); }
   }
 
-  const latestDiagnosis = state.diagnoses.at(-1);
+  const currentTraceIds = useMemo(() => new Set(state.agentTraces.filter((trace) => trace.conversationId === state.conversationId).map((trace) => trace.traceId)), [state.agentTraces, state.conversationId]);
+  const latestDiagnosis = state.diagnoses.filter((diagnosis) => currentTraceIds.has(diagnosis.agentTraceId)).at(-1);
   return <main className="product-surface learner-surface">
     <header className="product-header"><a className="brand" href="?view=learner"><span className="brand-mark">LF</span><span>Learning Foundry<small>Learner Workspace</small></span></a><nav aria-label="Learner workspace">{nav.map((item) => <button key={item.id} className={section === item.id ? "active" : ""} onClick={() => setSection(item.id)}>{item.label}</button>)}</nav><span className={`trusted-chip ${state.agentConfigured ? "" : "warning"}`}>{state.agentConfigured === null ? "Checking Agent" : state.agentConfigured ? "DeepSeek configured" : "Agent not configured"}</span></header>
-    {section === "CHAT" ? <section className="learner-workspace"><aside className="conversation-list"><p className="surface-kicker">Presets</p><select aria-label="Fill input from preset" defaultValue="" onChange={(event) => selectPreset(event.target.value)}><option value="" disabled>Choose an input preset</option>{presetsConfig.presets.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}</select><p>Presets fill the text box only. Every response and tool result must run now.</p><p>Course search currently uses curated local learning-resource metadata. Authoritative syllabus-document retrieval is not connected yet.</p></aside><div className="chat-workspace"><div className="surface-heading"><div><p className="surface-kicker">Chat</p><h1>Ask, inspect evidence, then decide what to keep.</h1></div>{state.gatewayModel ? <code>{state.gatewayModel}</code> : null}</div>
-      <div className="conversation-thread">{state.messages.length ? state.messages.map((message) => <div key={message.id} className={message.role === "USER" ? "student-bubble" : "tutor-bubble"}><span>{message.role === "USER" ? "You" : "Learning Foundry"}{message.inputOrigin ? ` · ${message.inputOrigin}` : ""}</span>{message.role === "AGENT" ? <Suspense fallback={<p>{message.content}</p>}><AgentMessageContent content={message.content} /></Suspense> : <p>{message.content}</p>}{message.sourceRefs?.length ? <small>Sources: {message.sourceRefs.join(" · ")}</small> : null}</div>) : <div className="empty-state">No Agent runs yet. Type a question or fill the input from a preset.</div>}</div>
+    {section === "CHAT" ? <section className="learner-workspace"><aside className="conversation-list"><p className="surface-kicker">Current task</p><code>{state.conversationId}</code><button type="button" onClick={beginNewTask} disabled={busy}>New task</button><p>A new task starts an isolated conversation. Library, Schedule and persisted evidence are kept.</p><p className="surface-kicker">Presets</p><select aria-label="Fill input from preset" defaultValue="" onChange={(event) => selectPreset(event.target.value)}><option value="" disabled>Choose an input preset</option>{presetsConfig.presets.map((preset) => <option key={preset.id} value={preset.id}>{preset.label}</option>)}</select><p>Presets fill the text box only. Every response and tool result must run now.</p><p>Course search uses the governed local corpus. School-internal source text is not sent to an external model without an approved delivery policy.</p></aside><div className="chat-workspace"><div className="surface-heading"><div><p className="surface-kicker">Chat / Task</p><h1>Ask, inspect evidence, then decide what to keep.</h1></div>{state.gatewayModel ? <code>{state.gatewayModel}</code> : null}</div>
+      <div className="conversation-thread">{state.messages.length ? state.messages.map((message) => <div key={message.id} className={message.role === "USER" ? "student-bubble" : "tutor-bubble"}><span>{message.role === "USER" ? "You" : "Learning Foundry"}{message.inputOrigin ? ` · ${message.inputOrigin}` : ""}</span>{message.role === "AGENT" ? <Suspense fallback={<p>{message.content}</p>}><AgentMessageContent content={message.content} /></Suspense> : <p>{message.content}</p>}{message.sourceRefs?.length ? <small>Sources: {message.sourceRefs.join(" · ")}</small> : null}</div>) : <div className="empty-state">No Agent runs in this task. Type a question or fill the input from a preset.</div>}</div>
       {latestDiagnosis ? <details><summary>Learner Diagnosis · {latestDiagnosis.failureCode ?? latestDiagnosis.decision}</summary><dl><div><dt>Trace</dt><dd>{latestDiagnosis.traceId}</dd></div><div><dt>Component</dt><dd>{latestDiagnosis.componentId}@{latestDiagnosis.componentVersion}</dd></div><div><dt>First issue</dt><dd>{latestDiagnosis.firstPedagogicalIssue ?? "None"}</dd></div><div><dt>Evidence</dt><dd>{latestDiagnosis.evidence.join(" ")}</dd></div></dl></details> : null}
       {state.pendingResponse?.proposedLibraryArtifact ? <div className="proposal-card"><strong>Library proposal</strong><p>{state.pendingResponse.proposedLibraryArtifact.title}</p><button className="primary" onClick={() => onChange(confirmLibraryProposal(state))}>Confirm save to Library</button></div> : null}
       {state.pendingResponse?.proposedFollowUp ? <div className="proposal-card"><strong>Schedule proposal</strong><p>{state.pendingResponse.proposedFollowUp.title}</p><button className="primary" onClick={() => onChange(confirmScheduleProposal(state))}>Confirm follow-up</button></div> : null}

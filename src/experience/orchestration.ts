@@ -16,10 +16,23 @@ export function createInitialExperienceState(): ExperienceState {
   };
 }
 
+export function startNewLearningTask(state: ExperienceState): ExperienceState {
+  const previousConversationId = state.conversationId;
+  const conversationId = id("conversation");
+  return {
+    ...state,
+    conversationId,
+    messages: [],
+    pendingResponse: null,
+    eventLog: [...state.eventLog, createDemoEvent("TASK_CREATED", "LEARNER", { conversationId, previousConversationId })],
+  };
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> { return Boolean(value) && typeof value === "object" && !Array.isArray(value); }
 
 export function applyAgentRun(state: ExperienceState, userInput: string, trace: AgentTrace, toolResults: readonly GatewayToolResult[]): ExperienceState {
   if (trace.runPurpose !== "PRODUCT") throw new Error("Product state accepts PRODUCT Agent runs only.");
+  if (trace.conversationId !== state.conversationId) throw new Error("Product state accepts only Agent runs for the active learning task.");
   const diagnoses = toolResults.filter((item) => item.name === "run_learner_diagnosis" && isRecord(item.data)).flatMap((item): LearnerDiagnosisRecord[] => {
     const data = item.data as Record<string, unknown>;
     const diagnosis = isRecord(data.diagnosis) ? data.diagnosis : null;
@@ -42,7 +55,7 @@ export function applyAgentRun(state: ExperienceState, userInput: string, trace: 
   const allDiagnoses = [...state.diagnoses, ...diagnoses];
   const previousPattern = aggregatePatternEvidence(state.diagnoses);
   const nextPattern = aggregatePatternEvidence(allDiagnoses);
-  const newEvents = [createDemoEvent("LEARNER_ATTEMPT_SUBMITTED", "LEARNER", { conversationId: state.conversationId, inputOrigin: trace.inputOrigin }), ...diagnoses.map((diagnosis) => createDemoEvent("LEARNER_DIAGNOSIS_COMPLETED", "FOUNDRY", { traceId: diagnosis.traceId, failureCode: diagnosis.failureCode, componentId: diagnosis.componentId })), ...(!previousPattern.thresholdReached && nextPattern.thresholdReached ? [createDemoEvent("PATTERN_THRESHOLD_REACHED", "FOUNDRY", { occurrenceCount: nextPattern.occurrenceCount, threshold: nextPattern.threshold, traceIds: nextPattern.traceIds })] : [])];
+  const newEvents = [createDemoEvent("LEARNER_ATTEMPT_SUBMITTED", "LEARNER", { conversationId: state.conversationId, inputOrigin: trace.inputOrigin, route: trace.route ?? trace.initialRoute ?? "UNKNOWN" }), ...diagnoses.map((diagnosis) => createDemoEvent("LEARNER_DIAGNOSIS_COMPLETED", "FOUNDRY", { traceId: diagnosis.traceId, failureCode: diagnosis.failureCode, componentId: diagnosis.componentId })), ...(!previousPattern.thresholdReached && nextPattern.thresholdReached ? [createDemoEvent("PATTERN_THRESHOLD_REACHED", "FOUNDRY", { occurrenceCount: nextPattern.occurrenceCount, threshold: nextPattern.threshold, traceIds: nextPattern.traceIds })] : [])];
   return {
     ...state,
     messages: [...state.messages, { id: id("message"), role: "USER", content: userInput, inputOrigin: trace.inputOrigin }, { id: id("message"), role: "AGENT", content: trace.finalResponse.learnerMessage, sourceRefs: trace.finalResponse.sourceRefs }],

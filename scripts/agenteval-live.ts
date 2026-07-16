@@ -4,7 +4,7 @@ import path from "node:path";
 import { gradeAgentCase, type AgentEvalCase, type AgentEvalToolResult } from "../src/agent/agenteval.ts";
 import { AGENT_PROMPT_VERSION, buildAgentSystemPrompt } from "../src/agent/run-agent.ts";
 import type { AgentTrace, TokenUsage } from "../src/agent/types.ts";
-import { AgentEvalRepository, type PersistedAgentEvalCase, type PersistedAgentEvalRun } from "./lib/agent-eval-repository.ts";
+import { AgentEvalRepository, type AgentEvalEligibility, type PersistedAgentEvalCase, type PersistedAgentEvalRun } from "./lib/agent-eval-repository.ts";
 
 interface Price { readonly cacheHitInput: number; readonly cacheMissInput: number; readonly output: number }
 const gateway = process.env.AGENT_GATEWAY_URL ?? "http://127.0.0.1:4176";
@@ -20,6 +20,12 @@ const pointer = async (evalRunId: string) => {
   await mkdir(".agent-eval-results", { recursive: true });
   await writeFile(".agent-eval-results/latest.json", `${JSON.stringify({ evalRunId, persistedRunPath: path.join(rootDirectory, evalRunId, "run.json") }, null, 2)}\n`, "utf8");
 };
+const eligibilityFor = (testCase: AgentEvalCase): AgentEvalEligibility => ({
+  requiredTools: testCase.requiredTools.length > 0,
+  forbiddenTools: testCase.forbiddenTools.length > 0,
+  diagnosisFidelity: testCase.expectedFailureCode !== undefined,
+  sourceGrounding: (testCase.requiredSourceIds?.length ?? 0) > 0,
+});
 
 let activeEvalRunId: string | null = null;
 try {
@@ -52,7 +58,7 @@ try {
   const toolText = await readFile(new URL("../config/tools/tool-descriptions.json", import.meta.url), "utf8");
   const tools = JSON.parse(toolText) as { version: string };
   const running: PersistedAgentEvalRun = {
-    schemaVersion: "1.0.0", evalRunId, runPurpose: "AGENT_EVAL", status: "RUNNING", totalPlannedCases: cases.length, suiteVersion: "1.0.0", caseFileHash: hash(`${caseFile}\n${cases.map((item) => item.caseId).join(",")}`),
+    schemaVersion: "1.0.0", evalRunId, runPurpose: "AGENT_EVAL", status: "RUNNING", totalPlannedCases: cases.length, suiteVersion: "1.1.0", caseFileHash: hash(`${caseFile}\n${cases.map((item) => item.caseId).join(",")}`),
     provider: health.provider ?? "deepseek", model: health.model, thinkingMode: health.thinkingMode ?? "unknown",
     prompt: { version: AGENT_PROMPT_VERSION, contentHash: hash(buildAgentSystemPrompt(`${instructions}\nResponse policy: ${responsePolicy}`)) }, capabilityRegistry: { version: capability.version, contentHash: hash(capabilityText) }, toolDefinitions: { version: tools.version, contentHash: hash(toolText) },
     startedAt, cases: [],
@@ -62,14 +68,15 @@ try {
   const results: PersistedAgentEvalCase[] = [];
   for (const testCase of cases) {
     const caseStarted = Date.now();
+    const eligibility = eligibilityFor(testCase);
     const response = await fetch(`${gateway}/agent/runs`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ conversationId: `${evalRunId}-${testCase.caseId}`, inputOrigin: testCase.inputOrigin, runPurpose: "AGENT_EVAL", messages: [{ role: "user", content: testCase.input }] }) });
     const body = await response.json() as { ok?: boolean; trace?: AgentTrace; toolResults?: readonly AgentEvalToolResult[]; error?: { code?: string; message?: string } };
     let result: PersistedAgentEvalCase;
     if (!response.ok || !body.ok || !body.trace) {
-      result = { caseId: testCase.caseId, category: testCase.category, runPurpose: "AGENT_EVAL", passed: false, checks: {}, errors: [body.error?.code ?? "AGENT_RUN_FAILED"], latencyMs: Date.now() - caseStarted, estimatedCostUsd: null, terminalError: { code: body.error?.code ?? "AGENT_RUN_FAILED", message: body.error?.message ?? "Agent run did not return a trace." } };
+      result = { caseId: testCase.caseId, category: testCase.category, runPurpose: "AGENT_EVAL", eligibility, passed: false, checks: {}, errors: [body.error?.code ?? "AGENT_RUN_FAILED"], latencyMs: Date.now() - caseStarted, estimatedCostUsd: null, terminalError: { code: body.error?.code ?? "AGENT_RUN_FAILED", message: body.error?.message ?? "Agent run did not return a trace." } };
     } else {
       const grade = gradeAgentCase(testCase, body.trace, body.toolResults ?? []);
-      result = { caseId: testCase.caseId, category: testCase.category, runPurpose: "AGENT_EVAL", agentTraceId: body.trace.traceId, ...grade, latencyMs: body.trace.latencyMs, tokenUsage: body.trace.tokenUsage, estimatedCostUsd: estimateCost(body.trace.tokenUsage, price) };
+      result = { caseId: testCase.caseId, category: testCase.category, runPurpose: "AGENT_EVAL", agentTraceId: body.trace.traceId, eligibility, ...grade, latencyMs: body.trace.latencyMs, tokenUsage: body.trace.tokenUsage, estimatedCostUsd: estimateCost(body.trace.tokenUsage, price) };
     }
     await repository.appendCase(evalRunId, result); results.push(result);
   }

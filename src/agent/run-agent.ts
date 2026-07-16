@@ -1,13 +1,14 @@
-import { agentResponseEnvelopeSchema, type AgentRunRequest, type AgentTrace, type TokenUsage } from "./types";
+import { agentResponseEnvelopeSchema, type AgentRoute, type AgentRunRequest, type AgentTrace, type TokenUsage } from "./types";
 import type { AgentModelClient, ModelMessage } from "./deepseek-client";
 import { ZodError } from "zod";
-import { enforceRoutePolicy, RoutePolicyError } from "./route-policy";
+import { classifyAgentRoute, enforceRoutePolicy, routeInstruction, RoutePolicyError } from "./route-policy";
 
 export interface AgentToolResult { readonly resultRef: string; readonly data: unknown; readonly sourceRefs?: readonly string[]; readonly evidenceRefs?: readonly string[]; readonly claimRefs?: readonly string[] }
 export interface AgentToolExecutor { execute(name: string, argumentsValue: unknown): Promise<AgentToolResult> }
 
 interface RunAgentOptions {
   readonly request: AgentRunRequest;
+  readonly initialRoute?: AgentRoute;
   readonly model: string;
   readonly thinkingMode: "enabled" | "disabled";
   readonly systemPrompt: string;
@@ -48,7 +49,7 @@ function validateClaims(response: ReturnType<typeof agentResponseEnvelopeSchema.
   if (response.proposedFollowUp && !matchesProposal("propose_schedule_followup", response.proposedFollowUp)) throw new AgentRunError("AGENT_UNSUPPORTED_CLAIM", "Schedule proposal was not produced by its tool.");
 }
 
-export const AGENT_PROMPT_VERSION = "1.2.0";
+export const AGENT_PROMPT_VERSION = "1.3.0";
 
 const finalResponseContract = [
   "Return only one JSON object after all required tools have succeeded.",
@@ -57,8 +58,8 @@ const finalResponseContract = [
   "Optional fields: diagnosisTraceId and capabilityGapId are evidence IDs returned by tools; proposedLibraryArtifact is {title:string,content:string}; proposedFollowUp is {title:string,reason:string,delayDays:integer}.",
 ].join(" ");
 
-export function buildAgentSystemPrompt(systemPrompt: string): string {
-  return `${systemPrompt}\n${finalResponseContract}`;
+export function buildAgentSystemPrompt(systemPrompt: string, route?: AgentRoute): string {
+  return `${systemPrompt}\n${route ? routeInstruction(route) : ""}\n${finalResponseContract}`;
 }
 
 function validationDetail(error: unknown): string {
@@ -77,8 +78,9 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentTrace> {
   if (!options.request.messages.length) throw new AgentRunError("INVALID_AGENT_REQUEST", "At least one conversation message is required.");
   const start = options.now?.() ?? new Date();
   const traceId = options.createId?.() ?? `agent-trace-${globalThis.crypto?.randomUUID?.() ?? Date.now().toString(36)}`;
+  const initialRoute = options.initialRoute ?? classifyAgentRoute(options.request);
   const messages: ModelMessage[] = [
-    { role: "system", content: buildAgentSystemPrompt(options.systemPrompt) },
+    { role: "system", content: buildAgentSystemPrompt(options.systemPrompt, initialRoute) },
     ...options.request.messages,
   ];
   const records: AgentTrace["toolCalls"][number][] = [];
@@ -124,13 +126,15 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentTrace> {
     try {
       const response = agentResponseEnvelopeSchema.parse(JSON.parse(assistant.content ?? ""));
       validateClaims(response, availableSourceRefs, availableEvidenceRefs, successfulToolResults);
-      enforceRoutePolicy(options.request, response, records, successfulToolResults);
+      const route = enforceRoutePolicy(options.request, response, records, successfulToolResults, initialRoute);
       const completed = options.now?.() ?? new Date();
       return {
         traceId,
         conversationId: options.request.conversationId,
         inputOrigin: options.request.inputOrigin,
         runPurpose: options.request.runPurpose,
+        initialRoute,
+        route,
         provider: "deepseek",
         model: options.model,
         thinkingMode: options.thinkingMode,

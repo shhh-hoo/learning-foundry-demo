@@ -4,7 +4,8 @@ import type { LearnerDiagnosisRecord } from "./types";
 interface PersistedToolExecution { readonly name: string; readonly arguments: unknown; readonly resultRef: string; readonly status: "SUCCEEDED" | "FAILED"; readonly result?: unknown }
 interface PersistedRun {
   readonly traceId: string; readonly status: string; readonly provider: "deepseek"; readonly model: string; readonly thinkingMode: "enabled" | "disabled";
-  readonly request: { readonly conversationId: string; readonly inputOrigin: InputOrigin; readonly runPurpose: "PRODUCT" | "AGENT_EVAL" }; readonly prompt: { readonly version: string }; readonly capabilityRegistry: { readonly version: string };
+  readonly request: { readonly conversationId: string; readonly inputOrigin: InputOrigin; readonly runPurpose: "PRODUCT" | "AGENT_EVAL" }; readonly initialRoute?: AgentTrace["initialRoute"]; readonly route?: AgentTrace["route"];
+  readonly prompt: { readonly version: string }; readonly capabilityRegistry: { readonly version: string };
   readonly startedAt: string; readonly completedAt?: string; readonly updatedAt: string; readonly toolExecutions: readonly PersistedToolExecution[]; readonly finalResponse?: AgentTrace["finalResponse"]; readonly tokenUsage?: AgentTrace["tokenUsage"];
 }
 interface PersistedDiagnosis {
@@ -24,7 +25,9 @@ export async function loadPersistedLearningEvidence(fetcher: typeof fetch = fetc
   const runs = (agentBody.runs ?? []).filter((run) => run.request.runPurpose === "PRODUCT");
   const completedRuns = runs.filter((run) => run.status === "COMPLETED" && run.finalResponse && run.completedAt);
   const agentTraces: AgentTrace[] = completedRuns.map((run) => ({
-    traceId: run.traceId, conversationId: run.request.conversationId, inputOrigin: run.request.inputOrigin, runPurpose: run.request.runPurpose, provider: run.provider, model: run.model, thinkingMode: run.thinkingMode,
+    traceId: run.traceId, conversationId: run.request.conversationId, inputOrigin: run.request.inputOrigin, runPurpose: run.request.runPurpose,
+    ...(run.initialRoute ? { initialRoute: run.initialRoute } : {}), ...(run.route ? { route: run.route } : {}),
+    provider: run.provider, model: run.model, thinkingMode: run.thinkingMode,
     promptVersion: run.prompt.version, capabilityRegistryVersion: run.capabilityRegistry.version, startedAt: run.startedAt, completedAt: run.completedAt!,
     toolCalls: run.toolExecutions.map(({ name, arguments: argumentsValue, resultRef, status }) => ({ name, arguments: argumentsValue, resultRef, status })), finalResponse: run.finalResponse!,
     ...(run.tokenUsage ? { tokenUsage: run.tokenUsage } : {}), latencyMs: Math.max(0, Date.parse(run.completedAt!) - Date.parse(run.startedAt)),

@@ -22,7 +22,7 @@ describe("real Agent product boundaries", () => {
     fireEvent.change(screen.getByLabelText("Message Learning Foundry"), { target: { value: "Explain coefficients" } });
     fireEvent.click(screen.getByRole("button", { name: "Run Agent" }));
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("DEEPSEEK_API_KEY"));
-    expect(screen.getByText(/No Agent runs yet/)).toBeVisible();
+    expect(screen.getByText(/No Agent runs in this task/)).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "Library" }));
     expect(screen.getByText(/Nothing saved/)).toBeVisible();
   });
@@ -32,7 +32,7 @@ describe("real Agent product boundaries", () => {
     fireEvent.change(screen.getByLabelText("Fill input from preset"), { target: { value: "diagnosis" } });
     expect((screen.getByLabelText("Message Learning Foundry") as HTMLTextAreaElement).value).toContain("4.80 / 24.0");
     expect(screen.getByText("Input origin: PRESET_INPUT")).toBeVisible();
-    expect(screen.getByText(/No Agent runs yet/)).toBeVisible();
+    expect(screen.getByText(/No Agent runs in this task/)).toBeVisible();
   });
 
   it("renders Agent Markdown emphasis and block chemistry math", async () => {
