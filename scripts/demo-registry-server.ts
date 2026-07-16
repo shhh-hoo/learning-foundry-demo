@@ -41,22 +41,22 @@ const server = createServer(async (request, response) => {
   }
   const url = new URL(request.url ?? "/", `http://127.0.0.1:${port}`);
   if (request.method === "GET" && url.pathname === "/health") return json(response, 200, { ok: true, service: "learning-foundry-demo-registry", protocolVersion: "1.0.0" }, origin);
-  if (request.method === "GET" && url.pathname === "/manifest") return json(response, 200, store.manifest(), origin);
-  if (request.method === "GET" && url.pathname === "/components") return json(response, 200, { ok: true, components: store.list() }, origin);
+  if (request.method === "GET" && url.pathname === "/manifest") return json(response, 200, await store.manifest(), origin);
+  if (request.method === "GET" && url.pathname === "/components") return json(response, 200, { ok: true, components: await store.list() }, origin);
   if (request.method === "GET" && url.pathname.startsWith("/components/")) {
-    const component = store.get(decodeURIComponent(url.pathname.slice("/components/".length)));
+    const component = await store.get(decodeURIComponent(url.pathname.slice("/components/".length)));
     return component ? json(response, 200, { ok: true, component }, origin) : json(response, 404, { ok: false, error: { code: "NOT_FOUND", message: "Component was not found." } }, origin);
   }
   if (request.method === "POST" && url.pathname === "/components") {
     try {
-      const result = acceptPublishedDiagnosticComponent(store, await readJson(request));
+      const result = await acceptPublishedDiagnosticComponent(store, await readJson(request));
       return json(response, result.ok ? 201 : 422, result, origin);
     } catch (error) {
       return json(response, 400, { ok: false, error: { code: "INVALID_JSON", message: error instanceof Error ? error.message : "Invalid JSON body." } }, origin);
     }
   }
   if (request.method === "DELETE" && url.pathname === "/session") {
-    store.reset();
+    await store.reset();
     return json(response, 200, { ok: true, reset: true }, origin);
   }
   return json(response, 404, { ok: false, error: { code: "NOT_FOUND", message: "Route was not found." } }, origin);

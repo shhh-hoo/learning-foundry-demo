@@ -22,10 +22,25 @@ export class LegacyTrainerCapabilityRuntime implements LearningCapabilityRuntime
   ) {}
 
   async execute(execution: LearningCapabilityExecution): Promise<{ readonly traceId: string; readonly result: Record<string, unknown> }> {
+    const inputCapabilityId = execution.input.componentId;
+    const inputCapabilityVersion = execution.input.componentVersion;
+    if ((inputCapabilityId !== undefined && inputCapabilityId !== execution.capabilityId)
+      || (inputCapabilityVersion !== undefined && inputCapabilityVersion !== execution.capabilityVersion)) {
+      throw new LearningCapabilityRuntimeError(
+        "CAPABILITY_IDENTITY_MISMATCH",
+        "Trainer input identity must match the governed capability execution identity.",
+      );
+    }
+    const { componentId: _inputComponentId, componentVersion: _inputComponentVersion, ...capabilityInput } = execution.input;
     const response = await this.fetcher(this.diagnosisUrl, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ ...execution.input, runPurpose: execution.runPurpose }),
+      body: JSON.stringify({
+        ...capabilityInput,
+        componentId: execution.capabilityId,
+        ...(execution.capabilityVersion === undefined ? {} : { componentVersion: execution.capabilityVersion }),
+        runPurpose: execution.runPurpose,
+      }),
     });
     const body = await response.json() as { readonly ok?: boolean; readonly result?: Record<string, unknown> & { readonly traceId?: string }; readonly error?: { readonly code?: string; readonly message?: string } };
     if (!response.ok || !body.ok || !body.result?.traceId) throw new Error(`${body.error?.code ?? "TRAINER_DIAGNOSIS_FAILED"}: ${body.error?.message ?? `HTTP ${response.status}`}`);

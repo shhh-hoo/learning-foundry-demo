@@ -34,7 +34,7 @@ This change adds explicit characterization for the full lexical response contrac
 | Agent / workflow execution | `AgentExecution` | `legacyDeepSeekAgentExecution` | `scripts/agent-gateway-server.ts` through `createAgentGateway` |
 | Evidence Search | existing `CorpusSearchService` | `LegacyLexicalEvidenceSearch` | Agent gateway corpus construction |
 | Learning Capability Runtime | `LearningCapabilityRuntime` | `LegacyTrainerCapabilityRuntime` | `createAgentToolExecutor` Diagnosis execution |
-| Eval execution | `AgentEvalHarness` | `LegacyAgentEvalHarness` | `scripts/agenteval-live.ts` |
+| AgentEval target transport | `AgentEvalTarget` | `LegacyGatewayAgentEvalTarget` | `scripts/agenteval-live.ts` |
 | trace persistence | `AgentTraceStore` | `FileAgentTraceStore` | purpose-separated Agent gateway trace repositories |
 | diagnostic Component persistence | `DiagnosticComponentRepository` | `LocalShowcaseComponentRepository` | `scripts/demo-registry-server.ts` |
 
@@ -51,7 +51,13 @@ Adapters do not own:
 - diagnostic Component schema, publication-status and content-hash acceptance;
 - AgentEval cases, taxonomy, eligibility, graders or report policy.
 
-The local Component repository stores already accepted snapshots. The server invokes the Foundry-owned `acceptPublishedDiagnosticComponent` check before `put`; the prior `accept` method remains as a compatibility delegate.
+`AgentEvalTarget` is only the transport seam for target health and one `AGENT_EVAL` Agent run. Suite selection, checkpoint/baseline/layer/dimension selection, the case loop, grading, eligibility, persistence and report semantics remain in `scripts/agenteval-live.ts` and the existing AgentEval modules. This milestone does not claim a stable external suite-runner boundary.
+
+The provider-neutral trace contract and persisted observable-message types live in `src/agent/trace-store.ts`; provider identity is a string and the contract does not import the DeepSeek adapter. `ModelMessage` remains a DeepSeek adapter extension, while `FileAgentTraceStore` accepts the neutral observable shape.
+
+The diagnostic Component repository is asynchronous so a durable or remote implementation can satisfy the same contract. The local repository stores already accepted snapshots. The server awaits the Foundry-owned `acceptPublishedDiagnosticComponent` check and repository operations; the prior `accept` method remains as an asynchronous compatibility delegate.
+
+`LearningCapabilityRuntime` treats `capabilityId` and `capabilityVersion` as authoritative. The Legacy Trainer payload is constructed from that governed identity, and any conflicting identity already present in `input` fails before the Trainer is called.
 
 ## Authorized AgentEval correction
 
@@ -73,7 +79,7 @@ No Learning Loop or Reference Pack cases were invented.
 
 Automated validation completed:
 
-- `npm test` — 28 files, 155 tests passed;
+- `npm test` — 28 files, 158 tests passed;
 - `npm run check` — passed;
 - `npm run build` — passed;
 - `git diff --check` — passed;
@@ -87,7 +93,7 @@ The real DeepSeek key and model were not configured. Fixture tests are not repor
 
 ## Scope, rollback and authority
 
-Behavior is unchanged except for the authorized AgentEval empty-selection and coverage-state correction. No production dependency or candidate framework was added. No Legacy implementation was deleted.
+Product behavior is unchanged for conforming capability calls. In addition to the authorized AgentEval empty-selection and coverage-state correction, contradictory capability identities now fail before transport as required by the governed contract. The other changes are boundary typing, naming and asynchronous call-site corrections. No production dependency or candidate framework was added. No Legacy implementation was deleted.
 
 Rollback is a single revert of this Program PR: current adapters and compatibility exports remain intact, and no data migration or canonical Product State write occurred.
 

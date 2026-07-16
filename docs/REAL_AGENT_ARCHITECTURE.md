@@ -23,10 +23,10 @@ The current product path is wired through these minimal contracts and concrete a
 | Agent / workflow execution | `AgentExecution` | `legacyDeepSeekAgentExecution` |
 | Evidence Search | existing `CorpusSearchService` | `LegacyLexicalEvidenceSearch` |
 | Learning Capability Runtime | `LearningCapabilityRuntime` | `LegacyTrainerCapabilityRuntime` |
-| Eval execution | `AgentEvalHarness` | `LegacyAgentEvalHarness` |
+| AgentEval target transport | `AgentEvalTarget` | `LegacyGatewayAgentEvalTarget` |
 | Agent trace persistence | `AgentTraceStore` | `FileAgentTraceStore` |
 | diagnostic Component persistence | `DiagnosticComponentRepository` | `LocalShowcaseComponentRepository` |
 
-Route classification, obligations, tool order, provenance, reference-class validation, corpus delivery policy, Component acceptance checks, AgentEval cases and graders remain outside commodity adapters. `CorpusSearchService` and the current diagnostic Component contract still expose Chemistry Reference Pack shapes; this milestone does not claim that they are domain-neutral Core contracts.
+Route classification, obligations, tool order, provenance, reference-class validation, corpus delivery policy, Component acceptance checks, AgentEval cases and graders remain outside commodity adapters. `AgentEvalTarget` owns only health and single-run transport; suite selection, case iteration, grading, eligibility, persistence and reporting remain in the current runner. The trace contract and observable-message types are provider-neutral, and the Component repository contract is asynchronous for durable or remote replacements. `CorpusSearchService` and the current diagnostic Component contract still expose Chemistry Reference Pack shapes; this milestone does not claim that they are domain-neutral Core contracts.
 
 No candidate runtime or framework is integrated, no authority has switched, and Legacy deletion is not authorized. See [RUNTIME_BOUNDARY_ACCEPTANCE.md](RUNTIME_BOUNDARY_ACCEPTANCE.md) for acceptance evidence and rollback scope.

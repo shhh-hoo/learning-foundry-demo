@@ -1,35 +1,35 @@
 import type { AgentEvalToolResult } from "./agenteval";
 import type { AgentRunRequest, AgentTrace } from "./types";
 
-export interface AgentEvalHarnessHealth {
+export interface AgentEvalTargetHealth {
   readonly provider: string;
   readonly model: string;
   readonly thinkingMode: string;
 }
 
-export type AgentEvalHarnessResult =
+export type AgentEvalTargetResult =
   | { readonly ok: true; readonly trace: AgentTrace; readonly toolResults: readonly AgentEvalToolResult[] }
   | { readonly ok: false; readonly error: { readonly code: string; readonly message: string } };
 
-export interface AgentEvalHarness {
-  health(): Promise<AgentEvalHarnessHealth>;
-  execute(request: AgentRunRequest & { readonly runPurpose: "AGENT_EVAL" }): Promise<AgentEvalHarnessResult>;
+export interface AgentEvalTarget {
+  health(): Promise<AgentEvalTargetHealth>;
+  execute(request: AgentRunRequest & { readonly runPurpose: "AGENT_EVAL" }): Promise<AgentEvalTargetResult>;
 }
 
-export class LegacyAgentEvalHarness implements AgentEvalHarness {
+export class LegacyGatewayAgentEvalTarget implements AgentEvalTarget {
   constructor(
     private readonly gatewayUrl: string,
     private readonly fetcher: typeof fetch = globalThis.fetch,
   ) {}
 
-  async health(): Promise<AgentEvalHarnessHealth> {
+  async health(): Promise<AgentEvalTargetHealth> {
     const response = await this.fetcher(`${this.gatewayUrl}/health`);
     const body = await response.json() as { readonly configured?: boolean; readonly provider?: string; readonly model?: string | null; readonly thinkingMode?: string };
     if (!response.ok || !body.configured || !body.model) throw new Error("AGENT_NOT_CONFIGURED: Set DEEPSEEK_API_KEY and DEEPSEEK_MODEL, then start the local services.");
     return { provider: body.provider ?? "deepseek", model: body.model, thinkingMode: body.thinkingMode ?? "unknown" };
   }
 
-  async execute(request: AgentRunRequest & { readonly runPurpose: "AGENT_EVAL" }): Promise<AgentEvalHarnessResult> {
+  async execute(request: AgentRunRequest & { readonly runPurpose: "AGENT_EVAL" }): Promise<AgentEvalTargetResult> {
     const response = await this.fetcher(`${this.gatewayUrl}/agent/runs`, {
       method: "POST",
       headers: { "content-type": "application/json" },

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { publishedComponents } from "../src/components/published";
-import { DemoRegistryStore } from "../src/demo-registry/registry-store";
+import { acceptPublishedDiagnosticComponent, DemoRegistryStore, type DiagnosticComponentRepository } from "../src/demo-registry/registry-store";
 import { publishApprovedComponent } from "../src/governance/publishing";
 
 function validV110() {
@@ -15,27 +15,44 @@ function validV110() {
 }
 
 describe("local demo registry validation", () => {
-  it("lists the latest accepted version and resets to the published local snapshot", () => {
-    const store = new DemoRegistryStore(publishedComponents);
-    const original = store.get("stoichiometric-product-mass");
-    const accepted = validV110();
+  it("accepts through an asynchronous durable repository contract", async () => {
+    let persisted = false;
+    const repository = {
+      reset: async () => {},
+      list: async () => [],
+      get: async () => null,
+      manifest: async () => ({ protocolVersion: "1.0.0" as const, generatedAt: "2026-07-16T10:00:00.000Z", components: [] }),
+      put: async (component) => { persisted = true; return component; },
+    } satisfies DiagnosticComponentRepository;
 
-    expect(store.accept(accepted).ok).toBe(true);
-    expect(store.get(accepted.id)?.version).toBe("1.1.0");
-    expect(store.list()).toContainEqual(accepted);
-
-    store.reset();
-    expect(store.get(accepted.id)).toEqual(original);
-    expect(store.list()).not.toContainEqual(accepted);
+    await expect(acceptPublishedDiagnosticComponent(repository, validV110())).resolves.toMatchObject({
+      ok: true,
+      component: { version: "1.1.0" },
+    });
+    expect(persisted).toBe(true);
   });
 
-  it("accepts a valid published snapshot and rejects malformed or tampered content", () => {
+  it("lists the latest accepted version and resets to the published local snapshot", async () => {
+    const store = new DemoRegistryStore(publishedComponents);
+    const original = await store.get("stoichiometric-product-mass");
+    const accepted = validV110();
+
+    await expect(store.accept(accepted)).resolves.toMatchObject({ ok: true });
+    expect((await store.get(accepted.id))?.version).toBe("1.1.0");
+    expect(await store.list()).toContainEqual(accepted);
+
+    await store.reset();
+    expect(await store.get(accepted.id)).toEqual(original);
+    expect(await store.list()).not.toContainEqual(accepted);
+  });
+
+  it("accepts a valid published snapshot and rejects malformed or tampered content", async () => {
     const store = new DemoRegistryStore(publishedComponents);
     const valid = validV110();
-    expect(store.accept(valid)).toMatchObject({ ok: true, component: { version: "1.1.0" } });
+    await expect(store.accept(valid)).resolves.toMatchObject({ ok: true, component: { version: "1.1.0" } });
 
     const tampered = { ...structuredClone(valid), presentation: { ...valid.presentation, title: "Tampered" } };
-    expect(store.accept(tampered)).toMatchObject({ ok: false, error: { code: "CONTENT_HASH_MISMATCH" } });
-    expect(store.accept({ id: "broken" })).toMatchObject({ ok: false, error: { code: "MALFORMED_COMPONENT" } });
+    await expect(store.accept(tampered)).resolves.toMatchObject({ ok: false, error: { code: "CONTENT_HASH_MISMATCH" } });
+    await expect(store.accept({ id: "broken" })).resolves.toMatchObject({ ok: false, error: { code: "MALFORMED_COMPONENT" } });
   });
 });

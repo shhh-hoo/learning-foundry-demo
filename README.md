@@ -59,11 +59,11 @@ npm run agenteval:report
 npm run agenteval:compare -- --baseline <evalRunId> --candidate <evalRunId>
 ```
 
-`agenteval:live` requires the real server-side DeepSeek configuration and returns non-zero if it is absent. The full `2.0.0` contract contains 73 cases across the formal suite layers; retrieval is an orthogonal evaluation dimension. Automated Tests validate the harness with controlled fixtures; they do not claim that a live AgentEval passed.
+`agenteval:live` requires the real server-side DeepSeek configuration and returns non-zero if it is absent. The full `2.0.0` contract contains 73 cases across the formal suite layers; retrieval is an orthogonal assessment dimension. Automated Tests validate the runner with controlled fixtures; they do not claim that a live AgentEval passed.
 
 Product and AgentEval evidence have required `runPurpose` classification and separate physical stores. Diagnosis problem facts must be backed by exact quotes from the current user message before the Trainer API is called.
 
-Current runtime infrastructure is reached through narrow contracts for Agent execution, corpus search, Learning Capability execution, AgentEval execution, trace storage and the local diagnostic Component Repository. The current DeepSeek, lexical corpus, Standard Trainer, file-store and local-showcase implementations remain authoritative Legacy adapters; no candidate framework has authority.
+Current runtime infrastructure is reached through narrow contracts for Agent execution, corpus search, Learning Capability execution, AgentEval target transport, trace storage and the local diagnostic Component Repository. The target seam covers health and one Agent run; selection, iteration, grading, persistence and reporting remain in the existing AgentEval runner. The current DeepSeek, lexical corpus, Standard Trainer, file-store and local-showcase implementations remain authoritative Legacy adapters; no candidate framework has authority.
 
 ## Documentation
 

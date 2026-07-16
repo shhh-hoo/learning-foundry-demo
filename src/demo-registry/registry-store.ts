@@ -8,18 +8,18 @@ export type RegistryAcceptResult =
   | { readonly ok: false; readonly error: { readonly code: "MALFORMED_COMPONENT" | "UNSUPPORTED_SCHEMA" | "NOT_PUBLISHED" | "CONTENT_HASH_MISMATCH"; readonly message: string; readonly issues?: readonly string[] } };
 
 export interface DiagnosticComponentRepository {
-  reset(): void;
-  list(): readonly PublishedDiagnosticLearningComponent[];
-  get(id: string): PublishedDiagnosticLearningComponent | null;
-  manifest(): {
+  reset(): Promise<void>;
+  list(): Promise<readonly PublishedDiagnosticLearningComponent[]>;
+  get(id: string): Promise<PublishedDiagnosticLearningComponent | null>;
+  manifest(): Promise<{
     readonly protocolVersion: "1.0.0";
     readonly generatedAt: string;
     readonly components: readonly { readonly id: string; readonly version: string; readonly schemaVersion: string; readonly contentHash: string }[];
-  };
-  put(component: PublishedDiagnosticLearningComponent): PublishedDiagnosticLearningComponent;
+  }>;
+  put(component: PublishedDiagnosticLearningComponent): Promise<PublishedDiagnosticLearningComponent>;
 }
 
-export function acceptPublishedDiagnosticComponent(repository: DiagnosticComponentRepository, value: unknown): RegistryAcceptResult {
+export async function acceptPublishedDiagnosticComponent(repository: DiagnosticComponentRepository, value: unknown): Promise<RegistryAcceptResult> {
   if (typeof value === "object" && value !== null) {
     const raw = value as Record<string, unknown>;
     if (raw.schemaVersion !== undefined && raw.schemaVersion !== COMPONENT_SCHEMA_VERSION) return { ok: false, error: { code: "UNSUPPORTED_SCHEMA", message: `Schema ${String(raw.schemaVersion)} is unsupported.` } };
@@ -29,7 +29,7 @@ export function acceptPublishedDiagnosticComponent(repository: DiagnosticCompone
   if (!parsed.success) return { ok: false, error: { code: "MALFORMED_COMPONENT", message: "The component does not satisfy the canonical published schema.", issues: parsed.error.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`) } };
   const component = parsed.data as PublishedDiagnosticLearningComponent;
   if (!contentHashMatches(component)) return { ok: false, error: { code: "CONTENT_HASH_MISMATCH", message: "The component content does not match its publication hash." } };
-  return { ok: true, component: repository.put(component) };
+  return { ok: true, component: await repository.put(component) };
 }
 
 function versionParts(version: string): readonly number[] {
@@ -53,18 +53,18 @@ export class LocalShowcaseComponentRepository implements DiagnosticComponentRepo
     this.components = this.initial.map((item) => structuredClone(item));
   }
 
-  reset(): void { this.components = this.initial.map((item) => structuredClone(item)); }
+  async reset(): Promise<void> { this.components = this.initial.map((item) => structuredClone(item)); }
 
-  list(): readonly PublishedDiagnosticLearningComponent[] {
+  async list(): Promise<readonly PublishedDiagnosticLearningComponent[]> {
     return this.components.map((item) => structuredClone(item));
   }
 
-  get(id: string): PublishedDiagnosticLearningComponent | null {
+  async get(id: string): Promise<PublishedDiagnosticLearningComponent | null> {
     const matches = this.components.filter((item) => item.id === id).sort((left, right) => compareVersion(right.version, left.version));
     return matches[0] ? structuredClone(matches[0]) : null;
   }
 
-  manifest() {
+  async manifest() {
     return {
       protocolVersion: "1.0.0",
       generatedAt: new Date().toISOString(),
@@ -72,13 +72,13 @@ export class LocalShowcaseComponentRepository implements DiagnosticComponentRepo
     } as const;
   }
 
-  put(component: PublishedDiagnosticLearningComponent): PublishedDiagnosticLearningComponent {
+  async put(component: PublishedDiagnosticLearningComponent): Promise<PublishedDiagnosticLearningComponent> {
     const key = `${component.id}@${component.version}`;
     this.components = [...this.components.filter((item) => `${item.id}@${item.version}` !== key), structuredClone(component)];
     return structuredClone(component);
   }
 
-  accept(value: unknown): RegistryAcceptResult { return acceptPublishedDiagnosticComponent(this, value); }
+  async accept(value: unknown): Promise<RegistryAcceptResult> { return acceptPublishedDiagnosticComponent(this, value); }
 }
 
 export { LocalShowcaseComponentRepository as DemoRegistryStore };

@@ -1,16 +1,9 @@
 import type { TokenUsage } from "./types";
+import type { ObservableAgentMessage, ObservableAgentToolCall } from "./trace-store";
 
-export interface ModelToolCall {
-  readonly id: string;
-  readonly type: "function";
-  readonly function: { readonly name: string; readonly arguments: string };
-}
+export interface ModelToolCall extends ObservableAgentToolCall {}
 
-export interface ModelMessage {
-  readonly role: "system" | "user" | "assistant" | "tool";
-  readonly content: string | null;
-  readonly tool_call_id?: string;
-  readonly tool_calls?: readonly ModelToolCall[];
+export interface ModelMessage extends ObservableAgentMessage {
   readonly reasoning_content?: string;
 }
 

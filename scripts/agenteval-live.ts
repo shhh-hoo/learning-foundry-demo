@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { AGENT_EVAL_SUITE_VERSION, gradeAgentCase, type AgentEvalCase } from "../src/agent/agenteval.ts";
-import { LegacyAgentEvalHarness } from "../src/agent/agenteval-harness.ts";
+import { LegacyGatewayAgentEvalTarget } from "../src/agent/agenteval-target.ts";
 import { buildAgentEvalCheckpoint } from "../src/agent/agenteval-checkpoint.ts";
 import { buildAgentEvalReliabilitySprint } from "../src/agent/agenteval-reliability.ts";
 import { buildAgentEvalSuitePlan, parseAgentEvalDimension, parseAgentEvalLayer, requireNonEmptyAgentEvalSelection, selectAgentEvalBaseline, selectAgentEvalDimension, selectAgentEvalLayer, validateAgentEvalSuite, type AgentEvalBehaviorContract } from "../src/agent/agenteval-suite.ts";
@@ -12,7 +12,7 @@ import { AgentEvalRepository, type AgentEvalEligibility, type AgentEvalRunSelect
 
 interface Price { readonly cacheHitInput: number; readonly cacheMissInput: number; readonly output: number }
 const gateway = process.env.AGENT_GATEWAY_URL ?? "http://127.0.0.1:4176";
-const harness = new LegacyAgentEvalHarness(gateway);
+const target = new LegacyGatewayAgentEvalTarget(gateway);
 const rootDirectory = path.resolve(process.env.AGENT_EVAL_STORE_DIR ?? ".local-data/agent-eval-runs");
 const repository = new AgentEvalRepository(rootDirectory);
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
@@ -62,7 +62,7 @@ try {
     cases = selectAgentEvalDimension(fullCases, dimension);
   }
   cases = requireNonEmptyAgentEvalSelection(selection, cases);
-  const health = await harness.health();
+  const health = await target.health();
   const pricing = JSON.parse(await readFile(new URL("../agent-eval/pricing.json", import.meta.url), "utf8")) as { perMillionTokens: Readonly<Record<string, Price>> };
   const price = pricing.perMillionTokens[health.model];
   const instructions = await readFile(new URL("../config/agent/instructions.md", import.meta.url), "utf8");
@@ -93,7 +93,7 @@ try {
       ...(testCase.diagnosisDimensions ? { diagnosisDimensions: testCase.diagnosisDimensions } : {}),
       ...(testCase.expectedCapabilityResolution ? { expectedCapabilityResolution: testCase.expectedCapabilityResolution } : {}),
     };
-    const body = await harness.execute({ conversationId: `${evalRunId}-${testCase.caseId}`, inputOrigin: testCase.inputOrigin, runPurpose: "AGENT_EVAL", messages: [{ role: "user", content: testCase.input }] });
+    const body = await target.execute({ conversationId: `${evalRunId}-${testCase.caseId}`, inputOrigin: testCase.inputOrigin, runPurpose: "AGENT_EVAL", messages: [{ role: "user", content: testCase.input }] });
     let result: PersistedAgentEvalCase;
     if (!body.ok) {
       result = { ...caseMetadata, runPurpose: "AGENT_EVAL", eligibility, passed: false, checks: {}, errors: [body.error.code], latencyMs: Date.now() - caseStarted, estimatedCostUsd: null, terminalError: body.error };
