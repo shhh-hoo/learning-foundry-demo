@@ -31,6 +31,7 @@ export function gradeAgentCase(testCase: AgentEvalCase, trace: AgentTrace, toolR
   const conservationIndex = lowerLearnerText.indexOf("conservation of mass");
   const hasParticleRatio = /particle ratio|ratio (?:of|between) (?:the )?(?:particles|molecules|formula units)|(?:particles|molecules|formula units).{0,80}ratio/isu.test(learnerText);
   const hasBalanceReason = /balanc\w*.{0,100}(?:same|equal) number of (?:each )?(?:type of )?atom|(?:same|equal) number of (?:each )?(?:type of )?atom.{0,100}balanc\w*/isu.test(learnerText);
+  const hasCausalClosure = /\b(?:because|therefore|thus|so|which means|as a result|this is why)\b|(?:因为|因此|所以|这就是为什么)/iu.test(learnerText);
   const checks = {
     requiredTools: testCase.requiredTools.every((name) => names.includes(name)),
     forbiddenTools: testCase.forbiddenTools.every((name) => !names.includes(name)),
@@ -50,7 +51,7 @@ export function gradeAgentCase(testCase: AgentEvalCase, trace: AgentTrace, toolR
     whyMechanism: !requiresWhyExplanation || (lowerLearnerText.includes("coefficient") && hasParticleRatio),
     whyMoleScaling: !requiresWhyExplanation || (lowerLearnerText.includes("mole") && lowerLearnerText.includes("fixed number") && lowerLearnerText.includes("avogadro") && /scal|multipl|divid|preserv/iu.test(learnerText) && lowerLearnerText.includes("ratio")),
     whyConceptDistinctions: !requiresWhyExplanation || (hasBalanceReason && hasParticleRatio && lowerLearnerText.includes("mole ratio")),
-    whyConclusion: !requiresWhyExplanation || /Therefore,\s+.+\s+is true because\s+.+[.!?]$/su.test(learnerText),
+    whyConclusion: !requiresWhyExplanation || (hasCausalClosure && hasParticleRatio && lowerLearnerText.includes("mole")),
     whyCausalPriority: !requiresWhyExplanation || conservationIndex === -1 || (particleIndex !== -1 && particleIndex < conservationIndex),
     agentEvalRunPurpose: trace.runPurpose === "AGENT_EVAL",
   };
