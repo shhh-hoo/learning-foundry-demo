@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { AGENT_EVAL_SUITE_VERSION, gradeAgentCase, type AgentEvalCase } from "../src/agent/agenteval.ts";
 import { buildAgentEvalCheckpoint } from "../src/agent/agenteval-checkpoint.ts";
-import { selectAgentEvalBaseline, type AgentEvalBehaviorContract, type AgentEvalSelection } from "../src/agent/agenteval-suite.ts";
+import { parseAgentEvalDimension, parseAgentEvalLayer, selectAgentEvalBaseline, selectAgentEvalDimension, selectAgentEvalLayer, type AgentEvalBehaviorContract, type AgentEvalSelection } from "../src/agent/agenteval-suite.ts";
 import type { AgentTrace } from "../src/agent/types.ts";
 import { compareRuntimeParityCase, createRuntimeParityPlan, createRuntimeParityReport, type RuntimeParityExecution } from "../src/runtime/runtime-parity.ts";
 import type { RuntimeExecutionRecord } from "../src/runtime/runtime-shadow.ts";
@@ -28,6 +28,14 @@ async function loadCases(): Promise<{ readonly selection: AgentEvalSelection; re
     const baseline = baselineText.trim().split(/\r?\n/u).map((line) => JSON.parse(line) as AgentEvalBehaviorContract);
     return { selection: { mode: "BASELINE", value: "1.2.0" }, cases: selectAgentEvalBaseline(fullCases, baseline) };
   }
+  if (selectionName === "LAYER") {
+    const layer = parseAgentEvalLayer(process.env.RUNTIME_PARITY_LAYER ?? process.env.AGENT_EVAL_LAYER ?? "");
+    return { selection: { mode: "LAYER", value: layer }, cases: selectAgentEvalLayer(fullCases, layer) };
+  }
+  if (selectionName === "DIMENSION") {
+    const dimension = parseAgentEvalDimension(process.env.RUNTIME_PARITY_DIMENSION ?? process.env.AGENT_EVAL_DIMENSION ?? "");
+    return { selection: { mode: "DIMENSION", value: dimension }, cases: selectAgentEvalDimension(fullCases, dimension) };
+  }
   throw new Error(`RUNTIME_PARITY_SELECTION_UNSUPPORTED: ${selectionName}`);
 }
 
@@ -37,14 +45,10 @@ async function latestRunId(): Promise<string> {
   return pointer.evalRunId;
 }
 
-function selection(): AgentEvalSelection {
-  return selectionName === "BASELINE" ? { mode: "BASELINE", value: "1.2.0" } : { mode: "CHECKPOINT" };
-}
-
-function execution(record: RuntimeExecutionRecord, graderChecks?: Readonly<Record<string, boolean>>): RuntimeParityExecution {
+function execution(record: RuntimeExecutionRecord, selected: AgentEvalSelection, graderChecks?: Readonly<Record<string, boolean>>): RuntimeParityExecution {
   return {
     suiteVersion: AGENT_EVAL_SUITE_VERSION,
-    selection: selection(),
+    selection: selected,
     record,
     ...(record.diagnosisResult === undefined ? {} : { diagnosisResult: record.diagnosisResult }),
     ...(record.diagnosisFailureCode ? { diagnosisFailureCode: record.diagnosisFailureCode } : {}),
@@ -102,11 +106,11 @@ async function main(): Promise<void> {
   const results = plan.cases.map((testCase) => {
     const evalCase = evalCaseById.get(testCase.caseId);
     const authoritativeRecord = authoritativeRecords.find((record) => record.caseId === testCase.caseId && (!evalCase?.agentTraceId || record.agentTraceId === evalCase.agentTraceId)) ?? null;
-    const authoritative = authoritativeRecord ? execution(authoritativeRecord, evalCase?.checks) : null;
-    if (selfComparison) return compareRuntimeParityCase(testCase, authoritative, authoritativeRecord ? execution(selfReplay(authoritativeRecord), evalCase?.checks) : null);
+    const authoritative = authoritativeRecord ? execution(authoritativeRecord, selected.selection, evalCase?.checks) : null;
+    if (selfComparison) return compareRuntimeParityCase(testCase, authoritative, authoritativeRecord ? execution(selfReplay(authoritativeRecord), selected.selection, evalCase?.checks) : null);
     const shadowRecord = authoritativeRecord ? shadowRecords.find((record) => record.parentAuthoritativeExecutionId === authoritativeRecord.executionId) ?? null : null;
     const contractCase = contractCaseById.get(testCase.caseId);
-    const candidate = shadowRecord ? execution(shadowRecord, contractCase ? gradeRecord(contractCase, shadowRecord) : undefined) : null;
+    const candidate = shadowRecord ? execution(shadowRecord, selected.selection, contractCase ? gradeRecord(contractCase, shadowRecord) : undefined) : null;
     return compareRuntimeParityCase(testCase, authoritative, candidate);
   });
 
