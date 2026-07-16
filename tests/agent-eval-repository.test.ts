@@ -10,7 +10,7 @@ function run(evalRunId: string, passed: boolean): PersistedAgentEvalRun {
     provider: "deepseek", model: "deepseek-v4-flash", thinkingMode: "disabled",
     prompt: { version: "1.3.0", contentHash: "prompt" }, capabilityRegistry: { version: "1", contentHash: "capabilities" }, toolDefinitions: { version: "1", contentHash: "tools" },
     startedAt: "2026-07-16T00:00:00.000Z", completedAt: "2026-07-16T00:00:02.000Z",
-    cases: [{ caseId: "diagnosis-01", category: "diagnosis", runPurpose: "AGENT_EVAL", agentTraceId: "agent-1", eligibility: { requiredTools: true, forbiddenTools: false, diagnosisFidelity: true, sourceGrounding: false }, passed, checks: { requiredTools: passed, forbiddenTools: true, diagnosisFidelity: passed }, errors: passed ? [] : ["diagnosisFidelity"], latencyMs: 2000, tokenUsage: { promptTokens: 100, completionTokens: 20, totalTokens: 120 }, estimatedCostUsd: 0.001 }],
+    cases: [{ caseId: "diagnosis-01", category: "diagnosis", suiteLayers: ["CONTRACT", "GENERALIZATION"], runPurpose: "AGENT_EVAL", agentTraceId: "agent-1", eligibility: { requiredTools: true, forbiddenTools: false, diagnosisFidelity: true, sourceGrounding: false }, passed, checks: { requiredTools: passed, forbiddenTools: true, diagnosisFidelity: passed }, errors: passed ? [] : ["diagnosisFidelity"], latencyMs: 2000, tokenUsage: { promptTokens: 100, completionTokens: 20, totalTokens: 120 }, estimatedCostUsd: 0.001 }],
   };
 }
 
@@ -45,6 +45,11 @@ describe("AgentEvalRepository", () => {
     const candidate = buildAgentEvalReport(run("run-b", true));
     expect(baseline.passRate).toBe(0);
     expect(candidate.passRate).toBe(1);
+    expect(candidate.layerMetrics).toMatchObject({
+      SMOKE: { eligibleCases: 0, passedCases: 0, rate: 0 },
+      CONTRACT: { eligibleCases: 1, passedCases: 1, rate: 1 },
+      GENERALIZATION: { eligibleCases: 1, passedCases: 1, rate: 1 },
+    });
     expect(compareAgentEvalReports(baseline, candidate)).toMatchObject({ baselineEvalRunId: "run-a", candidateEvalRunId: "run-b", delta: { passRate: 1, diagnosisFidelity: 1 } });
   });
 

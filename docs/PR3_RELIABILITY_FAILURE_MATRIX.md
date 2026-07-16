@@ -2,6 +2,8 @@
 
 Baseline: full AgentEval run `agenteval-2026-07-16T10-55-34-288Z-4a3da608` (`suiteVersion 1.1.0`, 7/18 passed). This matrix is derived from the local sanitised run and AgentTrace records. It classifies the eleven failures before remediation; no case is deleted or weakened.
 
+Scope note: this is a historical failure matrix for the bounded 18-case suite. The later `18/18` result records correction of those exact contracts, not generalisation beyond them. Suite `2.0.0` adds the separate `GENERALIZATION`, `ADVERSARIAL` and `RETRIEVAL` layers and must earn its own live result.
+
 | caseId | initialRoute | finalRoute | successfulTools | failedTools | terminalError | expected | actual | failureLayer | classification | recommended correction |
 |---|---|---|---|---|---|---|---|---|---|---|
 | `retrieval-03` | `COURSE_EXPLANATION` | none (trace failed) | `search_learning_resources` | none | `ROUTE_POLICY_REJECTED` | `ANSWERED`; source `TN-003-LIMITING-REAGENT` | Search returned no results after model supplied non-canonical `calculationFamilyId=limiting-reagent`; the recovery response attempted `CAPABILITY_GAP`. | retrieval intent mapping | product failure | Canonicalise limiting-reagent intent to governed family `STOICH-005` and remove conflicting model filters before retrieval. |

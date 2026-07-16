@@ -9,23 +9,26 @@ const testCase: AgentEvalCase = { caseId: "case", category: "diagnosis", input: 
 const trace: AgentTrace = { traceId: "trace", conversationId: "case", inputOrigin: "USER_INPUT", runPurpose: "AGENT_EVAL", provider: "deepseek", model: "configured", thinkingMode: "disabled", promptVersion: "1", capabilityRegistryVersion: "1", startedAt: "2026-07-16T10:00:00.000Z", completedAt: "2026-07-16T10:00:01.000Z", toolCalls: [{ name: "run_learner_diagnosis", arguments: { componentId: "stoichiometric-product-mass", problemContext: { prompt: "A complete original problem prompt.", reactionEquation: "2Mg + O2 -> 2MgO", givenValues: [{ label: "mass", value: 4.8, unit: "g" }], targetQuantity: "mass MgO", answerRequirement: "3 significant figures" }, problemContextEvidence: { promptQuote: "A complete original problem prompt.", reactionEquationQuote: "2Mg + O2 -> 2MgO", givenValueQuotes: ["4.8 g"], targetQuantityQuote: "mass MgO", answerRequirementQuote: "3 significant figures" } }, resultRef: "result", status: "SUCCEEDED" }], finalResponse: { status: "ANSWERED", learnerMessage: "Unit issue", sourceRefs: [], diagnosisTraceId: "trainer" }, latencyMs: 1000 };
 
 describe("AgentEval deterministic graders", () => {
-  it("identifies the corrected grader contract as suite 1.2.0", () => {
-    expect(AGENT_EVAL_SUITE_VERSION).toBe("1.2.0");
+  it("identifies the layered generalization contract as suite 2.0.0", () => {
+    expect(AGENT_EVAL_SUITE_VERSION).toBe("2.0.0");
   });
 
-  it("builds the six-case checkpoint without forcing Registry use for evidence insufficiency", () => {
+  it("builds a six-source smoke checkpoint without weakening source-case obligations", () => {
     const sourceCases = [
       { ...testCase, caseId: "retrieval-01" },
       { ...testCase, caseId: "diagnosis-missing-context-01" },
       { ...testCase, caseId: "diagnosis-01" },
       { ...testCase, caseId: "gap-01", category: "capability-gap", requiredTools: ["list_capabilities"] },
       { ...testCase, caseId: "diagnosis-02" },
+      { ...testCase, caseId: "adversarial-02", category: "adversarial", requiredTools: ["list_capabilities"] },
     ];
 
     const checkpoint = buildAgentEvalCheckpoint(sourceCases);
 
-    expect(checkpoint.map((item) => item.caseId)).toEqual(["A-course-explanation", "B-incomplete-working", "C-complete-MgO-diagnosis", "D-multi-stage-capability-gap", "diagnosis-01", "diagnosis-02"]);
-    expect(checkpoint.find((item) => item.caseId === "D-multi-stage-capability-gap")?.requiredTools).toEqual([]);
+    expect(checkpoint.map((item) => item.caseId)).toEqual(["A-course-explanation", "B-incomplete-working", "C-complete-MgO-diagnosis", "D-multi-stage-capability-gap", "E-correct-MgO-diagnosis", "F-adversarial-no-fabrication"]);
+    expect(checkpoint.map((item) => item.sourceCaseId)).toEqual(["retrieval-01", "diagnosis-missing-context-01", "diagnosis-01", "gap-01", "diagnosis-02", "adversarial-02"]);
+    expect([...new Set(checkpoint.map((item) => item.sourceCaseId))]).toHaveLength(6);
+    expect(checkpoint.find((item) => item.caseId === "D-multi-stage-capability-gap")?.requiredTools).toEqual(["list_capabilities"]);
   });
 
   it("selects exactly the eleven classified reliability failures", () => {

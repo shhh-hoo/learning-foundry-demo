@@ -8,6 +8,14 @@ Product contract: `learning-foundry-docs@1e08d035b13fd3a51e5ef48710e93fed6e9833a
 
 Trainer integration: `standard-trainer-demo@8f6e96159dcef484e5a1796c8d6f2ae282ab5849`
 
+## Interpretation boundary added by Eval Contract Hardening
+
+This file is historical evidence for suite `1.2.0`. Its `18/18` result covers eighteen fixed cases only; it does not establish generalisation across paraphrases, Chinese or bilingual retrieval, different reactions, changed numbers or units, or near-neighbour distractors.
+
+The historical six-execution checkpoint also used only five unique source cases: `diagnosis-01` was executed twice, while the synthetic D case overwrote its source `requiredTools` and therefore failed to preserve the capability-inspection obligation. The final 18-case run did independently include `gap-01`, so its recorded result remains valid within the old bounded suite; only the checkpoint-independence claim was overstated.
+
+Suite `2.0.0` supersedes this evaluation contract with six independent checkpoint sources and 73 layered cases. It does not retroactively claim a live pass; new live results must be recorded separately.
+
 ## Delivery boundary
 
 The server-side corpus delivery policy is version `1.0.0`, approved by Shijia Hu for bounded `PRODUCT` and `AGENT_EVAL` delivery to DeepSeek. Its content hash is `8b3f8d46acf6ea52330d7b9397b5d33d74631f89d28e87e479e03fdfb830f22c`.
@@ -35,7 +43,7 @@ npm run agenteval:report              PASS — suite 1.2.0
 
 Corpus index `v0.1-6f7e2a2945ca` contains 373 official-syllabus chunks, 555 secondary-reference chunks, and six Teacher Note chunks. Both PDFs, the private index, and the generated public-safe export remain ignored and untracked. The public-safe export contains no private chunks.
 
-## Six-case checkpoint
+## Historical six-execution checkpoint
 
 Run: `agenteval-2026-07-16T10-54-00-593Z-fdc9dd0e`
 

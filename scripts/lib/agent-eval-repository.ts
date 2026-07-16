@@ -1,5 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { AGENT_EVAL_LAYERS, type AgentEvalLayer, type DiagnosisGeneralizationDimension, type RetrievalGeneralizationVariant } from "../../src/agent/agenteval-suite";
 import type { TokenUsage } from "../../src/agent/types";
 
 interface VersionedHash { readonly version: string; readonly contentHash: string }
@@ -11,7 +12,11 @@ export interface AgentEvalEligibility {
 }
 export interface PersistedAgentEvalCase {
   readonly caseId: string;
+  readonly sourceCaseId?: string;
   readonly category: string;
+  readonly suiteLayers?: readonly AgentEvalLayer[];
+  readonly retrievalVariant?: RetrievalGeneralizationVariant;
+  readonly diagnosisDimensions?: readonly DiagnosisGeneralizationDimension[];
   readonly runPurpose: "AGENT_EVAL";
   readonly agentTraceId?: string;
   readonly eligibility?: AgentEvalEligibility;
@@ -71,6 +76,7 @@ export interface AgentEvalReport {
   readonly diagnosisFidelity: number;
   readonly diagnosisFidelityMetric: AgentEvalMetricSummary;
   readonly sourceGroundingMetric: AgentEvalMetricSummary;
+  readonly layerMetrics: Readonly<Record<AgentEvalLayer, AgentEvalMetricSummary>>;
   readonly latencyMs: number;
   readonly tokenUsage: { readonly promptTokens: number; readonly completionTokens: number; readonly totalTokens: number };
   readonly estimatedCostUsd: number | null;
@@ -136,6 +142,14 @@ function metric(run: PersistedAgentEvalRun, check: string, eligibility: keyof Ag
   return { eligibleCases: relevant.length, passedCases, rate: relevant.length ? passedCases / relevant.length : emptyValue };
 }
 
+function metricByLayer(run: PersistedAgentEvalRun): Readonly<Record<AgentEvalLayer, AgentEvalMetricSummary>> {
+  return Object.fromEntries(AGENT_EVAL_LAYERS.map((layer) => {
+    const relevant = run.cases.filter((item) => item.suiteLayers?.includes(layer));
+    const passedCases = relevant.filter((item) => item.passed).length;
+    return [layer, { eligibleCases: relevant.length, passedCases, rate: relevant.length ? passedCases / relevant.length : 0 }];
+  })) as Record<AgentEvalLayer, AgentEvalMetricSummary>;
+}
+
 export function buildAgentEvalReport(run: PersistedAgentEvalRun): AgentEvalReport {
   const usage = run.cases.reduce((sum, item) => ({ promptTokens: sum.promptTokens + (item.tokenUsage?.promptTokens ?? 0), completionTokens: sum.completionTokens + (item.tokenUsage?.completionTokens ?? 0), totalTokens: sum.totalTokens + (item.tokenUsage?.totalTokens ?? 0) }), { promptTokens: 0, completionTokens: 0, totalTokens: 0 });
   const priced = run.cases.map((item) => item.estimatedCostUsd).filter((value): value is number => value !== null);
@@ -153,7 +167,7 @@ export function buildAgentEvalReport(run: PersistedAgentEvalRun): AgentEvalRepor
     passRate: run.cases.length ? run.cases.filter((item) => item.passed).length / run.cases.length : 0,
     requiredToolAccuracy: requiredToolMetric.rate, requiredToolMetric,
     forbiddenToolRate: 1 - forbiddenToolComplianceMetric.rate, forbiddenToolComplianceMetric,
-    diagnosisFidelity: diagnosisFidelityMetric.rate, diagnosisFidelityMetric, sourceGroundingMetric,
+    diagnosisFidelity: diagnosisFidelityMetric.rate, diagnosisFidelityMetric, sourceGroundingMetric, layerMetrics: metricByLayer(run),
     latencyMs: run.cases.reduce((sum, item) => sum + item.latencyMs, 0), tokenUsage: usage,
     estimatedCostUsd: unpricedCases === 0 ? knownEstimatedCostUsd : null,
     knownEstimatedCostUsd, pricedCases, unpricedCases, costCoverage: run.cases.length ? pricedCases / run.cases.length : 0,

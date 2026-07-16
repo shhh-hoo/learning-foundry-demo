@@ -47,12 +47,16 @@ npm test
 npm run check
 npm run build
 npm run agenteval:checkpoint
+npm run agenteval:contract
+npm run agenteval:generalization
+npm run agenteval:adversarial
+npm run agenteval:retrieval
 npm run agenteval:live
 npm run agenteval:report
 npm run agenteval:compare -- --baseline <evalRunId> --candidate <evalRunId>
 ```
 
-`agenteval:live` requires the real server-side DeepSeek configuration and returns non-zero if it is absent. Automated Tests validate the harness with controlled fixtures; they do not claim that a live AgentEval passed.
+`agenteval:live` requires the real server-side DeepSeek configuration and returns non-zero if it is absent. The full `2.0.0` contract contains 73 cases across overlapping smoke, contract, generalization, adversarial and retrieval layers. Automated Tests validate the harness with controlled fixtures; they do not claim that a live AgentEval passed.
 
 Product and AgentEval evidence have required `runPurpose` classification and separate physical stores. Diagnosis problem facts must be backed by exact quotes from the current user message before the Trainer API is called.
 
