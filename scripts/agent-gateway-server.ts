@@ -4,6 +4,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { createDeepSeekClient } from "../src/agent/deepseek-client.ts";
 import { createAgentGateway } from "../src/agent/gateway.ts";
+import { classifyAgentRoute } from "../src/agent/route-policy.ts";
 import { AGENT_PROMPT_VERSION, buildAgentSystemPrompt, runAgent } from "../src/agent/run-agent.ts";
 import { createAgentToolExecutor, type CapabilityRecord } from "../src/agent/tool-executor.ts";
 import { PurposeSeparatedAgentTraceRepository } from "./lib/agent-trace-repository.ts";
@@ -23,7 +24,6 @@ const capabilities = await readJson<{ readonly version: string; readonly capabil
 const toolConfig = await readJson<{ readonly version: string; readonly tools: readonly unknown[] }>("config/tools/tool-descriptions.json");
 const responsePolicy = await readText("config/agent/response-policy.json");
 const systemPrompt = `${await readText("config/agent/instructions.md")}\nResponse policy: ${responsePolicy}`;
-const observableSystemPrompt = buildAgentSystemPrompt(systemPrompt);
 const contentHash = (value: string) => createHash("sha256").update(value).digest("hex");
 const corpusReport = await inspectCorpus();
 let corpus: CorpusSearchService;
@@ -44,12 +44,14 @@ const gateway = createAgentGateway({
     const toolResults: { readonly name: string; readonly resultRef: string; readonly data: unknown }[] = [];
     const traceRepository = traceRepositories.forPurpose(request.runPurpose);
     const currentUserMessage = [...request.messages].reverse().find((message) => message.role === "user")?.content ?? "";
+    const initialRoute = classifyAgentRoute(request);
+    const observableSystemPrompt = buildAgentSystemPrompt(systemPrompt, initialRoute);
     const tools = createAgentToolExecutor({ capabilities: capabilities.capabilities, corpus, diagnosisUrl, runPurpose: request.runPurpose, conversationId: request.conversationId, conversationEvidenceHash: contentHash(currentUserMessage), currentUserMessage });
     const traceId = `agent-trace-${randomUUID()}`; const startedAt = new Date().toISOString();
-    await traceRepository.start({ traceId, request, provider: "deepseek", model, thinkingMode, prompt: { version: AGENT_PROMPT_VERSION, contentHash: contentHash(observableSystemPrompt) }, capabilityRegistry: { version: capabilities.version, contentHash: contentHash(JSON.stringify(capabilities)) }, toolDefinitions: { version: toolConfig.version, contentHash: contentHash(JSON.stringify(toolConfig)) }, startedAt });
+    await traceRepository.start({ traceId, request, initialRoute, provider: "deepseek", model, thinkingMode, prompt: { version: AGENT_PROMPT_VERSION, contentHash: contentHash(observableSystemPrompt) }, capabilityRegistry: { version: capabilities.version, contentHash: contentHash(JSON.stringify(capabilities)) }, toolDefinitions: { version: toolConfig.version, contentHash: contentHash(JSON.stringify(toolConfig)) }, startedAt });
     try {
-      const trace = await runAgent({ request, model, thinkingMode, systemPrompt, promptVersion: AGENT_PROMPT_VERSION, capabilityRegistryVersion: capabilities.version, toolDefinitions: toolConfig.tools, modelClient: client, tools, createId: () => traceId, onToolResult: (result) => toolResults.push(result), onModelResponse: (message, usage) => traceRepository.appendModelResponse(traceId, message, usage), onToolExecution: (execution) => traceRepository.appendToolExecution(traceId, execution) });
-      await traceRepository.complete(traceId, trace.finalResponse, trace.completedAt);
+      const trace = await runAgent({ request, initialRoute, model, thinkingMode, systemPrompt, promptVersion: AGENT_PROMPT_VERSION, capabilityRegistryVersion: capabilities.version, toolDefinitions: toolConfig.tools, modelClient: client, tools, createId: () => traceId, onToolResult: (result) => toolResults.push(result), onModelResponse: (message, usage) => traceRepository.appendModelResponse(traceId, message, usage), onToolExecution: (execution) => traceRepository.appendToolExecution(traceId, execution) });
+      await traceRepository.complete(traceId, trace.finalResponse, trace.completedAt, trace.route);
       return { trace, toolResults };
     } catch (error) {
       const code = error && typeof error === "object" && "code" in error && typeof error.code === "string" ? error.code : "AGENT_RUN_FAILED";
