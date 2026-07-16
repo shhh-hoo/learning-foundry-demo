@@ -1,5 +1,6 @@
 node_modules/
 dist/
+dist-corpus/
 coverage/
 *.tsbuildinfo
 .DS_Store
@@ -8,4 +9,5 @@ coverage/
 .env.*.local
 .agent-eval-results/
 .local-data/
+private-sources/
 demo-recording/frames/

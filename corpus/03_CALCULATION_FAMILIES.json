@@ -1,0 +1,866 @@
+{
+  "schemaVersion": "1.0.0",
+  "families": [
+    {
+      "id": "CORE-001",
+      "level": "AS",
+      "name": "Chemical formulae and balanced equations",
+      "syllabusRefs": [
+        "2.3.1",
+        "2.3.2"
+      ],
+      "route": "formula/equation interpretation → atom balance → coefficient validation",
+      "bookCoverage": "DIRECT",
+      "bookRef": "Ch.1, printed pp.1–18",
+      "trainerPriority": "P1",
+      "deliveryMode": "HYBRID",
+      "status": "PLANNED",
+      "notes": "Foundation for all stoichiometric calculations; include state symbols and ionic equations where relevant."
+    },
+    {
+      "id": "CORE-002",
+      "level": "AS",
+      "name": "Relative atomic mass from isotope abundance",
+      "syllabusRefs": [
+        "1.2",
+        "22.2.2"
+      ],
+      "route": "weighted abundance → weighted sum → divide by total abundance",
+      "bookCoverage": "DIRECT",
+      "bookRef": "Ch.2, printed pp.19–23",
+      "trainerPriority": "P1",
+      "deliveryMode": "DETERMINISTIC_COMPONENT",
+      "status": "PLANNED",
+      "notes": "Support percentage and relative-abundance forms."
+    },
+    {
+      "id": "CORE-003",
+      "level": "AS",
+      "name": "Relative formula mass and molar mass",
+      "syllabusRefs": [
+        "2.1",
+        "Mathematical requirements"
+      ],
+      "route": "parse formula → count atoms → sum Ar values",
+      "bookCoverage": "DIRECT",
+      "bookRef": "Ch.2, printed pp.24–25",
+      "trainerPriority": "P0",
+      "deliveryMode": "DETERMINISTIC_COMPONENT",
+      "status": "STARTED",
+      "notes": "Must distinguish atoms, molecules, formula units and hydrated salts."
+    },
+    {
+      "id": "CORE-004",
+      "level": "AS",
+      "name": "Mole, Avogadro constant and particle count",
+      "syllabusRefs": [
+        "2.2.1"
+      ],
+      "route": "identify entity → convert amount ↔ particles using L",
+      "bookCoverage": "DIRECT",
+      "bookRef": "Ch.2, printed pp.25–30",
+      "trainerPriority": "P1",
+      "deliveryMode": "DETERMINISTIC_COMPONENT",
+      "status": "PLANNED",
+      "notes": "Entity identity is part of the answer contract."
+    },
+    {
+      "id": "CORE-005",
+      "level": "AS",
+      "name": "Empirical formula",
+      "syllabusRefs": [
+        "2.3.3",
+        "2.3.5"
+      ],
+      "route": "mass/% → moles → divide by smallest → integer ratio",
+      "bookCoverage": "DIRECT",
+      "bookRef": "Ch.2, printed pp.31–32",
+      "trainerPriority": "P1",
+      "deliveryMode": "DETERMINISTIC_COMPONENT",
+      "status": "PLANNED",
+      "notes": "Include hydration and combustion variants later."
+    },
+    {
+      "id": "CORE-006",
+      "level": "AS",
+      "name": "Molecular formula",
+      "syllabusRefs": [
+        "2.3.3",
+        "2.3.5"
+      ],
+      "route": "empirical formula mass → molecular mass ratio → multiply subscripts",
+      "bookCoverage": "DIRECT",
+      "bookRef": "Ch.2, printed p.32",
+      "trainerPriority": "P1",
+      "deliveryMode": "DETERMINISTIC_COMPONENT",
+      "status": "PLANNED",
+      "notes": "Requires reliable Mr evidence."
+    },
+    {
+      "id": "STOICH-001",
+      "level": "AS",
+      "name": "Single-step reacting mass",
+      "syllabusRefs": [
+        "2.4.1(a)"
+      ],
+      "route": "given mass → amount → coefficient ratio → target amount → target mass",
+      "bookCoverage": "DIRECT",
+      "bookRef": "Ch.2, printed pp.33–35",
+      "trainerPriority": "P0",
+      "deliveryMode": "DETERMINISTIC_COMPONENT",
+      "status": "STARTED",
+      "notes": "Current MgO component is a smoke test for this family."
+    },
+    {
+      "id": "STOICH-002",
+      "level": "AS",
+      "name": "Multi-equation reaction chain",
+      "syllabusRefs": [
+        "2.4.1(a)",
+        "2.4.1(e)"
+      ],
+      "route": "identify stage graph → propagate mole ratios across equations → target",
+      "bookCoverage": "DIRECT",
+      "bookRef": "Ch.2, printed pp.34–35",
+      "trainerPriority": "P0",
+      "deliveryMode": "DETERMINISTIC_COMPONENT",
+      "status": "STARTED",
+      "notes": "Core product narrative; requires strategy selection, not a fixed one-step template."
+    },
+    {
+      "id": "STOICH-003",
+      "level": "AS",
+      "name": "Percentage composition and percentage purity",
+      "syllabusRefs": [
+        "2.4.1(a)",
+        "Practical quantitative analysis"
+      ],
+      "route": "measured pure amount → mass of target component → divide by sample mass × 100",
+      "bookCoverage": "PARTIAL",
+      "bookRef": "Ch.2 percentage composition; Ch.3 impure limestone example",
+      "trainerPriority": "P0",
+      "deliveryMode": "DETERMINISTIC_COMPONENT",
+      "status": "STARTED",
+      "notes": "Treat purity as a separate decision node from yield."
+    },
+    {
+      "id": "STOICH-004",
+      "level": "AS",
+      "name": "Percentage yield",
+      "syllabusRefs": [
+        "2.4.1(a)"
+      ],
+      "route": "limiting input → theoretical yield → actual/theoretical × 100",
+      "bookCoverage": "DIRECT",
+      "bookRef": "Ch.2, printed pp.35–38",
+      "trainerPriority": "P0",
+      "deliveryMode": "DETERMINISTIC_COMPONENT",
+      "status": "PLANNED",
+      "notes": "Must separate density conversion, limiting reagent and yield."
+    },
+    {
+      "id": "STOICH-005",
+      "level": "AS",
+      "name": "Limiting reagent",
+      "syllabusRefs": [
+        "2.4.1(d)"
+      ],
+      "route": "convert each reactant to amount → normalise by coefficient → choose minimum",
+      "bookCoverage": "DIRECT",
+      "bookRef": "Ch.2, worked example around printed pp.37–38",
+      "trainerPriority": "P0",
+      "deliveryMode": "DETERMINISTIC_COMPONENT",
+      "status": "STARTED",
+      "notes": "Do not infer limiting reagent from smaller mass or volume."
+    },
+    {
+      "id": "STOICH-006",
+      "level": "AS",
+      "name": "Excess reagent and amount remaining",
+      "syllabusRefs": [
+        "2.4.1(d)"
+      ],
+      "route": "find limiting reagent → calculate amount consumed → subtract from initial excess",
+      "bookCoverage": "PARTIAL",
+      "bookRef": "Ch.2 limiting-reagent examples",
+      "trainerPriority": "P1",
+      "deliveryMode": "DETERMINISTIC_COMPONENT",
+      "status": "PLANNED",
+      "notes": "Needs explicit consumed-vs-initial bookkeeping."
+    },
+    {
+      "id": "STOICH-007",
+      "level": "AS",
+      "name": "Deduce stoichiometric relationships",
+      "syllabusRefs": [
+        "2.4.1(e)"
+      ],
+      "route": "derive mole relationships from measured masses/volumes/concentrations",
+      "bookCoverage": "DIRECT",
+      "bookRef": "Chs.2–4",
+      "trainerPriority": "P1",
+      "deliveryMode": "HYBRID",
+      "status": "PLANNED",
+      "notes": "Often inverse problems; may require symbolic reasoning."
+    },
+    {
+      "id": "GAS-001",
+      "level": "AS",
+      "name": "Gas-volume stoichiometry",
+      "syllabusRefs": [
+        "2.4.1(b)"
+      ],
+      "route": "same T/P → coefficient ratio equals gas-volume ratio",
+      "bookCoverage": "DIRECT",
+      "bookRef": "Ch.3, printed pp.42–45",
+      "trainerPriority": "P1",
+      "deliveryMode": "DETERMINISTIC_COMPONENT",
+      "status": "PLANNED",
+      "notes": "Track physical state; liquid water is not part of a gas-volume ratio."
+    },
+    {
+      "id": "GAS-002",
+      "level": "AS",
+      "name": "Molar gas volume",
+      "syllabusRefs": [
+        "2.4.1(b)"
+      ],
+      "route": "volume ↔ amount using stated molar volume",
+      "bookCoverage": "DIRECT",
+      "bookRef": "Ch.3, printed pp.46–48",
+      "trainerPriority": "P0",
+      "deliveryMode": "DETERMINISTIC_COMPONENT",
+      "status": "STARTED",
+      "notes": "Never hard-code 24 dm³ mol⁻¹ when the question supplies another condition."
+    },
+    {
+      "id": "GAS-003",
+      "level": "AS",
+      "name": "Ideal gas equation",
+      "syllabusRefs": [
+        "4.1.3"
+      ],
+      "route": "normalise units → choose unknown → rearrange pV=nRT → evaluate",
+      "bookCoverage": "DIRECT",
+      "bookRef": "Ch.3, printed pp.48–51",
+      "trainerPriority": "P0",
+      "deliveryMode": "DETERMINISTIC_COMPONENT",
+      "status": "STARTED",
+      "notes": "Unit conversion is a first-class diagnostic node."
+    },
+    {
+      "id": "GAS-004",
+      "level": "AS",
+      "name": "Gas data to Mr or composition",
+      "syllabusRefs": [
+        "4.1.3",
+        "2.4.1(e)"
+      ],
+      "route": "pVT → amount → molar mass or formula",
+      "bookCoverage": "DIRECT",
+      "bookRef": "Ch.3, printed pp.49–54",
+      "trainerPriority": "P1",
+      "deliveryMode": "DETERMINISTIC_COMPONENT",
+      "status": "PLANNED",
+      "notes": "Can combine purity and gas collection."
+    },
+    {
+      "id": "SOL-001",
+      "level": "AS",
+      "name": "Mass concentration and amount concentration",
+      "syllabusRefs": [
+        "2.4.1(c)",
+        "Mathematical requirements"
+      ],
+      "route": "convert mass ↔ amount; divide/multiply by solution volume",
+      "bookCoverage": "DIRECT",
+      "bookRef": "Ch.4, printed pp.55–60",
+      "trainerPriority": "P0",
+      "deliveryMode": "DETERMINISTIC_COMPONENT",
+      "status": "STARTED",
+      "notes": "Volume conversion cm³ ↔ dm³ is a common first error."
+    },
+    {
+      "id": "SOL-002",
+      "level": "AS",
+      "name": "Solution stoichiometry",
+      "syllabusRefs": [
+        "2.4.1(c)"
+      ],
+      "route": "cV → amount → ratio → target amount/concentration/mass",
+      "bookCoverage": "DIRECT",
+      "bookRef": "Ch.4, printed pp.56–60",
+      "trainerPriority": "P0",
+      "deliveryMode": "DETERMINISTIC_COMPONENT",
+      "status": "STARTED",
+      "notes": "General substrate for titration."
+    },
+    {
+      "id": "TITR-001",
+      "level": "AS",
+      "name": "Acid–base titration calculations",
+      "syllabusRefs": [
+        "2.4.1(c)",
+        "Practical p.63"
+      ],
+      "route": "select concordant titre → mean → cV → ratio → unknown",
+      "bookCoverage": "DIRECT",
+      "bookRef": "Ch.4, printed pp.61–79",
+      "trainerPriority": "P0",
+      "deliveryMode": "DETERMINISTIC_COMPONENT",
+      "status": "STARTED",
+      "notes": "Separate practical data selection from stoichiometric calculation."
+    },
+    {
+      "id": "TITR-002",
+      "level": "AS/A",
+      "name": "Redox titration calculations",
+      "syllabusRefs": [
+        "Practical p.63",
+        "28.2.9",
+        "28.2.10"
+      ],
+      "route": "balanced redox equation → cV → electron/mole ratio → unknown",
+      "bookCoverage": "DIRECT",
+      "bookRef": "Ch.4 titration examples; Ch.1 redox equations",
+      "trainerPriority": "P1",
+      "deliveryMode": "DETERMINISTIC_COMPONENT",
+      "status": "PLANNED",
+      "notes": "Include manganate(VII)/Fe²⁺, manganate(VII)/oxalate and Cu²⁺/I⁻."
+    },
+    {
+      "id": "TITR-003",
+      "level": "AS",
+      "name": "Iodine–thiosulfate titration",
+      "syllabusRefs": [
+        "Practical p.63"
+      ],
+      "route": "identify iodine-generating stage → thiosulfate ratio → back-calculate analyte",
+      "bookCoverage": "PARTIAL",
+      "bookRef": "Ch.4 titration chapter",
+      "trainerPriority": "P1",
+      "deliveryMode": "DETERMINISTIC_COMPONENT",
+      "status": "PLANNED",
+      "notes": "Usually multi-stage and should exercise route planning."
+    },
+    {
+      "id": "THERMO-001",
+      "level": "AS",
+      "name": "Calorimetry q=mcΔT and molar ΔH",
+      "syllabusRefs": [
+        "5.1.7"
+      ],
+      "route": "temperature change → q → divide by reacting amount → sign/units",
+      "bookCoverage": "DIRECT",
+      "bookRef": "Ch.5, printed pp.84–90",
+      "trainerPriority": "P1",
+      "deliveryMode": "DETERMINISTIC_COMPONENT",
+      "status": "PLANNED",
+      "notes": "Heat-loss and limiting-amount assumptions need explicit evidence."
+    },
+    {
+      "id": "THERMO-002",
+      "level": "AS",
+      "name": "Bond-energy enthalpy",
+      "syllabusRefs": [
+        "5.1.5",
+        "5.1.6"
+      ],
+      "route": "sum bonds broken − sum bonds formed",
+      "bookCoverage": "DIRECT",
+      "bookRef": "Ch.5, printed pp.100–111",
+      "trainerPriority": "P1",
+      "deliveryMode": "DETERMINISTIC_COMPONENT",
+      "status": "PLANNED",
+      "notes": "Count bonds from structures; distinguish exact and average values."
+    },
+    {
+      "id": "THERMO-003",
+      "level": "AS",
+      "name": "Hess-law cycles",
+      "syllabusRefs": [
+        "5.2.1",
+        "5.2.2"
+      ],
+      "route": "construct cycle → orient equations → algebraic sum",
+      "bookCoverage": "DIRECT",
+      "bookRef": "Ch.5, printed pp.90–112",
+      "trainerPriority": "P1",
+      "deliveryMode": "HYBRID",
+      "status": "PLANNED",
+      "notes": "Multiple valid cycle representations should be accepted."
+    },
+    {
+      "id": "THERMO-004",
+      "level": "A",
+      "name": "Born–Haber cycles",
+      "syllabusRefs": [
+        "23.1.3",
+        "23.1.4"
+      ],
+      "route": "atomisation/ionisation/electron affinity/lattice cycle → solve unknown",
+      "bookCoverage": "DIRECT",
+      "bookRef": "Ch.5, printed pp.112–119",
+      "trainerPriority": "P2",
+      "deliveryMode": "HYBRID",
+      "status": "PLANNED",
+      "notes": "Must enforce the syllabus ion-charge limits."
+    },
+    {
+      "id": "THERMO-005",
+      "level": "A",
+      "name": "Hydration and solution enthalpy cycles",
+      "syllabusRefs": [
+        "23.2.2",
+        "23.2.3"
+      ],
+      "route": "lattice + hydration ↔ solution cycle",
+      "bookCoverage": "PARTIAL",
+      "bookRef": "Ch.5 exercises and lattice/solution discussion",
+      "trainerPriority": "P2",
+      "deliveryMode": "HYBRID",
+      "status": "PLANNED",
+      "notes": "Check sign convention carefully."
+    },
+    {
+      "id": "THERMO-006",
+      "level": "A",
+      "name": "Entropy change",
+      "syllabusRefs": [
+        "23.3.3"
+      ],
+      "route": "ΣS°products − ΣS°reactants",
+      "bookCoverage": "DIRECT",
+      "bookRef": "Ch.11, printed pp.259–265",
+      "trainerPriority": "P2",
+      "deliveryMode": "DETERMINISTIC_COMPONENT",
+      "status": "PLANNED",
+      "notes": "Keep J K⁻¹ mol⁻¹ until conversion for Gibbs."
+    },
+    {
+      "id": "THERMO-007",
+      "level": "A",
+      "name": "Gibbs free energy and feasibility",
+      "syllabusRefs": [
+        "23.4.1",
+        "23.4.2",
+        "23.4.3",
+        "23.4.4"
+      ],
+      "route": "unit alignment → ΔG=ΔH−TΔS → sign/threshold temperature",
+      "bookCoverage": "DIRECT",
+      "bookRef": "Ch.11, printed pp.258–273",
+      "trainerPriority": "P2",
+      "deliveryMode": "DETERMINISTIC_COMPONENT",
+      "status": "PLANNED",
+      "notes": "Separate standard feasibility from kinetic rate."
+    },
+    {
+      "id": "EQUIL-001",
+      "level": "AS",
+      "name": "Kc and Kp expressions/calculations",
+      "syllabusRefs": [
+        "7.1.4",
+        "7.1.5",
+        "7.1.6",
+        "7.1.7",
+        "7.1.8"
+      ],
+      "route": "derive expression → equilibrium quantities → substitute → units",
+      "bookCoverage": "DIRECT",
+      "bookRef": "Ch.7, printed pp.152–181",
+      "trainerPriority": "P2",
+      "deliveryMode": "DETERMINISTIC_COMPONENT",
+      "status": "PLANNED",
+      "notes": "No quadratic equations required by syllabus."
+    },
+    {
+      "id": "ACID-001",
+      "level": "A",
+      "name": "Strong acid/base pH",
+      "syllabusRefs": [
+        "25.1.3",
+        "25.1.4(a)",
+        "25.1.4(b)"
+      ],
+      "route": "concentration → [H⁺]/[OH⁻] → pH/pOH as required",
+      "bookCoverage": "DIRECT",
+      "bookRef": "Ch.8, printed pp.183–195",
+      "trainerPriority": "P2",
+      "deliveryMode": "DETERMINISTIC_COMPONENT",
+      "status": "PLANNED",
+      "notes": "Include dilution and mixtures only when evidence is complete."
+    },
+    {
+      "id": "ACID-002",
+      "level": "A",
+      "name": "Weak acid pH and Ka",
+      "syllabusRefs": [
+        "25.1.3",
+        "25.1.4(c)"
+      ],
+      "route": "Ka expression → justified approximation/solve → pH",
+      "bookCoverage": "DIRECT",
+      "bookRef": "Ch.8, printed pp.195–206",
+      "trainerPriority": "P2",
+      "deliveryMode": "DETERMINISTIC_COMPONENT",
+      "status": "PLANNED",
+      "notes": "Schema should record approximation assumptions."
+    },
+    {
+      "id": "ACID-003",
+      "level": "A",
+      "name": "Buffer pH",
+      "syllabusRefs": [
+        "25.1.5",
+        "25.1.6"
+      ],
+      "route": "identify conjugate pair → amounts after reaction → Ka ratio → pH",
+      "bookCoverage": "DIRECT",
+      "bookRef": "Ch.8, printed pp.206–216",
+      "trainerPriority": "P2",
+      "deliveryMode": "DETERMINISTIC_COMPONENT",
+      "status": "PLANNED",
+      "notes": "Support buffers formed by partial neutralisation."
+    },
+    {
+      "id": "ACID-004",
+      "level": "A",
+      "name": "Ksp and common-ion calculations",
+      "syllabusRefs": [
+        "25.1.7",
+        "25.1.8",
+        "25.1.9",
+        "25.1.10"
+      ],
+      "route": "write Ksp → stoichiometric concentration relationship → solve/compare",
+      "bookCoverage": "DIRECT",
+      "bookRef": "Ch.9, printed pp.220–229",
+      "trainerPriority": "P2",
+      "deliveryMode": "DETERMINISTIC_COMPONENT",
+      "status": "PLANNED",
+      "notes": "Distinguish solubility from concentration of each ion."
+    },
+    {
+      "id": "EQUIL-002",
+      "level": "A",
+      "name": "Partition coefficient",
+      "syllabusRefs": [
+        "25.2.1",
+        "25.2.2",
+        "25.2.3"
+      ],
+      "route": "equilibrium concentration ratio → mass balance → extraction result",
+      "bookCoverage": "DIRECT",
+      "bookRef": "Ch.9, printed pp.229–235",
+      "trainerPriority": "P3",
+      "deliveryMode": "DETERMINISTIC_COMPONENT",
+      "status": "PLANNED",
+      "notes": "Only same physical state in both solvents is required."
+    },
+    {
+      "id": "KIN-001",
+      "level": "AS",
+      "name": "Rate from data or graph",
+      "syllabusRefs": [
+        "8.1.3",
+        "Mathematical requirements"
+      ],
+      "route": "identify variable → Δquantity/Δtime or tangent gradient",
+      "bookCoverage": "DIRECT",
+      "bookRef": "Ch.6, printed pp.123–149",
+      "trainerPriority": "P2",
+      "deliveryMode": "HYBRID",
+      "status": "PLANNED",
+      "notes": "Graph reading provenance is essential."
+    },
+    {
+      "id": "KIN-002",
+      "level": "A",
+      "name": "Orders and rate equations",
+      "syllabusRefs": [
+        "26.1.2",
+        "26.1.5"
+      ],
+      "route": "compare experiments/graphs → deduce orders → construct rate equation",
+      "bookCoverage": "DIRECT",
+      "bookRef": "Ch.6, printed pp.123–149",
+      "trainerPriority": "P2",
+      "deliveryMode": "HYBRID",
+      "status": "PLANNED",
+      "notes": "Accept initial-rate and half-life methods."
+    },
+    {
+      "id": "KIN-003",
+      "level": "A",
+      "name": "Rate constant and first-order half-life",
+      "syllabusRefs": [
+        "26.1.3",
+        "26.1.4"
+      ],
+      "route": "rate equation or k=0.693/t½ → calculate k and units",
+      "bookCoverage": "DIRECT",
+      "bookRef": "Ch.6, printed pp.127–149",
+      "trainerPriority": "P2",
+      "deliveryMode": "DETERMINISTIC_COMPONENT",
+      "status": "PLANNED",
+      "notes": "Dimensional consistency is part of validation."
+    },
+    {
+      "id": "ELEC-001",
+      "level": "A",
+      "name": "Electrolysis: Q=It and Faraday calculations",
+      "syllabusRefs": [
+        "24.1.2",
+        "24.1.3"
+      ],
+      "route": "Q=It → mol e⁻=Q/F → electron ratio → mass/volume",
+      "bookCoverage": "ABSENT",
+      "bookRef": "No dedicated chapter",
+      "trainerPriority": "P2",
+      "deliveryMode": "DETERMINISTIC_COMPONENT",
+      "status": "GAP",
+      "notes": "Requires original school-authored note and cases."
+    },
+    {
+      "id": "ELEC-002",
+      "level": "A",
+      "name": "Standard cell potential",
+      "syllabusRefs": [
+        "24.2.4",
+        "24.2.5",
+        "24.2.6",
+        "24.2.7"
+      ],
+      "route": "select half-cells → E°cathode−E°anode → direction/feasibility",
+      "bookCoverage": "DIRECT",
+      "bookRef": "Ch.10, printed pp.241–256",
+      "trainerPriority": "P2",
+      "deliveryMode": "HYBRID",
+      "status": "PLANNED",
+      "notes": "Equation construction and sign convention must be separate checks."
+    },
+    {
+      "id": "ELEC-003",
+      "level": "A",
+      "name": "Nernst equation",
+      "syllabusRefs": [
+        "24.2.8",
+        "24.2.9"
+      ],
+      "route": "identify oxidised/reduced concentrations → z → substitute in Nernst equation",
+      "bookCoverage": "ABSENT",
+      "bookRef": "No clear dedicated coverage",
+      "trainerPriority": "P2",
+      "deliveryMode": "DETERMINISTIC_COMPONENT",
+      "status": "GAP",
+      "notes": "Current-syllabus supplement required."
+    },
+    {
+      "id": "ELEC-004",
+      "level": "A",
+      "name": "ΔG° = −nE°cellF",
+      "syllabusRefs": [
+        "24.2.10"
+      ],
+      "route": "balanced redox electrons → E°cell → ΔG° with units/sign",
+      "bookCoverage": "ABSENT",
+      "bookRef": "No clear dedicated coverage",
+      "trainerPriority": "P2",
+      "deliveryMode": "DETERMINISTIC_COMPONENT",
+      "status": "GAP",
+      "notes": "Current-syllabus supplement required."
+    },
+    {
+      "id": "TRANS-001",
+      "level": "A",
+      "name": "Transition-metal redox stoichiometry",
+      "syllabusRefs": [
+        "28.2.9",
+        "28.2.10"
+      ],
+      "route": "construct/use redox equation → amount ratio → target",
+      "bookCoverage": "PARTIAL",
+      "bookRef": "Ch.1 redox; Ch.4 titration",
+      "trainerPriority": "P2",
+      "deliveryMode": "DETERMINISTIC_COMPONENT",
+      "status": "PLANNED",
+      "notes": "Use current 9701 systems as governed cases."
+    },
+    {
+      "id": "TRANS-002",
+      "level": "A",
+      "name": "Stability constant Kstab",
+      "syllabusRefs": [
+        "28.5.1",
+        "28.5.2",
+        "28.5.3"
+      ],
+      "route": "write formation expression → substitute concentrations → solve",
+      "bookCoverage": "ABSENT",
+      "bookRef": "No dedicated coverage",
+      "trainerPriority": "P3",
+      "deliveryMode": "DETERMINISTIC_COMPONENT",
+      "status": "GAP",
+      "notes": "Current-syllabus supplement required."
+    },
+    {
+      "id": "ANALYT-001",
+      "level": "AS",
+      "name": "Mass-spectrum isotope calculations",
+      "syllabusRefs": [
+        "22.2.1",
+        "22.2.2"
+      ],
+      "route": "m/e and abundance → isotope identification → weighted Ar",
+      "bookCoverage": "DIRECT",
+      "bookRef": "Ch.2, printed pp.19–23",
+      "trainerPriority": "P2",
+      "deliveryMode": "HYBRID",
+      "status": "PLANNED",
+      "notes": "Charts/images need structured evidence extraction."
+    },
+    {
+      "id": "ANALYT-002",
+      "level": "AS",
+      "name": "[M+1]+ carbon-count calculation",
+      "syllabusRefs": [
+        "22.2.5"
+      ],
+      "route": "100×abundance(M+1)/(1.1×abundance(M))",
+      "bookCoverage": "PARTIAL",
+      "bookRef": "Mass spectrometry chapter does not clearly target current formula",
+      "trainerPriority": "P2",
+      "deliveryMode": "DETERMINISTIC_COMPONENT",
+      "status": "GAP",
+      "notes": "Add current-syllabus note and cases."
+    },
+    {
+      "id": "ANALYT-003",
+      "level": "A",
+      "name": "Chromatogram percentage composition",
+      "syllabusRefs": [
+        "37.2.2"
+      ],
+      "route": "peak area/total area × 100",
+      "bookCoverage": "ABSENT",
+      "bookRef": "No dedicated chromatography chapter",
+      "trainerPriority": "P3",
+      "deliveryMode": "DETERMINISTIC_COMPONENT",
+      "status": "GAP",
+      "notes": "Image/graph extraction may be needed."
+    },
+    {
+      "id": "PRACT-001",
+      "level": "AS/A",
+      "name": "Units, significant figures and rounding",
+      "syllabusRefs": [
+        "Subject content p.15",
+        "Mathematical requirements pp.75–76"
+      ],
+      "route": "track source precision → unit consistency → justified rounding",
+      "bookCoverage": "DIRECT",
+      "bookRef": "Embedded throughout",
+      "trainerPriority": "P0",
+      "deliveryMode": "CROSS_CUTTING_VALIDATOR",
+      "status": "STARTED",
+      "notes": "Must be reusable across every calculation component."
+    },
+    {
+      "id": "PRACT-002",
+      "level": "AS/A",
+      "name": "Uncertainty and percentage error",
+      "syllabusRefs": [
+        "Practical pp.62–63",
+        "Paper 5 p.73"
+      ],
+      "route": "instrument resolution → absolute uncertainty → propagated/percentage error",
+      "bookCoverage": "PARTIAL",
+      "bookRef": "Scattered practical discussion",
+      "trainerPriority": "P1",
+      "deliveryMode": "HYBRID",
+      "status": "GAP",
+      "notes": "Needs 9701-specific teacher notes."
+    },
+    {
+      "id": "PRACT-003",
+      "level": "AS/A",
+      "name": "Concordant titres and mean selection",
+      "syllabusRefs": [
+        "Practical pp.60, 63"
+      ],
+      "route": "exclude rough/anomalous → identify concordant set → mean",
+      "bookCoverage": "DIRECT",
+      "bookRef": "Ch.4 titration chapter",
+      "trainerPriority": "P0",
+      "deliveryMode": "DETERMINISTIC_COMPONENT",
+      "status": "STARTED",
+      "notes": "Selection evidence should be explicit in trace."
+    },
+    {
+      "id": "PRACT-004",
+      "level": "AS/A",
+      "name": "Graph gradient, intercept, tangent and best fit",
+      "syllabusRefs": [
+        "Practical pp.61, 73",
+        "Mathematical requirements pp.75–76"
+      ],
+      "route": "choose axes/scale → fit → select points → calculate/interpret",
+      "bookCoverage": "PARTIAL",
+      "bookRef": "Kinetics and practical examples",
+      "trainerPriority": "P1",
+      "deliveryMode": "HYBRID",
+      "status": "GAP",
+      "notes": "Requires image-aware evidence or structured graph data."
+    },
+    {
+      "id": "PRACT-005",
+      "level": "AS/A",
+      "name": "Gravimetric composition and hydration",
+      "syllabusRefs": [
+        "Practical p.63",
+        "2.3.4",
+        "2.3.5"
+      ],
+      "route": "mass change → amount lost/remaining → ratio/formula/purity",
+      "bookCoverage": "DIRECT",
+      "bookRef": "Ch.2 hydration and formula examples",
+      "trainerPriority": "P1",
+      "deliveryMode": "DETERMINISTIC_COMPONENT",
+      "status": "PLANNED",
+      "notes": "Heating to constant mass is part of practical evidence."
+    },
+    {
+      "id": "PRACT-006",
+      "level": "AS/A",
+      "name": "Thermometric experimental calculations",
+      "syllabusRefs": [
+        "Practical p.63",
+        "5.1.7"
+      ],
+      "route": "select ΔT → q → amount → ΔH → evaluate loss",
+      "bookCoverage": "DIRECT",
+      "bookRef": "Ch.5, printed pp.84–90",
+      "trainerPriority": "P1",
+      "deliveryMode": "HYBRID",
+      "status": "PLANNED",
+      "notes": "Includes data quality and evaluation."
+    },
+    {
+      "id": "PRACT-007",
+      "level": "AS/A",
+      "name": "Gas-collection composition/purity",
+      "syllabusRefs": [
+        "Practical p.63",
+        "2.4.1(b)"
+      ],
+      "route": "gas measurement → amount → stoichiometry → composition/purity",
+      "bookCoverage": "DIRECT",
+      "bookRef": "Ch.3, impure limestone and gas examples",
+      "trainerPriority": "P0",
+      "deliveryMode": "DETERMINISTIC_COMPONENT",
+      "status": "STARTED",
+      "notes": "Strong pilot family for Mg + acid / H₂ purity cases."
+    }
+  ]
+}

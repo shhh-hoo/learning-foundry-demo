@@ -1,0 +1,51 @@
+{
+  "schemaVersion": "1.0.0",
+  "suiteId": "9701-route-policy-v0.1",
+  "cases": [
+    {
+      "caseId": "ROUTE-EXPLANATION-001",
+      "input": "Why do coefficients in a balanced equation give mole ratios?",
+      "expectedRoute": "COURSE_EXPLANATION",
+      "requiredTools": [
+        "search_learning_resources"
+      ],
+      "requiredFinalStatus": "ANSWERED",
+      "requiredSourceRefs": [
+        "TN-001-COEFFICIENTS-TO-MOLE-RATIOS"
+      ]
+    },
+    {
+      "caseId": "ROUTE-INCOMPLETE-001",
+      "input": "4.80/24.0=0.200; then ×0.5. Where is my first mistake?",
+      "expectedRoute": "LEARNER_DIAGNOSIS_INCOMPLETE",
+      "forbiddenTools": [
+        "run_learner_diagnosis"
+      ],
+      "requiredFinalStatus": "NEEDS_MORE_EVIDENCE"
+    },
+    {
+      "caseId": "ROUTE-DIAGNOSIS-001",
+      "inputRef": "CASE-STOICH-001",
+      "expectedRoute": "LEARNER_DIAGNOSIS_COMPLETE",
+      "requiredTools": [
+        "list_capabilities",
+        "get_capability",
+        "run_learner_diagnosis"
+      ],
+      "requiredFinalStatus": "ANSWERED",
+      "requiredDiagnosisFailureCode": "WRONG_STOICHIOMETRIC_RATIO"
+    },
+    {
+      "caseId": "ROUTE-GAP-001",
+      "inputRef": "CASE-MULTISTAGE-001",
+      "expectedRoute": "LEARNER_DIAGNOSIS_INCOMPLETE",
+      "requiredTools": [
+        "list_capabilities"
+      ],
+      "forbiddenTools": [
+        "run_learner_diagnosis"
+      ],
+      "requiredFinalStatus": "NEEDS_MORE_EVIDENCE"
+    }
+  ]
+}

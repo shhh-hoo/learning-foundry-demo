@@ -1,0 +1,98 @@
+{
+  "caseId": "CASE-LIMITING-001",
+  "title": "Limiting reagent from two reactant masses",
+  "distributionScope": "PUBLIC_ORIGINAL",
+  "syllabusOutcomeIds": [
+    "2.4.1(d)"
+  ],
+  "calculationFamilyIds": [
+    "STOICH-005",
+    "STOICH-001"
+  ],
+  "problemPrompt": "Aluminium reacts with chlorine: 2Al + 3Cl2 → 2AlCl3. A mixture contains 5.40 g Al and 14.2 g Cl2. Use Ar(Al)=27.0 and Mr(Cl2)=71.0. Identify the limiting reagent and calculate the amount of AlCl3 formed.",
+  "requiredEvidence": {
+    "equations": [
+      "2Al + 3Cl2 → 2AlCl3"
+    ],
+    "givenValues": [
+      {
+        "label": "mass of Al",
+        "value": 5.4,
+        "unit": "g"
+      },
+      {
+        "label": "mass of Cl2",
+        "value": 14.2,
+        "unit": "g"
+      },
+      {
+        "label": "Ar(Al)",
+        "value": 27.0,
+        "unit": ""
+      },
+      {
+        "label": "Mr(Cl2)",
+        "value": 71.0,
+        "unit": ""
+      }
+    ],
+    "targetQuantity": "limiting reagent and amount of AlCl3",
+    "answerRequirement": "state limiting reagent and amount in mol"
+  },
+  "canonicalStrategy": {
+    "strategyId": "LIMITING_REAGENT_NORMALISED_AMOUNT",
+    "steps": [
+      {
+        "id": "n-al",
+        "expression": "5.40/27.0",
+        "result": 0.2,
+        "unit": "mol"
+      },
+      {
+        "id": "n-cl2",
+        "expression": "14.2/71.0",
+        "result": 0.2,
+        "unit": "mol"
+      },
+      {
+        "id": "batches-al",
+        "expression": "0.200/2",
+        "result": 0.1,
+        "unit": "reaction batches"
+      },
+      {
+        "id": "batches-cl2",
+        "expression": "0.200/3",
+        "result": 0.0666667,
+        "unit": "reaction batches"
+      },
+      {
+        "id": "n-alcl3",
+        "expression": "0.0666667×2",
+        "result": 0.133333,
+        "unit": "mol"
+      }
+    ]
+  },
+  "validAlternativeStrategies": [],
+  "expectedAnswer": {
+    "value": 0.133,
+    "unit": "mol AlCl3",
+    "significantFigures": 3
+  },
+  "failureTaxonomy": [
+    {
+      "failureCode": "LIMITING_REAGENT_FROM_RAW_MASS",
+      "firstPedagogicalIssue": "STRATEGY",
+      "supportHint": "Compare moles divided by coefficients, not raw masses."
+    }
+  ],
+  "sourceRefs": [
+    "TN-003-LIMITING-REAGENT"
+  ],
+  "teacherReview": {
+    "reviewer": "unassigned",
+    "status": "DRAFT",
+    "notes": ""
+  }
+}

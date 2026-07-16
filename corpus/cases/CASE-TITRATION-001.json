@@ -1,0 +1,99 @@
+{
+  "caseId": "CASE-TITRATION-001",
+  "title": "Acid–base titration concentration",
+  "distributionScope": "PUBLIC_ORIGINAL",
+  "syllabusOutcomeIds": [
+    "2.4.1(c)",
+    "PRACTICAL-TITRATION"
+  ],
+  "calculationFamilyIds": [
+    "TITR-001",
+    "PRACT-003",
+    "SOL-002"
+  ],
+  "problemPrompt": "25.0 cm3 of sodium hydroxide solution is titrated with 0.100 mol dm−3 sulfuric acid. Concordant titres are 20.10 cm3 and 20.20 cm3. H2SO4 + 2NaOH → Na2SO4 + 2H2O. Calculate the concentration of NaOH.",
+  "requiredEvidence": {
+    "equations": [
+      "H2SO4 + 2NaOH → Na2SO4 + 2H2O"
+    ],
+    "givenValues": [
+      {
+        "label": "NaOH aliquot",
+        "value": 25.0,
+        "unit": "cm3"
+      },
+      {
+        "label": "H2SO4 concentration",
+        "value": 0.1,
+        "unit": "mol dm-3"
+      },
+      {
+        "label": "titre 1",
+        "value": 20.1,
+        "unit": "cm3"
+      },
+      {
+        "label": "titre 2",
+        "value": 20.2,
+        "unit": "cm3"
+      }
+    ],
+    "targetQuantity": "concentration of NaOH",
+    "answerRequirement": "mol dm-3 to 3 significant figures"
+  },
+  "canonicalStrategy": {
+    "strategyId": "TITRE_MEAN_CV_RATIO_C",
+    "steps": [
+      {
+        "id": "mean-titre",
+        "expression": "(20.10+20.20)/2",
+        "result": 20.15,
+        "unit": "cm3"
+      },
+      {
+        "id": "n-h2so4",
+        "expression": "0.100×20.15/1000",
+        "result": 0.002015,
+        "unit": "mol"
+      },
+      {
+        "id": "n-naoh",
+        "expression": "0.002015×2",
+        "result": 0.00403,
+        "unit": "mol"
+      },
+      {
+        "id": "c-naoh",
+        "expression": "0.004030/(25.0/1000)",
+        "result": 0.1612,
+        "unit": "mol dm-3"
+      }
+    ]
+  },
+  "validAlternativeStrategies": [],
+  "expectedAnswer": {
+    "value": 0.161,
+    "unit": "mol dm-3",
+    "significantFigures": 3
+  },
+  "failureTaxonomy": [
+    {
+      "failureCode": "CM3_USED_AS_DM3",
+      "firstPedagogicalIssue": "UNIT",
+      "supportHint": "Convert both measured volumes to dm3 when using n=cV."
+    },
+    {
+      "failureCode": "TITRATION_RATIO_REVERSED",
+      "firstPedagogicalIssue": "FORMULA",
+      "supportHint": "One mole of sulfuric acid reacts with two moles of sodium hydroxide."
+    }
+  ],
+  "sourceRefs": [
+    "TN-005-TITRATION-CALCULATION-ROUTE"
+  ],
+  "teacherReview": {
+    "reviewer": "unassigned",
+    "status": "DRAFT",
+    "notes": ""
+  }
+}

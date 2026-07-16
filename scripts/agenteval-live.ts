@@ -30,7 +30,19 @@ try {
   const startedAt = new Date().toISOString();
   const evalRunId = `agenteval-${startedAt.replace(/[:.]/g, "-")}-${randomUUID().slice(0, 8)}`;
   const caseFile = await readFile(new URL("../agent-eval/cases.jsonl", import.meta.url), "utf8");
-  const cases = caseFile.trim().split(/\r?\n/).map((line) => JSON.parse(line) as AgentEvalCase);
+  const fullCases = caseFile.trim().split(/\r?\n/).map((line) => JSON.parse(line) as AgentEvalCase);
+  const byId = new Map(fullCases.map((testCase) => [testCase.caseId, testCase]));
+  const checkpointPlan = [
+    ["A-course-explanation", "retrieval-01"],
+    ["B-incomplete-working", "diagnosis-missing-context-01"],
+    ["C-complete-MgO-diagnosis", "diagnosis-01"],
+    ["D-multi-stage-capability-gap", "gap-01"],
+    ["diagnosis-01", "diagnosis-01"],
+    ["diagnosis-02", "diagnosis-02"],
+  ] as const;
+  const cases = process.env.AGENT_EVAL_CHECKPOINT === "1"
+    ? checkpointPlan.map(([checkpointId, sourceCaseId]) => ({ ...byId.get(sourceCaseId)!, caseId: checkpointId }))
+    : fullCases;
   const pricing = JSON.parse(await readFile(new URL("../agent-eval/pricing.json", import.meta.url), "utf8")) as { perMillionTokens: Readonly<Record<string, Price>> };
   const price = pricing.perMillionTokens[health.model];
   const instructions = await readFile(new URL("../config/agent/instructions.md", import.meta.url), "utf8");
@@ -40,7 +52,7 @@ try {
   const toolText = await readFile(new URL("../config/tools/tool-descriptions.json", import.meta.url), "utf8");
   const tools = JSON.parse(toolText) as { version: string };
   const running: PersistedAgentEvalRun = {
-    schemaVersion: "1.0.0", evalRunId, runPurpose: "AGENT_EVAL", status: "RUNNING", totalPlannedCases: cases.length, suiteVersion: "1.0.0", caseFileHash: hash(caseFile),
+    schemaVersion: "1.0.0", evalRunId, runPurpose: "AGENT_EVAL", status: "RUNNING", totalPlannedCases: cases.length, suiteVersion: "1.0.0", caseFileHash: hash(`${caseFile}\n${cases.map((item) => item.caseId).join(",")}`),
     provider: health.provider ?? "deepseek", model: health.model, thinkingMode: health.thinkingMode ?? "unknown",
     prompt: { version: AGENT_PROMPT_VERSION, contentHash: hash(buildAgentSystemPrompt(`${instructions}\nResponse policy: ${responsePolicy}`)) }, capabilityRegistry: { version: capability.version, contentHash: hash(capabilityText) }, toolDefinitions: { version: tools.version, contentHash: hash(toolText) },
     startedAt, cases: [],

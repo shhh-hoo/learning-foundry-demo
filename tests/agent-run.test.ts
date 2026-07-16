@@ -3,7 +3,7 @@ import { runAgent, AgentRunError, type AgentToolExecutor } from "../src/agent/ru
 import type { AgentModelClient, ModelCallResult } from "../src/agent/deepseek-client";
 
 const TEST_FIXTURE = "TEST_FIXTURE" as const;
-const request = { conversationId: "test-conversation", inputOrigin: "PRESET_INPUT" as const, runPurpose: "PRODUCT" as const, messages: [{ role: "user" as const, content: "Where is my first mistake?" }] };
+const request = { conversationId: "test-conversation", inputOrigin: "PRESET_INPUT" as const, runPurpose: "PRODUCT" as const, messages: [{ role: "user" as const, content: "Explain why coefficients give mole ratios." }] };
 const base = { request, model: "configured-test-model", thinkingMode: "disabled" as const, systemPrompt: "Return json grounded in tools.", promptVersion: "1.0.0", capabilityRegistryVersion: "1.0.0", toolDefinitions: [] };
 
 function client(results: readonly ModelCallResult[]): AgentModelClient {
@@ -16,9 +16,9 @@ describe("real agent orchestration contract", () => {
     expect(TEST_FIXTURE).toBe("TEST_FIXTURE");
     const modelClient = client([
       { message: { role: "assistant", content: null, tool_calls: [{ id: "call-1", type: "function", function: { name: "search_learning_resources", arguments: '{"query":"coefficients"}' } }] }, usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 } },
-      { message: { role: "assistant", content: JSON.stringify({ status: "ANSWERED", learnerMessage: "Coefficients give relative mole amounts.", sourceRefs: ["CAIE-SOURCE-1"] }) }, usage: { promptTokens: 15, completionTokens: 8, totalTokens: 23 } },
+      { message: { role: "assistant", content: JSON.stringify({ status: "ANSWERED", learnerMessage: "Coefficients give relative mole amounts.", sourceRefs: ["CAIE-SOURCE-1"], evidenceRefs: ["search-result-1"] }) }, usage: { promptTokens: 15, completionTokens: 8, totalTokens: 23 } },
     ]);
-    const tools: AgentToolExecutor = { execute: async () => ({ resultRef: "search-result-1", claimRefs: ["CAIE-SOURCE-1"], data: [{ sourceId: "CAIE-SOURCE-1" }] }) };
+    const tools: AgentToolExecutor = { execute: async () => ({ resultRef: "search-result-1", sourceRefs: ["CAIE-SOURCE-1"], evidenceRefs: ["search-result-1"], data: { retrievalTraceId: "search-result-1", results: [{ sourceId: "CAIE-SOURCE-1", sourceType: "TEACHER_NOTE" }] } }) };
     const trace = await runAgent({ ...base, modelClient, tools, createId: () => "agent-trace-test", now: () => new Date("2026-07-16T10:00:00.000Z") });
 
     expect(trace.toolCalls).toEqual([{ name: "search_learning_resources", arguments: { query: "coefficients" }, resultRef: "search-result-1", status: "SUCCEEDED" }]);
@@ -41,19 +41,19 @@ describe("real agent orchestration contract", () => {
     const modelClient: AgentModelClient = { call: async ({ messages }) => {
       callIndex += 1;
       if (callIndex === 1) {
-        expect(messages[0]?.content).toContain("sourceRefs is an array of string IDs");
+        expect(messages[0]?.content).toContain("sourceRefs and evidenceRefs are arrays of string IDs");
         return { message: { role: "assistant", content: JSON.stringify({ status: "ANSWERED", learnerMessage: "Coefficients give mole ratios.", sourceRefs: [{ source: "search_learning_resources", result: "invented" }] }) } };
       }
       if (callIndex === 2) {
         const correction = messages.at(-1)?.content ?? "";
         expect(correction).toContain("sourceRefs.0");
-        expect(correction).toContain("array of string IDs");
+        expect(correction).toContain("arrays of string IDs");
         expect(correction).toContain("search_learning_resources");
         return { message: { role: "assistant", content: null, tool_calls: [{ id: "call-recovery", type: "function", function: { name: "search_learning_resources", arguments: '{"query":"balanced equation coefficients mole ratios"}' } }] } };
       }
-      return { message: { role: "assistant", content: JSON.stringify({ status: "ANSWERED", learnerMessage: "Coefficients give relative mole amounts.", sourceRefs: ["CAIE-SOURCE-1"] }) } };
+      return { message: { role: "assistant", content: JSON.stringify({ status: "ANSWERED", learnerMessage: "Coefficients give relative mole amounts.", sourceRefs: ["CAIE-SOURCE-1"], evidenceRefs: ["search-result"] }) } };
     } };
-    const trace = await runAgent({ ...base, modelClient, tools: { execute: async () => ({ resultRef: "search-result", claimRefs: ["CAIE-SOURCE-1"], data: [{ sourceId: "CAIE-SOURCE-1" }] }) } });
+    const trace = await runAgent({ ...base, modelClient, tools: { execute: async () => ({ resultRef: "search-result", sourceRefs: ["CAIE-SOURCE-1"], evidenceRefs: ["search-result"], data: { retrievalTraceId: "search-result", results: [{ sourceId: "CAIE-SOURCE-1", sourceType: "TEACHER_NOTE" }] } }) } });
     expect(trace.finalResponse.sourceRefs).toEqual(["CAIE-SOURCE-1"]);
     expect(trace.toolCalls).toEqual([expect.objectContaining({ name: "search_learning_resources", status: "SUCCEEDED" })]);
   });

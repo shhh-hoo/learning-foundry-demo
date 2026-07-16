@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://learning-foundry.local/schemas/calculation-case.schema.json",
+  "title": "CalculationCase",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "caseId",
+    "title",
+    "distributionScope",
+    "syllabusOutcomeIds",
+    "calculationFamilyIds",
+    "problemPrompt",
+    "requiredEvidence",
+    "canonicalStrategy",
+    "validAlternativeStrategies",
+    "expectedAnswer",
+    "failureTaxonomy"
+  ],
+  "properties": {
+    "caseId": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "distributionScope": {
+      "enum": [
+        "SCHOOL_INTERNAL",
+        "PUBLIC_ORIGINAL"
+      ]
+    },
+    "syllabusOutcomeIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "calculationFamilyIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1
+    },
+    "problemPrompt": {
+      "type": "string"
+    },
+    "requiredEvidence": {
+      "type": "object",
+      "required": [
+        "equations",
+        "givenValues",
+        "targetQuantity",
+        "answerRequirement"
+      ],
+      "properties": {
+        "equations": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "givenValues": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "targetQuantity": {
+          "type": "string"
+        },
+        "answerRequirement": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "canonicalStrategy": {
+      "type": "object",
+      "required": [
+        "strategyId",
+        "steps"
+      ],
+      "properties": {
+        "strategyId": {
+          "type": "string"
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "validAlternativeStrategies": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "expectedAnswer": {
+      "type": "object",
+      "required": [
+        "value",
+        "unit",
+        "significantFigures"
+      ],
+      "properties": {
+        "value": {
+          "type": "number"
+        },
+        "unit": {
+          "type": "string"
+        },
+        "significantFigures": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "failureTaxonomy": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "sourceRefs": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "teacherReview": {
+      "type": "object",
+      "properties": {
+        "reviewer": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "DRAFT",
+            "REVIEWED",
+            "APPROVED"
+          ]
+        },
+        "notes": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

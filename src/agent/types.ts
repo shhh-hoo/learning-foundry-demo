@@ -9,12 +9,13 @@ export const agentResponseEnvelopeSchema = z.object({
   status: z.enum(["ANSWERED", "NEEDS_MORE_EVIDENCE", "CAPABILITY_GAP"]),
   learnerMessage: z.string().min(1),
   sourceRefs: z.array(z.string().min(1)),
+  evidenceRefs: z.array(z.string().min(1)).default([]),
   diagnosisTraceId: z.string().min(1).optional(),
   proposedLibraryArtifact: z.object({ title: z.string().min(1), content: z.string().min(1) }).optional(),
   proposedFollowUp: z.object({ title: z.string().min(1), reason: z.string().min(1), delayDays: z.number().int().min(1).max(30) }).optional(),
   capabilityGapId: z.string().min(1).optional(),
 });
-export type AgentResponseEnvelope = z.infer<typeof agentResponseEnvelopeSchema>;
+export type AgentResponseEnvelope = z.input<typeof agentResponseEnvelopeSchema>;
 
 export interface TokenUsage {
   readonly promptTokens: number;

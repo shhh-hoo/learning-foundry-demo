@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://learning-foundry.local/schemas/retrieval-chunk.schema.json",
+  "title": "LearningResourceChunk",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "chunkId",
+    "documentId",
+    "sourceType",
+    "distributionScope",
+    "title",
+    "text",
+    "examBoard",
+    "syllabusCode",
+    "topic",
+    "contentHash"
+  ],
+  "properties": {
+    "chunkId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "documentId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sourceType": {
+      "enum": [
+        "OFFICIAL_SYLLABUS",
+        "SECONDARY_REFERENCE",
+        "TEACHER_NOTE",
+        "STRUCTURED_CASE"
+      ]
+    },
+    "distributionScope": {
+      "enum": [
+        "SCHOOL_INTERNAL",
+        "PUBLIC"
+      ]
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1
+    },
+    "contextualText": {
+      "type": "string"
+    },
+    "examBoard": {
+      "const": "CAIE"
+    },
+    "syllabusCode": {
+      "const": "9701"
+    },
+    "syllabusVersion": {
+      "type": "string"
+    },
+    "level": {
+      "enum": [
+        "AS",
+        "A",
+        "AS_A"
+      ]
+    },
+    "topic": {
+      "type": "string"
+    },
+    "calculationFamilyIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "learningOutcomeIds": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "uniqueItems": true
+    },
+    "documentPage": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "printedPage": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "section": {
+      "type": "string"
+    },
+    "rights": {
+      "type": "object",
+      "required": [
+        "publicExportAllowed"
+      ],
+      "properties": {
+        "publicExportAllowed": {
+          "type": "boolean"
+        },
+        "maxQuoteWords": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "attribution": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "contentHash": {
+      "type": "string",
+      "minLength": 32
+    }
+  }
+}

@@ -5,8 +5,10 @@ import { resolve } from "node:path";
 import { createDeepSeekClient } from "../src/agent/deepseek-client.ts";
 import { createAgentGateway } from "../src/agent/gateway.ts";
 import { AGENT_PROMPT_VERSION, buildAgentSystemPrompt, runAgent } from "../src/agent/run-agent.ts";
-import { createAgentToolExecutor, type CapabilityRecord, type LearningResource } from "../src/agent/tool-executor.ts";
+import { createAgentToolExecutor, type CapabilityRecord } from "../src/agent/tool-executor.ts";
 import { PurposeSeparatedAgentTraceRepository } from "./lib/agent-trace-repository.ts";
+import { CorpusRepository, inspectCorpus } from "./lib/corpus-repository.ts";
+import type { CorpusSearchService } from "../src/corpus/types.ts";
 
 const root = new URL("../", import.meta.url);
 const readText = (path: string) => readFile(new URL(path, root), "utf8");
@@ -16,13 +18,17 @@ const model = process.env.DEEPSEEK_MODEL?.trim() ?? "";
 const baseUrl = process.env.DEEPSEEK_BASE_URL?.trim() || "https://api.deepseek.com";
 const thinkingMode = process.env.DEEPSEEK_THINKING_MODE === "enabled" ? "enabled" : "disabled";
 const port = Number(process.env.AGENT_GATEWAY_PORT ?? 4176);
+const diagnosisUrl = process.env.TRAINER_DIAGNOSIS_URL?.trim() || "http://127.0.0.1:4177/diagnose";
 const capabilities = await readJson<{ readonly version: string; readonly capabilities: readonly CapabilityRecord[] }>("config/capabilities/registry.json");
-const resources = await readJson<{ readonly resources: readonly LearningResource[] }>("config/resources/learning-resources.json");
 const toolConfig = await readJson<{ readonly version: string; readonly tools: readonly unknown[] }>("config/tools/tool-descriptions.json");
 const responsePolicy = await readText("config/agent/response-policy.json");
 const systemPrompt = `${await readText("config/agent/instructions.md")}\nResponse policy: ${responsePolicy}`;
 const observableSystemPrompt = buildAgentSystemPrompt(systemPrompt);
 const contentHash = (value: string) => createHash("sha256").update(value).digest("hex");
+const corpusReport = await inspectCorpus();
+let corpus: CorpusSearchService;
+try { corpus = await CorpusRepository.open(); }
+catch { corpus = { search: async () => { throw new Error("CORPUS_INDEX_MISSING: run npm run corpus:ingest before starting the Agent Gateway."); } }; }
 const traceRepositories = new PurposeSeparatedAgentTraceRepository(
   resolve(process.env.PRODUCT_TRACE_STORE_DIR ?? process.env.TRACE_STORE_DIR ?? ".local-data/product-agent-runs"),
   resolve(process.env.AGENT_EVAL_TRACE_STORE_DIR ?? ".local-data/agent-eval-agent-runs"),
@@ -38,7 +44,7 @@ const gateway = createAgentGateway({
     const toolResults: { readonly name: string; readonly resultRef: string; readonly data: unknown }[] = [];
     const traceRepository = traceRepositories.forPurpose(request.runPurpose);
     const currentUserMessage = [...request.messages].reverse().find((message) => message.role === "user")?.content ?? "";
-    const tools = createAgentToolExecutor({ capabilities: capabilities.capabilities, resources: resources.resources, diagnosisUrl: "http://127.0.0.1:4177/diagnose", runPurpose: request.runPurpose, currentUserMessage });
+    const tools = createAgentToolExecutor({ capabilities: capabilities.capabilities, corpus, diagnosisUrl, runPurpose: request.runPurpose, conversationId: request.conversationId, conversationEvidenceHash: contentHash(currentUserMessage), currentUserMessage });
     const traceId = `agent-trace-${randomUUID()}`; const startedAt = new Date().toISOString();
     await traceRepository.start({ traceId, request, provider: "deepseek", model, thinkingMode, prompt: { version: AGENT_PROMPT_VERSION, contentHash: contentHash(observableSystemPrompt) }, capabilityRegistry: { version: capabilities.version, contentHash: contentHash(JSON.stringify(capabilities)) }, toolDefinitions: { version: toolConfig.version, contentHash: contentHash(JSON.stringify(toolConfig)) }, startedAt });
     try {
@@ -62,4 +68,9 @@ const server = createServer(async (request, response) => {
   response.end(Buffer.from(await result.arrayBuffer()));
 });
 
-server.listen(port, "127.0.0.1", () => console.log(`DeepSeek Agent Gateway listening on http://127.0.0.1:${port} · configured=${configured}`));
+server.listen(port, "127.0.0.1", () => {
+  console.log(`DeepSeek Agent Gateway listening on http://127.0.0.1:${port} · configured=${configured}`);
+  for (const source of corpusReport.sources) console.log(`corpus source ${source.status === "REGISTERED" ? "registered" : "missing"}: ${source.sourceId}`);
+  console.log(`index version: ${corpusReport.indexVersion ?? "missing"}`);
+  for (const [key, count] of Object.entries(corpusReport.chunkCounts).sort()) console.log(`chunks ${key}: ${count}`);
+});

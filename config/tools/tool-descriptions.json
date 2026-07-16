@@ -5,18 +5,44 @@
       "type": "function",
       "function": {
         "name": "search_learning_resources",
-        "description": "Search curated local learning-resource metadata. Use before answering source-grounded course questions.",
+        "description": "Search the governed CAIE 9701 corpus with lexical ranking and metadata filters. Required before answering course or curriculum explanations. Returns a persisted retrievalTraceId and traceable source chunks.",
         "parameters": {
           "type": "object",
           "properties": {
             "query": {
               "type": "string"
             },
+            "examBoard": {
+              "type": "string",
+              "enum": ["CAIE"]
+            },
             "syllabusCode": {
+              "type": "string",
+              "enum": ["9701"]
+            },
+            "syllabusVersion": {
               "type": "string"
+            },
+            "level": {
+              "type": "string",
+              "enum": ["AS", "A", "AS_A"]
             },
             "topic": {
               "type": "string"
+            },
+            "calculationFamilyId": {
+              "type": "string"
+            },
+            "learningOutcomeId": {
+              "type": "string"
+            },
+            "sourceType": {
+              "type": "string",
+              "enum": ["OFFICIAL_SYLLABUS", "SECONDARY_REFERENCE", "TEACHER_NOTE", "STRUCTURED_CASE"]
+            },
+            "distributionScope": {
+              "type": "string",
+              "enum": ["SCHOOL_INTERNAL", "PUBLIC"]
             }
           },
           "required": [
