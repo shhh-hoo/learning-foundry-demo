@@ -1,12 +1,27 @@
 import { describe, expect, it } from "vitest";
 import { createAgentToolExecutor } from "../src/agent/tool-executor";
 import type { CorpusSearchService } from "../src/corpus/types";
+import { createCorpusDeliveryPolicyRuntime } from "../src/corpus/delivery-policy";
 
 const TEST_FIXTURE = "TEST_FIXTURE" as const;
 const capabilities = [
   { id: "mass", version: "1.0.0", purpose: "Mass", requiredInput: "attempt", outputContract: "trace", limitations: [], readiness: "READY", runtimeEndpoint: "http://127.0.0.1:4177/diagnose", visibility: "AGENT" as const },
   { id: "kp", version: "1.0.0", purpose: "Legacy", requiredInput: "attempt", outputContract: "trace", limitations: [], readiness: "LEGACY", runtimeEndpoint: "http://127.0.0.1:4177/diagnose", visibility: "ENGINEERING_ONLY" as const },
 ];
+const corpusDeliveryPolicy = createCorpusDeliveryPolicyRuntime({
+  version: "TEST_FIXTURE",
+  provider: "deepseek",
+  allowedPurposes: ["PRODUCT", "AGENT_EVAL"],
+  allowedDistributionScopes: ["SCHOOL_INTERNAL"],
+  allowedSourceTypes: ["OFFICIAL_SYLLABUS", "SECONDARY_REFERENCE", "TEACHER_NOTE", "STRUCTURED_CASE"],
+  maxExcerptWordsPerResult: 100,
+  maxResultsPerRequest: 5,
+  allowRawPdfBytes: false,
+  allowFullDocument: false,
+  persistDeliveredExcerpt: false,
+  approvedBy: "TEST_FIXTURE",
+  approvedAt: "2026-07-16",
+}, "test-policy-hash");
 
 const corpus = (excerpt = "At particle level, coefficients define a particle ratio. A mole is a fixed number of particles given by the Avogadro constant."): CorpusSearchService => ({
   search: async (query, filters) => ({
@@ -20,7 +35,7 @@ const corpus = (excerpt = "At particle level, coefficients define a particle rat
 describe("agent tools", () => {
   it("searches governed corpus metadata and keeps capability IDs out of source references", async () => {
     expect(TEST_FIXTURE).toBe("TEST_FIXTURE");
-    const tools = createAgentToolExecutor({ capabilities, corpus: corpus(), diagnosisUrl: "http://127.0.0.1:4177/diagnose", createId: () => "test" });
+    const tools = createAgentToolExecutor({ capabilities, corpus: corpus(), corpusDeliveryPolicy, provider: "deepseek", runPurpose: "PRODUCT", diagnosisUrl: "http://127.0.0.1:4177/diagnose", createId: () => "test" });
     await expect(tools.execute("search_learning_resources", { query: "coefficients", examBoard: "CAIE", syllabusCode: "9701", syllabusVersion: "2025-2027" })).resolves.toMatchObject({ sourceRefs: ["TN-001-COEFFICIENTS-TO-MOLE-RATIOS"], evidenceRefs: ["retrieval-trace-test"] });
     const listed = await tools.execute("list_capabilities", {});
     expect(listed.data).toEqual([expect.objectContaining({ id: "mass" })]);
@@ -30,12 +45,24 @@ describe("agent tools", () => {
   });
 
   it("returns the governed particle-to-mole explanation for coefficient-ratio questions", async () => {
-    const tools = createAgentToolExecutor({ capabilities, corpus: corpus(), diagnosisUrl: "http://127.0.0.1:4177/diagnose", createId: () => "test" });
+    const tools = createAgentToolExecutor({ capabilities, corpus: corpus(), corpusDeliveryPolicy, provider: "deepseek", runPurpose: "PRODUCT", diagnosisUrl: "http://127.0.0.1:4177/diagnose", createId: () => "test" });
     const result = await tools.execute("search_learning_resources", { query: "coefficients particle mole ratio Avogadro", calculationFamilyId: "CORE-001" });
     const content = JSON.stringify(result.data);
     expect(content).toMatch(/particle ratio/iu);
     expect(content).toMatch(/fixed number/iu);
     expect(content).toMatch(/Avogadro/iu);
+  });
+
+  it("does not let a provider-only syllabus filter bypass the governed coefficient explanation", async () => {
+    let receivedFilters: Record<string, unknown> = {};
+    const recordingCorpus: CorpusSearchService = { search: async (query, filters) => {
+      receivedFilters = filters as Record<string, unknown>;
+      return corpus().search(query, filters);
+    } };
+    const tools = createAgentToolExecutor({ capabilities, corpus: recordingCorpus, corpusDeliveryPolicy, provider: "deepseek", runPurpose: "AGENT_EVAL", currentUserMessage: "Why do coefficients in a balanced equation give mole ratios?", diagnosisUrl: "http://127.0.0.1:4177/diagnose" });
+    await tools.execute("search_learning_resources", { query: "coefficients balanced equation mole ratios", sourceType: "OFFICIAL_SYLLABUS" });
+    expect(receivedFilters).not.toHaveProperty("sourceType");
+    expect(receivedFilters).toMatchObject({ calculationFamilyId: "CORE-001" });
   });
 
   it("calls the Trainer endpoint and resolves the persisted diagnosis trace", async () => {
@@ -55,6 +82,53 @@ describe("agent tools", () => {
     expect(requestedBody).toMatchObject({ runPurpose: "PRODUCT", problemContextEvidence: { reactionEquationQuote: "2Mg + O2 -> 2MgO" } });
     expect(result.evidenceRefs).toEqual(["diagnosis-test", "trainer-trace-real"]);
     expect(result.sourceRefs).toBeUndefined();
+  });
+
+  it("canonicalizes unqualified Ar and Mr values as dimensionless before Trainer delivery", async () => {
+    let requestedBody: { problemContext?: { givenValues?: readonly { unit?: string }[] } } = {};
+    const currentUserMessage = "Original problem: Magnesium reacts with excess oxygen according to 2Mg + O2 -> 2MgO. A 4.80 g sample of Mg is used. Calculate the mass of MgO formed using Ar(Mg)=24.0 and Mr(MgO)=40.0, to 3 significant figures. Learner working: 4.80/24.0=0.200 mol Mg, then multiplied by 0.5 and got 4.00 g MgO.";
+    const tools = createAgentToolExecutor({ capabilities, corpus: corpus(), corpusDeliveryPolicy, provider: "deepseek", diagnosisUrl: "http://127.0.0.1:4177/diagnose", runPurpose: "PRODUCT", currentUserMessage, fetcher: async (_input, init) => {
+      if (init?.method === "POST") {
+        requestedBody = JSON.parse(String(init.body));
+        return Response.json({ ok: true, result: { traceId: "trainer-dimensionless", diagnosis: { failureCode: "WRONG_STOICHIOMETRIC_RATIO" } } });
+      }
+      return Response.json({ ok: true, diagnosis: { traceId: "trainer-dimensionless" } });
+    } });
+
+    await tools.execute("run_learner_diagnosis", {
+      componentId: "mass",
+      problemContext: { prompt: "Calculate MgO mass from the supplied magnesium problem.", reactionEquation: "2Mg + O2 -> 2MgO", givenValues: [{ label: "mass of Mg", value: 4.8, unit: "g" }, { label: "Ar(Mg)", value: 24, unit: "g/mol" }, { label: "Mr(MgO)", value: 40, unit: "g/mol" }], targetQuantity: "mass of MgO formed", answerRequirement: "Give your answer to 3 significant figures." },
+      problemContextEvidence: { promptQuote: "Original problem: Magnesium reacts with excess oxygen according to 2Mg + O2 -> 2MgO. A 4.80 g sample of Mg is used. Calculate the mass of MgO formed using Ar(Mg)=24.0 and Mr(MgO)=40.0, to 3 significant figures.", reactionEquationQuote: "2Mg + O2 -> 2MgO", givenValueQuotes: ["4.80 g sample of Mg", "Ar(Mg)=24.0", "Mr(MgO)=40.0"], targetQuantityQuote: "mass of MgO formed", answerRequirementQuote: "to 3 significant figures" },
+      attempt: { attemptId: "a", componentId: "mass", componentVersion: "1.0.0", strategyId: "MOLES_RATIO_MASS", evidencedReasoningNodeIds: ["amount-magnesium", "apply-mole-ratio"], substitutedFacts: {}, stoichiometricRatio: 0.5, finalAnswer: { value: 4, unit: "g", significantFigures: 3 } },
+    });
+
+    expect(requestedBody.problemContext?.givenValues?.map((item) => item.unit)).toEqual(["g", "1", "1"]);
+    expect(requestedBody.problemContext).toMatchObject({ prompt: expect.stringContaining("Original problem: Magnesium reacts"), answerRequirement: "to 3 significant figures" });
+  });
+
+  it("maps evidenced stoichiometry facts and an explicit learner ratio to Trainer input IDs", async () => {
+    let requestedAttempt: { substitutedFacts?: Record<string, number>; stoichiometricRatio?: number; arithmeticWorkingValue?: number } = {};
+    const currentUserMessage = "Original problem: Magnesium reacts with excess oxygen according to 2Mg + O2 -> 2MgO. A 4.80 g sample of Mg is used. Calculate the mass of MgO formed using Ar(Mg)=24.0 and Mr(MgO)=40.0, to 3 significant figures. Learner working: 4.80/24.0=0.200 mol Mg, then multiplied by 0.5 and got 4.00 g MgO. Diagnose my first mistake.";
+    const tools = createAgentToolExecutor({ capabilities, corpus: corpus(), corpusDeliveryPolicy, provider: "deepseek", diagnosisUrl: "http://127.0.0.1:4177/diagnose", runPurpose: "AGENT_EVAL", currentUserMessage, fetcher: async (_input, init) => {
+      if (init?.method === "POST") {
+        requestedAttempt = (JSON.parse(String(init.body)) as { attempt: typeof requestedAttempt }).attempt;
+        return Response.json({ ok: true, result: { traceId: "trainer-mapped", diagnosis: { failureCode: "WRONG_STOICHIOMETRIC_RATIO" } } });
+      }
+      return Response.json({ ok: true, diagnosis: { traceId: "trainer-mapped" } });
+    } });
+
+    await tools.execute("run_learner_diagnosis", {
+      componentId: "stoichiometric-product-mass",
+      componentVersion: "1.0.0",
+      problemContext: { prompt: currentUserMessage, reactionEquation: "2Mg + O2 -> 2MgO", givenValues: [{ label: "Ar(Mg)", value: 24, unit: "1" }, { label: "mass of Mg", value: 4.8, unit: "g" }, { label: "Mr(MgO)", value: 40, unit: "1" }], targetQuantity: "mass of MgO formed", answerRequirement: "to 3 significant figures" },
+      problemContextEvidence: { promptQuote: currentUserMessage, reactionEquationQuote: "2Mg + O2 -> 2MgO", givenValueQuotes: ["Ar(Mg)=24.0", "4.80 g sample of Mg", "Mr(MgO)=40.0"], targetQuantityQuote: "mass of MgO formed", answerRequirementQuote: "to 3 significant figures" },
+      attempt: { attemptId: "a", componentId: "stoichiometric-product-mass", componentVersion: "1.0.0", strategyId: "MOLES_RATIO_MASS", evidencedReasoningNodeIds: ["amount-magnesium", "apply-mole-ratio", "mass-magnesium-oxide"], substitutedFacts: { "Ar(Mg)": 24, mass_of_Mg: 4.8, "Mr(MgO)": 40 }, finalAnswer: { value: 4, unit: "g", significantFigures: 3 } },
+    });
+
+    expect(requestedAttempt.substitutedFacts).toEqual({ "mr-magnesium": 24, "mass-magnesium": 4.8, "mr-magnesium-oxide": 40 });
+    expect(requestedAttempt.stoichiometricRatio).toBe(0.5);
+    expect(requestedAttempt.arithmeticWorkingValue).toBe(4);
+    expect((requestedAttempt as { evidencedReasoningNodeIds?: string[] }).evidencedReasoningNodeIds).toEqual(["select-data", "identify-target", "amount-magnesium", "apply-mole-ratio", "amount-magnesium-oxide", "mass-magnesium-oxide", "report-unit", "report-precision"]);
   });
 
   it("rejects unknown tools and invalid local arguments before execution", async () => {

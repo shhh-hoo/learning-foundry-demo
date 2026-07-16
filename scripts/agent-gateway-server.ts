@@ -10,6 +10,7 @@ import { createAgentToolExecutor, type CapabilityRecord } from "../src/agent/too
 import { PurposeSeparatedAgentTraceRepository } from "./lib/agent-trace-repository.ts";
 import { CorpusRepository, inspectCorpus } from "./lib/corpus-repository.ts";
 import type { CorpusSearchService } from "../src/corpus/types.ts";
+import { createCorpusDeliveryPolicyRuntime } from "../src/corpus/delivery-policy.ts";
 
 const root = new URL("../", import.meta.url);
 const readText = (path: string) => readFile(new URL(path, root), "utf8");
@@ -23,8 +24,10 @@ const diagnosisUrl = process.env.TRAINER_DIAGNOSIS_URL?.trim() || "http://127.0.
 const capabilities = await readJson<{ readonly version: string; readonly capabilities: readonly CapabilityRecord[] }>("config/capabilities/registry.json");
 const toolConfig = await readJson<{ readonly version: string; readonly tools: readonly unknown[] }>("config/tools/tool-descriptions.json");
 const responsePolicy = await readText("config/agent/response-policy.json");
+const corpusDeliveryPolicyText = await readText("config/corpus/delivery-policy.json");
+const corpusDeliveryPolicy = createCorpusDeliveryPolicyRuntime(JSON.parse(corpusDeliveryPolicyText), contentHash(corpusDeliveryPolicyText));
 const systemPrompt = `${await readText("config/agent/instructions.md")}\nResponse policy: ${responsePolicy}`;
-const contentHash = (value: string) => createHash("sha256").update(value).digest("hex");
+function contentHash(value: string): string { return createHash("sha256").update(value).digest("hex"); }
 const corpusReport = await inspectCorpus();
 let corpus: CorpusSearchService;
 try { corpus = await CorpusRepository.open(); }
@@ -46,7 +49,7 @@ const gateway = createAgentGateway({
     const currentUserMessage = [...request.messages].reverse().find((message) => message.role === "user")?.content ?? "";
     const initialRoute = classifyAgentRoute(request);
     const observableSystemPrompt = buildAgentSystemPrompt(systemPrompt, initialRoute);
-    const tools = createAgentToolExecutor({ capabilities: capabilities.capabilities, corpus, diagnosisUrl, runPurpose: request.runPurpose, conversationId: request.conversationId, conversationEvidenceHash: contentHash(currentUserMessage), currentUserMessage });
+    const tools = createAgentToolExecutor({ capabilities: capabilities.capabilities, corpus, corpusDeliveryPolicy, provider: "deepseek", diagnosisUrl, runPurpose: request.runPurpose, conversationId: request.conversationId, conversationEvidenceHash: contentHash(currentUserMessage), currentUserMessage });
     const traceId = `agent-trace-${randomUUID()}`; const startedAt = new Date().toISOString();
     await traceRepository.start({ traceId, request, initialRoute, provider: "deepseek", model, thinkingMode, prompt: { version: AGENT_PROMPT_VERSION, contentHash: contentHash(observableSystemPrompt) }, capabilityRegistry: { version: capabilities.version, contentHash: contentHash(JSON.stringify(capabilities)) }, toolDefinitions: { version: toolConfig.version, contentHash: contentHash(JSON.stringify(toolConfig)) }, startedAt });
     try {
@@ -74,5 +77,6 @@ server.listen(port, "127.0.0.1", () => {
   console.log(`DeepSeek Agent Gateway listening on http://127.0.0.1:${port} · configured=${configured}`);
   for (const source of corpusReport.sources) console.log(`corpus source ${source.status === "REGISTERED" ? "registered" : "missing"}: ${source.sourceId}`);
   console.log(`index version: ${corpusReport.indexVersion ?? "missing"}`);
+  console.log(`corpus delivery policy: ${corpusDeliveryPolicy.policy.version} (${corpusDeliveryPolicy.contentHash})`);
   for (const [key, count] of Object.entries(corpusReport.chunkCounts).sort()) console.log(`chunks ${key}: ${count}`);
 });

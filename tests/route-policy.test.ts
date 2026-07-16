@@ -22,6 +22,7 @@ describe("application route policy", () => {
     const course = request("Why do coefficients in a balanced equation give mole ratios?");
     expect(() => enforceRoutePolicy(course, response(), [], [])).toThrow("COURSE_EXPLANATION");
     expect(enforceRoutePolicy(course, response({ sourceRefs: ["TN-001"], evidenceRefs: ["retrieval-1"] }), [call("search_learning_resources", "retrieval-1")], [{ name: "search_learning_resources", data: { results: [{ sourceId: "TN-001", sourceType: "TEACHER_NOTE" }] } }])).toBe("COURSE_EXPLANATION");
+    expect(() => enforceRoutePolicy(course, response({ status: "CAPABILITY_GAP" }), [call("search_learning_resources", "retrieval-1")], [{ name: "search_learning_resources", data: { results: [{ sourceId: "TN-001", sourceType: "TEACHER_NOTE" }] } }])).toThrow("must return ANSWERED");
   });
 
   it("requires ordered capability resolution and a governed Diagnosis trace", () => {
@@ -29,6 +30,7 @@ describe("application route policy", () => {
     expect(() => enforceRoutePolicy(complete, response(), [], [])).toThrow("LEARNER_DIAGNOSIS_COMPLETE");
     expect(() => enforceRoutePolicy(complete, response({ diagnosisTraceId: "diagnosis-1", evidenceRefs: ["diagnosis-1"] }), [call("run_learner_diagnosis", "diagnosis-call")], [{ name: "run_learner_diagnosis", data: { traceId: "diagnosis-1" } }])).toThrow("ordered capability resolution");
     expect(enforceRoutePolicy(complete, response({ diagnosisTraceId: "diagnosis-1", evidenceRefs: ["cap-list", "capability-stoichiometric-product-mass@1.0.0", "diagnosis-1"] }), [call("list_capabilities", "cap-list"), call("get_capability", "capability-stoichiometric-product-mass@1.0.0"), call("run_learner_diagnosis", "diagnosis-call")], [{ name: "run_learner_diagnosis", data: { traceId: "diagnosis-1" } }])).toBe("LEARNER_DIAGNOSIS_COMPLETE");
+    expect(() => enforceRoutePolicy(complete, response({ status: "NEEDS_MORE_EVIDENCE", evidenceRefs: ["diagnosis-1"] }), [call("list_capabilities", "cap-list"), call("get_capability", "capability-stoichiometric-product-mass@1.0.0"), call("run_learner_diagnosis", "diagnosis-call")], [{ name: "run_learner_diagnosis", data: { traceId: "diagnosis-1" } }])).toThrow("must return ANSWERED");
   });
 
   it("requires incomplete evidence to produce no Diagnosis", () => {

@@ -3,7 +3,7 @@ import type { AgentModelClient, ModelMessage } from "./deepseek-client";
 import { ZodError } from "zod";
 import { classifyAgentRoute, enforceRoutePolicy, routeInstruction, RoutePolicyError } from "./route-policy";
 
-export interface AgentToolResult { readonly resultRef: string; readonly data: unknown; readonly sourceRefs?: readonly string[]; readonly evidenceRefs?: readonly string[]; readonly claimRefs?: readonly string[] }
+export interface AgentToolResult { readonly resultRef: string; readonly data: unknown; readonly evidenceData?: unknown; readonly executedArguments?: unknown; readonly sourceRefs?: readonly string[]; readonly evidenceRefs?: readonly string[]; readonly claimRefs?: readonly string[] }
 export interface AgentToolExecutor { execute(name: string, argumentsValue: unknown): Promise<AgentToolResult> }
 
 interface RunAgentOptions {
@@ -70,7 +70,54 @@ function validationDetail(error: unknown): string {
 
 function correctionForMalformedResponse(error: unknown): string {
   if (error instanceof RoutePolicyError) return `Your previous final response was rejected by the application route policy: ${error.message}. Call the missing required tool or return the required non-ANSWERED status, then emit the complete JSON contract. Do not add markdown.`;
+  if (error instanceof AgentRunError && error.code === "AGENT_UNSUPPORTED_CLAIM") return `Your previous final response used an ID in the wrong reference class: ${error.message}. sourceRefs may contain only source IDs returned by search_learning_resources; capability, retrieval, gap and Diagnosis IDs belong in evidenceRefs. Use only IDs actually returned in this run and emit the complete JSON contract. Do not add markdown.`;
   return `Your previous final response failed validation: ${validationDetail(error)}. ${finalResponseContract} If the answer requires source-grounded course evidence and search_learning_resources has not succeeded in this run, call search_learning_resources now instead of returning a final response. Do not repeat the invalid response and do not add markdown.`;
+}
+
+function toolName(definition: unknown): string | null {
+  if (!definition || typeof definition !== "object" || !("function" in definition)) return null;
+  const functionDefinition = definition.function;
+  return functionDefinition && typeof functionDefinition === "object" && "name" in functionDefinition && typeof functionDefinition.name === "string" ? functionDefinition.name : null;
+}
+
+function matchingToolDefinitions(definitions: readonly unknown[], names: readonly string[]): readonly unknown[] {
+  return definitions.filter((definition) => names.includes(toolName(definition) ?? ""));
+}
+
+function providerToolsForRoute(route: AgentRoute, definitions: readonly unknown[], records: AgentTrace["toolCalls"]): readonly unknown[] {
+  if (route === "COURSE_EXPLANATION") {
+    const searchSucceeded = records.some((record) => record.name === "search_learning_resources" && record.status === "SUCCEEDED");
+    return searchSucceeded ? [] : matchingToolDefinitions(definitions, ["search_learning_resources"]);
+  }
+  if (route !== "LEARNER_DIAGNOSIS_COMPLETE") return definitions;
+  const succeeded = records.filter((record) => record.status === "SUCCEEDED").map((record) => record.name);
+  if (!succeeded.includes("list_capabilities")) return matchingToolDefinitions(definitions, ["list_capabilities"]);
+  if (!succeeded.includes("get_capability")) return matchingToolDefinitions(definitions, ["get_capability"]);
+  if (!succeeded.includes("run_learner_diagnosis")) return matchingToolDefinitions(definitions, ["run_learner_diagnosis"]);
+  return [];
+}
+
+function canonicalizeRouteOwnedReferences(
+  response: ReturnType<typeof agentResponseEnvelopeSchema.parse>,
+  route: AgentRoute,
+  successfulToolResults: readonly { readonly name: string; readonly data: unknown }[],
+  availableEvidenceRefs: Set<string>,
+): ReturnType<typeof agentResponseEnvelopeSchema.parse> {
+  if (route === "COURSE_EXPLANATION") {
+    const retrieval = [...successfulToolResults].reverse().find((item) => item.name === "search_learning_resources" && item.data && typeof item.data === "object" && "results" in item.data && Array.isArray(item.data.results));
+    const firstResult = retrieval?.data && typeof retrieval.data === "object" && "results" in retrieval.data && Array.isArray(retrieval.data.results) ? retrieval.data.results[0] : undefined;
+    const primarySourceId = firstResult && typeof firstResult === "object" && "sourceId" in firstResult && typeof firstResult.sourceId === "string" ? firstResult.sourceId : undefined;
+    return { ...response, sourceRefs: [...new Set([...(primarySourceId ? [primarySourceId] : []), ...response.sourceRefs])] };
+  }
+  if (route !== "LEARNER_DIAGNOSIS_COMPLETE") return response;
+  const diagnosis = [...successfulToolResults].reverse().find((item) => item.name === "run_learner_diagnosis" && item.data && typeof item.data === "object" && "traceId" in item.data && typeof item.data.traceId === "string");
+  if (!diagnosis || !diagnosis.data || typeof diagnosis.data !== "object" || !("traceId" in diagnosis.data) || typeof diagnosis.data.traceId !== "string") return response;
+  return {
+    ...response,
+    sourceRefs: [],
+    evidenceRefs: [...availableEvidenceRefs],
+    diagnosisTraceId: diagnosis.data.traceId,
+  };
 }
 
 export async function runAgent(options: RunAgentOptions): Promise<AgentTrace> {
@@ -91,7 +138,11 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentTrace> {
   let malformedRetries = 0;
 
   for (let round = 0; round < 6; round += 1) {
-    const result = await options.modelClient.call({ messages, tools: options.toolDefinitions });
+    const providerTools = providerToolsForRoute(initialRoute, options.toolDefinitions, records);
+    const requiredToolName = (initialRoute === "COURSE_EXPLANATION" || initialRoute === "LEARNER_DIAGNOSIS_COMPLETE") && providerTools.length === 1
+      ? toolName(providerTools[0]) ?? undefined
+      : undefined;
+    const result = await options.modelClient.call({ messages, tools: providerTools, ...(requiredToolName ? { requiredToolName } : {}) });
     await options.onModelResponse?.(result.message, result.usage);
     tokenUsage = addUsage(tokenUsage, result.usage);
     const assistant = result.message;
@@ -99,19 +150,37 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentTrace> {
     if (assistant.tool_calls?.length) {
       if (round === 5) throw new AgentRunError("AGENT_TOOL_LOOP_LIMIT_EXCEEDED", "The model requested tools after six rounds.");
       for (const call of assistant.tool_calls) {
+        const availableToolNames = new Set(providerTools.map((definition) => toolName(definition)).filter((name): name is string => Boolean(name)));
+        if (!availableToolNames.has(call.function.name)) {
+          const resultRef = `tool-error-${call.id}`;
+          const structuredError = { code: "TOOL_NOT_AVAILABLE_ON_ROUTE", message: `${call.function.name} is not available at this route step.` };
+          await options.onToolExecution?.({ name: call.function.name, arguments: { rejectedByRoute: true }, resultRef, status: "FAILED", error: structuredError });
+          records.push({ name: call.function.name, arguments: { rejectedByRoute: true }, resultRef, status: "FAILED" });
+          messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify({ resultRef, error: `${structuredError.code}: ${structuredError.message}` }) });
+          continue;
+        }
         let parsed: unknown;
         try { parsed = JSON.parse(call.function.arguments); }
-        catch { throw new AgentRunError("INVALID_TOOL_ARGUMENTS", `${call.function.name} arguments are not valid JSON.`); }
+        catch {
+          const resultRef = `tool-error-${call.id}`;
+          const structuredError = { code: "INVALID_TOOL_ARGUMENTS", message: `${call.function.name} arguments are not valid JSON.` };
+          await options.onToolExecution?.({ name: call.function.name, arguments: { invalidJson: true }, resultRef, status: "FAILED", error: structuredError });
+          records.push({ name: call.function.name, arguments: { invalidJson: true }, resultRef, status: "FAILED" });
+          messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify({ resultRef, error: `${structuredError.code}: ${structuredError.message}` }) });
+          continue;
+        }
         try {
           const toolResult = await options.tools.execute(call.function.name, parsed);
-          options.onToolResult?.({ name: call.function.name, resultRef: toolResult.resultRef, data: toolResult.data });
-          successfulToolResults.push({ name: call.function.name, data: toolResult.data });
-          await options.onToolExecution?.({ name: call.function.name, arguments: parsed, resultRef: toolResult.resultRef, status: "SUCCEEDED", result: toolResult.data });
+          const evidenceData = toolResult.evidenceData ?? toolResult.data;
+          const executedArguments = toolResult.executedArguments ?? parsed;
+          options.onToolResult?.({ name: call.function.name, resultRef: toolResult.resultRef, data: evidenceData });
+          successfulToolResults.push({ name: call.function.name, data: evidenceData });
+          await options.onToolExecution?.({ name: call.function.name, arguments: executedArguments, resultRef: toolResult.resultRef, status: "SUCCEEDED", result: evidenceData });
           availableEvidenceRefs.add(toolResult.resultRef);
           toolResult.sourceRefs?.forEach((item) => availableSourceRefs.add(item));
           toolResult.evidenceRefs?.forEach((item) => availableEvidenceRefs.add(item));
           toolResult.claimRefs?.forEach((item) => availableSourceRefs.add(item));
-          records.push({ name: call.function.name, arguments: parsed, resultRef: toolResult.resultRef, status: "SUCCEEDED" });
+          records.push({ name: call.function.name, arguments: executedArguments, resultRef: toolResult.resultRef, status: "SUCCEEDED" });
           messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify({ resultRef: toolResult.resultRef, data: toolResult.data }) });
         } catch (error) {
           const resultRef = `tool-error-${call.id}`;
@@ -124,7 +193,8 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentTrace> {
       continue;
     }
     try {
-      const response = agentResponseEnvelopeSchema.parse(JSON.parse(assistant.content ?? ""));
+      const parsedResponse = agentResponseEnvelopeSchema.parse(JSON.parse(assistant.content ?? ""));
+      const response = canonicalizeRouteOwnedReferences(parsedResponse, initialRoute, successfulToolResults, availableEvidenceRefs);
       validateClaims(response, availableSourceRefs, availableEvidenceRefs, successfulToolResults);
       const route = enforceRoutePolicy(options.request, response, records, successfulToolResults, initialRoute);
       const completed = options.now?.() ?? new Date();
@@ -148,8 +218,9 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentTrace> {
         latencyMs: Math.max(0, completed.getTime() - start.getTime()),
       };
     } catch (error) {
-      if (error instanceof AgentRunError) throw error;
+      if (error instanceof AgentRunError && error.code !== "AGENT_UNSUPPORTED_CLAIM") throw error;
       if (malformedRetries >= 1) {
+        if (error instanceof AgentRunError) throw error;
         if (error instanceof RoutePolicyError) throw new AgentRunError(error.code, error.message);
         throw new AgentRunError("INVALID_AGENT_RESPONSE", `DeepSeek final response failed validation twice. Last error: ${validationDetail(error)}.`);
       }

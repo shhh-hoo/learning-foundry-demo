@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { gradeAgentCase, type AgentEvalCase, type AgentEvalToolResult } from "../src/agent/agenteval.ts";
+import { buildAgentEvalCheckpoint } from "../src/agent/agenteval-checkpoint.ts";
 import { AGENT_PROMPT_VERSION, buildAgentSystemPrompt } from "../src/agent/run-agent.ts";
 import type { AgentTrace, TokenUsage } from "../src/agent/types.ts";
 import { AgentEvalRepository, type AgentEvalEligibility, type PersistedAgentEvalCase, type PersistedAgentEvalRun } from "./lib/agent-eval-repository.ts";
@@ -37,17 +38,8 @@ try {
   const evalRunId = `agenteval-${startedAt.replace(/[:.]/g, "-")}-${randomUUID().slice(0, 8)}`;
   const caseFile = await readFile(new URL("../agent-eval/cases.jsonl", import.meta.url), "utf8");
   const fullCases = caseFile.trim().split(/\r?\n/).map((line) => JSON.parse(line) as AgentEvalCase);
-  const byId = new Map(fullCases.map((testCase) => [testCase.caseId, testCase]));
-  const checkpointPlan = [
-    ["A-course-explanation", "retrieval-01"],
-    ["B-incomplete-working", "diagnosis-missing-context-01"],
-    ["C-complete-MgO-diagnosis", "diagnosis-01"],
-    ["D-multi-stage-capability-gap", "gap-01"],
-    ["diagnosis-01", "diagnosis-01"],
-    ["diagnosis-02", "diagnosis-02"],
-  ] as const;
   const cases = process.env.AGENT_EVAL_CHECKPOINT === "1"
-    ? checkpointPlan.map(([checkpointId, sourceCaseId]) => ({ ...byId.get(sourceCaseId)!, caseId: checkpointId }))
+    ? buildAgentEvalCheckpoint(fullCases)
     : fullCases;
   const pricing = JSON.parse(await readFile(new URL("../agent-eval/pricing.json", import.meta.url), "utf8")) as { perMillionTokens: Readonly<Record<string, Price>> };
   const price = pricing.perMillionTokens[health.model];

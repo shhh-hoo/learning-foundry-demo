@@ -8,6 +8,22 @@ const normaliseToken = (token: string) => token.toLowerCase().replace(/(?:ing|ed
 const tokens = (value: string) => value.normalize("NFKD").toLowerCase().split(/[^a-z0-9]+/u).filter((token) => token.length > 1).map(normaliseToken);
 const unique = <T>(values: readonly T[]): T[] => [...new Set(values)];
 
+function sanitizeTraceValue(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sanitizeTraceValue);
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value)
+      .filter(([key]) => !/^(?:authorization|api_?key|expectedLocalFilename|local_?path|source_?path)$/iu.test(key))
+      .map(([key, item]) => [key, sanitizeTraceValue(item)]));
+  }
+  if (typeof value !== "string") return value;
+  return value
+    .replace(/\bAuthorization\s*:\s*Bearer\s+\S+/giu, "[REDACTED]")
+    .replace(/\bBearer\s+\S+/giu, "[REDACTED]")
+    .replace(/\bsk-[A-Za-z0-9_-]{12,}\b/gu, "[REDACTED]")
+    .replace(/(?:file:\/\/|\/(?:Users|home|private|var|tmp)\/)[^\s]+/gu, "[REDACTED]")
+    .replace(/\S*private-sources[\\/]\S*/giu, "[REDACTED]");
+}
+
 interface LatestPointer { readonly indexVersion: string; readonly indexHash: string; readonly manifestPath: string }
 
 interface ScoredChunk {
@@ -118,7 +134,7 @@ export class CorpusRepository implements CorpusSearchService {
       selectedChunkIds: selected.map((candidate) => candidate.chunk.chunkId),
       rejected: candidates.filter((candidate) => !selected.includes(candidate)).map((candidate) => ({ chunkId: candidate.chunk.chunkId, reason: candidate.score <= 0 ? "NO_LEXICAL_OR_METADATA_MATCH" : "OUTSIDE_TOP_FIVE" })),
     };
-    await writeFile(join(traceDirectory, `${retrievalTraceId}.json`), `${JSON.stringify(trace, null, 2)}\n`, { encoding: "utf8", flag: "wx" });
+    await writeFile(join(traceDirectory, `${retrievalTraceId}.json`), `${JSON.stringify(sanitizeTraceValue(trace), null, 2)}\n`, { encoding: "utf8", flag: "wx" });
     return result;
   }
 }

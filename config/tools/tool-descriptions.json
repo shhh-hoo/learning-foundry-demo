@@ -87,7 +87,7 @@
       "type": "function",
       "function": {
         "name": "run_learner_diagnosis",
-        "description": "Run the real Standard Trainer diagnosis API only when the original problem context and learner working are complete and every context field has an exact quote in the current user message. Never fill missing facts from capability metadata or alter the returned failure code.",
+        "description": "Run the real Standard Trainer diagnosis API only when the original problem context and learner working are complete and every context field has an exact quote in the current user message. Use unit '1' for dimensionless Ar and Mr values when their quotes state no unit. Keep answerRequirement limited to its exact quoted requirement. Never fill missing facts from capability metadata or alter the returned failure code.",
         "parameters": {
           "type": "object",
           "properties": {

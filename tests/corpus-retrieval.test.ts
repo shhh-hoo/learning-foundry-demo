@@ -51,6 +51,16 @@ describe("governed corpus retrieval", () => {
     expect(trace).not.toMatch(/api.?key|authorization|Bearer|private-sources/iu);
   });
 
+  it("redacts credentials from a retrieval query before trace persistence", async () => {
+    const { root, repository } = await fixtureRepository();
+    const result = await repository.search("coefficients Authorization: Bearer private-secret-value sk-private-secret-value", { examBoard: "CAIE", syllabusCode: "9701" });
+    const trace = await readFile(join(root, ".local-data/corpus/retrieval-traces", `${result.retrievalTraceId}.json`), "utf8");
+
+    expect(trace).not.toContain("private-secret-value");
+    expect(trace).not.toMatch(/Authorization|Bearer\s+\S+|sk-[A-Za-z0-9_-]{12,}/iu);
+    expect(trace).toContain("[REDACTED]");
+  });
+
   it("keeps source PDFs and generated private chunks ignored", async () => {
     const root = resolve(".");
     const { stdout } = await executeFile("git", ["check-ignore", "private-sources/9701-2025-2027-syllabus.pdf", ".local-data/corpus/latest.json"], { cwd: root });

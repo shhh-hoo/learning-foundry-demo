@@ -38,7 +38,7 @@ export function classifyAgentRoute(request: AgentRunRequest, response?: AgentRes
 }
 
 export function routeInstruction(route: AgentRoute): string {
-  if (route === "COURSE_EXPLANATION") return "Application route: COURSE_EXPLANATION. You must call search_learning_resources and cite governed learner-facing sources before returning ANSWERED.";
+  if (route === "COURSE_EXPLANATION") return "Application route: COURSE_EXPLANATION. You must call search_learning_resources and cite governed learner-facing sources before returning ANSWERED. For coefficient-to-mole-ratio questions, distinguish the roles explicitly: balancing conserves atoms; coefficients encode the particle ratio; scaling every particle count by the same fixed Avogadro constant preserves that ratio and therefore gives the mole ratio.";
   if (route === "SOLVE_WITH_CHECKS") return "Application route: SOLVE_WITH_CHECKS. Solve only from the evidenced problem. Use bounded arithmetic, unit, formula and precision checks when available. Do not present a Learner Diagnosis unless the learner supplied working and the route changes through governed policy.";
   if (route === "LEARNER_DIAGNOSIS_COMPLETE") return "Application route: LEARNER_DIAGNOSIS_COMPLETE. Do not replace the governed judgment with your own calculation. Call list_capabilities, then get_capability for a returned learner-facing ID, then run Learner Diagnosis. Reference the persisted Diagnosis trace before returning ANSWERED.";
   if (route === "LEARNER_DIAGNOSIS_INCOMPLETE") return "Application route: LEARNER_DIAGNOSIS_INCOMPLETE. Do not run Learner Diagnosis. Return NEEDS_MORE_EVIDENCE and name the missing problem or learner-working evidence.";
@@ -68,17 +68,25 @@ export function enforceRoutePolicy(
   successfulToolResults: readonly SuccessfulToolResult[],
   initialRoute: AgentRoute = classifyAgentRoute(request),
 ): AgentRoute {
-  const route = response.status === "CAPABILITY_GAP" ? "CAPABILITY_GAP" : initialRoute;
+  const route = initialRoute;
   const successfulCalls = toolCalls.filter((call) => call.status === "SUCCEEDED");
 
-  if (route === "COURSE_EXPLANATION" && response.status === "ANSWERED") {
+  if (route === "COURSE_EXPLANATION" && response.status !== "ANSWERED") {
+    throw new RoutePolicyError(route, "A course explanation with governed retrieval must return ANSWERED, not change application route from model output.");
+  }
+
+  if (route === "COURSE_EXPLANATION") {
     const retrievalCalls = successfulCalls.filter((call) => call.name === "search_learning_resources");
     if (retrievalCalls.length === 0 || !searchHasGovernedSource(successfulToolResults) || response.sourceRefs.length === 0 || !retrievalCalls.some((call) => response.evidenceRefs?.includes(call.resultRef))) {
       throw new RoutePolicyError(route, "ANSWERED requires successful retrieval of at least one curriculum or Teacher Note source.");
     }
   }
 
-  if (route === "LEARNER_DIAGNOSIS_COMPLETE" && response.status === "ANSWERED") {
+  if (route === "LEARNER_DIAGNOSIS_COMPLETE" && response.status !== "ANSWERED") {
+    throw new RoutePolicyError(route, "A completed governed Diagnosis must return ANSWERED and reference its persisted trace.");
+  }
+
+  if (route === "LEARNER_DIAGNOSIS_COMPLETE") {
     const listIndex = successfulCalls.findIndex((call) => call.name === "list_capabilities");
     const getIndex = successfulCalls.findIndex((call) => call.name === "get_capability");
     const diagnosisIndex = successfulCalls.findIndex((call) => call.name === "run_learner_diagnosis");

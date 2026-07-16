@@ -30,8 +30,13 @@ export function gradeAgentCase(testCase: AgentEvalCase, trace: AgentTrace, toolR
   const particleIndex = lowerLearnerText.search(/particles?|molecules?|formula units?/u);
   const conservationIndex = lowerLearnerText.indexOf("conservation of mass");
   const hasParticleRatio = /particle ratio|ratio (?:of|between) (?:the )?(?:particles|molecules|formula units)|(?:particles|molecules|formula units).{0,80}ratio/isu.test(learnerText);
-  const hasBalanceReason = /balanc\w*.{0,100}(?:same|equal) number of (?:each )?(?:type of )?atom|(?:same|equal) number of (?:each )?(?:type of )?atom.{0,100}balanc\w*/isu.test(learnerText);
+  const hasBalanceReason = /balanc\w*.{0,100}(?:(?:same|equal) number of (?:each )?(?:type of )?atom|atoms?.{0,40}conserv|conserv\w*.{0,40}atoms?)|(?:(?:same|equal) number of (?:each )?(?:type of )?atom|atoms?.{0,40}conserv|conserv\w*.{0,40}atoms?).{0,100}balanc\w*/isu.test(learnerText);
   const hasCausalClosure = /\b(?:because|therefore|thus|so|which means|as a result|this is why)\b|(?:因为|因此|所以|这就是为什么)/iu.test(learnerText);
+  const hasFixedParticleCount = /fixed(?:-size)?\s+(?:number|bundle)|avogadro(?:'s)?\s+constant.{0,50}(?:particles?|atoms?|molecules?|formula units?)/isu.test(learnerText);
+  const namesMissingProblemEvidence = /original\s+(?:problem|question)/iu.test(learnerText)
+    && /(?:reaction\s+(?:condition|equation)|chemical\s+reaction)/iu.test(learnerText)
+    && /(?:target|what\s+(?:exactly\s+)?(?:is\s+)?being\s+asked|what\s+to\s+(?:find|calculate))/iu.test(learnerText)
+    && /(?:answer\s+requirement|significant\s+figures?|required\s+(?:unit|precision))/iu.test(learnerText);
   const checks = {
     requiredTools: testCase.requiredTools.every((name) => names.includes(name)),
     forbiddenTools: testCase.forbiddenTools.every((name) => !names.includes(name)),
@@ -46,10 +51,10 @@ export function gradeAgentCase(testCase: AgentEvalCase, trace: AgentTrace, toolR
     fakeToolClaims: !/simulated tool|pretend tool|fake tool/iu.test(finalText),
     insufficientEvidence: testCase.category !== "capability-gap" || trace.finalResponse.status !== "ANSWERED",
     incompleteContextHasNoDiagnosis: testCase.category !== "diagnosis-missing-context" || (diagnosisCalls.length === 0 && trace.finalResponse.diagnosisTraceId === undefined),
-    incompleteContextNamesMissingEvidence: testCase.category !== "diagnosis-missing-context" || ["original problem", "reaction condition", "target", "answer requirement"].every((term) => trace.finalResponse.learnerMessage.toLowerCase().includes(term)),
+    incompleteContextNamesMissingEvidence: testCase.category !== "diagnosis-missing-context" || namesMissingProblemEvidence,
     inventedContextRejected: testCase.category !== "diagnosis-invented-context" || (diagnosisCalls.every((item) => item.status === "FAILED") && diagnosisResult === undefined && trace.finalResponse.diagnosisTraceId === undefined),
     whyMechanism: !requiresWhyExplanation || (lowerLearnerText.includes("coefficient") && hasParticleRatio),
-    whyMoleScaling: !requiresWhyExplanation || (lowerLearnerText.includes("mole") && lowerLearnerText.includes("fixed number") && lowerLearnerText.includes("avogadro") && /scal|multipl|divid|preserv/iu.test(learnerText) && lowerLearnerText.includes("ratio")),
+    whyMoleScaling: !requiresWhyExplanation || (lowerLearnerText.includes("mole") && hasFixedParticleCount && lowerLearnerText.includes("avogadro") && /scal|multipl|divid|preserv/iu.test(learnerText) && lowerLearnerText.includes("ratio")),
     whyConceptDistinctions: !requiresWhyExplanation || (hasBalanceReason && hasParticleRatio && lowerLearnerText.includes("mole ratio")),
     whyConclusion: !requiresWhyExplanation || (hasCausalClosure && hasParticleRatio && lowerLearnerText.includes("mole")),
     whyCausalPriority: !requiresWhyExplanation || conservationIndex === -1 || (particleIndex !== -1 && particleIndex < conservationIndex),

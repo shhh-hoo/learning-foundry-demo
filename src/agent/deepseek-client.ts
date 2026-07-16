@@ -17,6 +17,7 @@ export interface ModelMessage {
 export interface ModelCallRequest {
   readonly messages: readonly ModelMessage[];
   readonly tools: readonly unknown[];
+  readonly requiredToolName?: string;
 }
 
 export interface ModelCallResult {
@@ -44,8 +45,12 @@ export function createDeepSeekClient(options: DeepSeekClientOptions): AgentModel
         body: JSON.stringify({
           model: options.model,
           messages: request.messages,
-          tools: request.tools,
-          tool_choice: "auto",
+          ...(request.tools.length ? {
+            tools: request.tools,
+            tool_choice: request.requiredToolName
+              ? { type: "function", function: { name: request.requiredToolName } }
+              : "auto",
+          } : {}),
           response_format: { type: "json_object" },
           thinking: { type: options.thinkingMode },
           max_tokens: 1800,

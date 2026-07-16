@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { gradeAgentCase, type AgentEvalCase } from "../src/agent/agenteval";
+import { buildAgentEvalCheckpoint } from "../src/agent/agenteval-checkpoint";
 import type { AgentTrace } from "../src/agent/types";
 
 const AGENT_EVAL_CASE = "AGENT_EVAL_CASE" as const;
@@ -7,12 +8,34 @@ const testCase: AgentEvalCase = { caseId: "case", category: "diagnosis", input: 
 const trace: AgentTrace = { traceId: "trace", conversationId: "case", inputOrigin: "USER_INPUT", runPurpose: "AGENT_EVAL", provider: "deepseek", model: "configured", thinkingMode: "disabled", promptVersion: "1", capabilityRegistryVersion: "1", startedAt: "2026-07-16T10:00:00.000Z", completedAt: "2026-07-16T10:00:01.000Z", toolCalls: [{ name: "run_learner_diagnosis", arguments: { componentId: "stoichiometric-product-mass", problemContext: { prompt: "A complete original problem prompt.", reactionEquation: "2Mg + O2 -> 2MgO", givenValues: [{ label: "mass", value: 4.8, unit: "g" }], targetQuantity: "mass MgO", answerRequirement: "3 significant figures" }, problemContextEvidence: { promptQuote: "A complete original problem prompt.", reactionEquationQuote: "2Mg + O2 -> 2MgO", givenValueQuotes: ["4.8 g"], targetQuantityQuote: "mass MgO", answerRequirementQuote: "3 significant figures" } }, resultRef: "result", status: "SUCCEEDED" }], finalResponse: { status: "ANSWERED", learnerMessage: "Unit issue", sourceRefs: [], diagnosisTraceId: "trainer" }, latencyMs: 1000 };
 
 describe("AgentEval deterministic graders", () => {
+  it("builds the six-case checkpoint without forcing Registry use for evidence insufficiency", () => {
+    const sourceCases = [
+      { ...testCase, caseId: "retrieval-01" },
+      { ...testCase, caseId: "diagnosis-missing-context-01" },
+      { ...testCase, caseId: "diagnosis-01" },
+      { ...testCase, caseId: "gap-01", category: "capability-gap", requiredTools: ["list_capabilities"] },
+      { ...testCase, caseId: "diagnosis-02" },
+    ];
+
+    const checkpoint = buildAgentEvalCheckpoint(sourceCases);
+
+    expect(checkpoint.map((item) => item.caseId)).toEqual(["A-course-explanation", "B-incomplete-working", "C-complete-MgO-diagnosis", "D-multi-stage-capability-gap", "diagnosis-01", "diagnosis-02"]);
+    expect(checkpoint.find((item) => item.caseId === "D-multi-stage-capability-gap")?.requiredTools).toEqual([]);
+  });
+
   it("passes faithful tool use, complete context and diagnosis output", () => { expect(gradeAgentCase(testCase, trace, [{ name: "run_learner_diagnosis", resultRef: "result", data: { traceId: "trainer", diagnosis: { failureCode: "UNIT_ERROR" } } }]).passed).toBe(true); });
   it("fails altered diagnosis codes, unresolved trace ids and incomplete context", () => { const grade = gradeAgentCase(testCase, { ...trace, toolCalls: [{ ...trace.toolCalls[0]!, arguments: { componentId: "kp-from-equilibrium-moles" } }] }, [{ name: "run_learner_diagnosis", resultRef: "result", data: { traceId: "different", diagnosis: { failureCode: "ARITHMETIC_ERROR" } } }]); expect(grade.errors).toEqual(expect.arrayContaining(["allowedCapability", "diagnosisFidelity", "diagnosisProblemContext", "diagnosisTraceId"])); });
 
   it("requires missing-context cases to avoid diagnosis calls and traces", () => {
     const missingCase = { ...testCase, category: "diagnosis-missing-context", expectedStatus: ["NEEDS_MORE_EVIDENCE"], requiredTools: [], forbiddenTools: ["run_learner_diagnosis"], expectedFailureCode: undefined };
     const missingTrace = { ...trace, toolCalls: [], finalResponse: { status: "NEEDS_MORE_EVIDENCE" as const, learnerMessage: "Please provide the original problem, reaction conditions, target and answer requirement.", sourceRefs: [] } };
+    expect(gradeAgentCase(missingCase, missingTrace, []).passed).toBe(true);
+  });
+
+  it("accepts semantically equivalent names for all required missing problem evidence", () => {
+    const missingCase = { ...testCase, category: "diagnosis-missing-context", expectedStatus: ["NEEDS_MORE_EVIDENCE"], requiredTools: [], forbiddenTools: ["run_learner_diagnosis"], expectedFailureCode: undefined };
+    const missingTrace: AgentTrace = { ...trace, toolCalls: [], finalResponse: { status: "NEEDS_MORE_EVIDENCE", learnerMessage: "Please provide the original problem statement: what chemical reaction is involved, what quantities are given and in what units, and exactly what is being asked for. Include the reaction equation, given values with units, target quantity, and answer requirement.", sourceRefs: [] } };
+
     expect(gradeAgentCase(missingCase, missingTrace, []).passed).toBe(true);
   });
 
@@ -36,5 +59,13 @@ describe("AgentEval deterministic graders", () => {
     const learnerMessage = "At the particle level, the coefficients describe the particle ratio in one reaction pattern: two H2 molecules react with one O2 molecule. The equation must be balanced because it must show the same number of each type of atom on both sides; that explains atom accounting, not by itself why the ratio is a mole ratio. A mole is a fixed number of particles, Avogadro's constant. Scaling every particle count by Avogadro's constant preserves the ratio: (2 × N_A):(1 × N_A) is still 2:1. This microscopic particle ratio is also the macroscopic mole ratio because every count was multiplied by the same fixed number.";
     const whyTrace: AgentTrace = { ...trace, toolCalls: [{ name: "search_learning_resources", arguments: { query: "coefficients mole ratios" }, resultRef: "resource-search", status: "SUCCEEDED" }], finalResponse: { status: "ANSWERED", learnerMessage, sourceRefs: ["CAIE-9701-STOICHIOMETRY-COEFFICIENTS"] } };
     expect(gradeAgentCase(whyCase, whyTrace, [{ name: "search_learning_resources", resultRef: "resource-search", data: [{ sourceId: "CAIE-9701-STOICHIOMETRY-COEFFICIENTS" }] }]).passed).toBe(true);
+  });
+
+  it("accepts atom-conservation wording that still distinguishes balancing from mole scaling", () => {
+    const whyCase: AgentEvalCase = { caseId: "retrieval-why", category: "retrieval", input: "Why do coefficients in a balanced equation give mole ratios?", inputOrigin: "PRESET_INPUT", expectedStatus: ["ANSWERED"], requiredTools: ["search_learning_resources"], forbiddenTools: ["run_learner_diagnosis"], allowedCapabilities: [], requiredSourceIds: ["TN-001-COEFFICIENTS-TO-MOLE-RATIOS"], tags: [AGENT_EVAL_CASE, "WHY_EXPLANATION"] };
+    const learnerMessage = "The coefficients in a balanced equation give the ratio of particles that react. A mole is simply Avogadro's constant of particles—a fixed-size bundle. Scaling every particle count by the same Avogadro constant preserves the ratio, so the particle ratio becomes exactly the same mole ratio. Crucially, balancing an equation serves to conserve atoms—it does not by itself create the mole ratio. It is the particle-level ratio scaled by Avogadro's constant that gives the mole ratio.";
+    const whyTrace: AgentTrace = { ...trace, toolCalls: [{ name: "search_learning_resources", arguments: { query: "coefficients mole ratios" }, resultRef: "resource-search", status: "SUCCEEDED" }], finalResponse: { status: "ANSWERED", learnerMessage, sourceRefs: ["TN-001-COEFFICIENTS-TO-MOLE-RATIOS"] } };
+
+    expect(gradeAgentCase(whyCase, whyTrace, [{ name: "search_learning_resources", resultRef: "resource-search", data: [{ sourceId: "TN-001-COEFFICIENTS-TO-MOLE-RATIOS" }] }]).passed).toBe(true);
   });
 });
