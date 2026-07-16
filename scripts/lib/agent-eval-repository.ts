@@ -157,7 +157,7 @@ export function buildAgentEvalReport(run: PersistedAgentEvalRun): AgentEvalRepor
     latencyMs: run.cases.reduce((sum, item) => sum + item.latencyMs, 0), tokenUsage: usage,
     estimatedCostUsd: unpricedCases === 0 ? knownEstimatedCostUsd : null,
     knownEstimatedCostUsd, pricedCases, unpricedCases, costCoverage: run.cases.length ? pricedCases / run.cases.length : 0,
-    errors: run.cases.flatMap((item) => item.errors.map((error) => ({ caseId: item.caseId, error })),
+    errors: run.cases.flatMap((item) => item.errors.map((error) => ({ caseId: item.caseId, error }))),
   };
 }
 
