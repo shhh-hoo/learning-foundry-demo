@@ -5,7 +5,7 @@ import { AGENT_EVAL_SUITE_VERSION, gradeAgentCase, type AgentEvalCase } from "..
 import { LegacyAgentEvalHarness } from "../src/agent/agenteval-harness.ts";
 import { buildAgentEvalCheckpoint } from "../src/agent/agenteval-checkpoint.ts";
 import { buildAgentEvalReliabilitySprint } from "../src/agent/agenteval-reliability.ts";
-import { buildAgentEvalSuitePlan, parseAgentEvalDimension, parseAgentEvalLayer, selectAgentEvalBaseline, selectAgentEvalDimension, selectAgentEvalLayer, validateAgentEvalSuite, type AgentEvalBehaviorContract } from "../src/agent/agenteval-suite.ts";
+import { buildAgentEvalSuitePlan, parseAgentEvalDimension, parseAgentEvalLayer, requireNonEmptyAgentEvalSelection, selectAgentEvalBaseline, selectAgentEvalDimension, selectAgentEvalLayer, validateAgentEvalSuite, type AgentEvalBehaviorContract } from "../src/agent/agenteval-suite.ts";
 import { AGENT_PROMPT_VERSION, buildAgentSystemPrompt } from "../src/agent/run-agent.ts";
 import type { TokenUsage } from "../src/agent/types.ts";
 import { AgentEvalRepository, type AgentEvalEligibility, type AgentEvalRunSelection, type PersistedAgentEvalCase, type PersistedAgentEvalRun } from "./lib/agent-eval-repository.ts";
@@ -34,8 +34,6 @@ const eligibilityFor = (testCase: AgentEvalCase): AgentEvalEligibility => ({
 
 let activeEvalRunId: string | null = null;
 try {
-  const health = await harness.health();
-
   const startedAt = new Date().toISOString();
   const evalRunId = `agenteval-${startedAt.replace(/[:.]/g, "-")}-${randomUUID().slice(0, 8)}`;
   const caseFile = await readFile(new URL("../agent-eval/cases.jsonl", import.meta.url), "utf8");
@@ -63,6 +61,8 @@ try {
     selection = { mode: "DIMENSION", value: dimension };
     cases = selectAgentEvalDimension(fullCases, dimension);
   }
+  cases = requireNonEmptyAgentEvalSelection(selection, cases);
+  const health = await harness.health();
   const pricing = JSON.parse(await readFile(new URL("../agent-eval/pricing.json", import.meta.url), "utf8")) as { perMillionTokens: Readonly<Record<string, Price>> };
   const price = pricing.perMillionTokens[health.model];
   const instructions = await readFile(new URL("../config/agent/instructions.md", import.meta.url), "utf8");

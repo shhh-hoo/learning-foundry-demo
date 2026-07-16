@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import type { AgentEvalCase } from "../src/agent/agenteval";
-import { AGENT_EVAL_DIMENSIONS, AGENT_EVAL_LAYERS, buildAgentEvalSuitePlan, parseAgentEvalDimension, parseAgentEvalLayer, selectAgentEvalBaseline, selectAgentEvalDimension, selectAgentEvalLayer, summarizeAgentEvalCoverage, validateAgentEvalSuite, type AgentEvalBehaviorContract } from "../src/agent/agenteval-suite";
+import { AGENT_EVAL_DIMENSIONS, AGENT_EVAL_LAYERS, buildAgentEvalSuitePlan, parseAgentEvalDimension, parseAgentEvalLayer, requireNonEmptyAgentEvalSelection, selectAgentEvalBaseline, selectAgentEvalDimension, selectAgentEvalLayer, summarizeAgentEvalCoverage, validateAgentEvalSuite, type AgentEvalBehaviorContract } from "../src/agent/agenteval-suite";
 
 const caseFor = (caseId: string, suiteLayers: AgentEvalCase["suiteLayers"]): AgentEvalCase => ({
   caseId,
@@ -64,6 +64,14 @@ describe("AgentEval suite layers", () => {
   it("rejects unknown layer names at the live-run boundary", () => {
     expect(parseAgentEvalLayer("GENERALIZATION")).toBe("GENERALIZATION");
     expect(() => parseAgentEvalLayer("FULL")).toThrow("AGENT_EVAL_LAYER_INVALID: FULL");
+  });
+
+  it("rejects an explicitly selected empty layer", () => {
+    expect(() => requireNonEmptyAgentEvalSelection({ mode: "LAYER", value: "LEARNING_LOOP" }, [])).toThrow("AGENT_EVAL_SELECTION_EMPTY: LAYER LEARNING_LOOP selected 0 cases");
+  });
+
+  it("rejects an explicitly selected empty dimension", () => {
+    expect(() => requireNonEmptyAgentEvalSelection({ mode: "DIMENSION", value: "PEDAGOGY" }, [])).toThrow("AGENT_EVAL_SELECTION_EMPTY: DIMENSION PEDAGOGY selected 0 cases");
   });
 
   it("rejects taxonomy values that bypass TypeScript through JSON", () => {
