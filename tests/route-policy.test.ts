@@ -24,10 +24,11 @@ describe("application route policy", () => {
     expect(enforceRoutePolicy(course, response({ sourceRefs: ["TN-001"], evidenceRefs: ["retrieval-1"] }), [call("search_learning_resources", "retrieval-1")], [{ name: "search_learning_resources", data: { results: [{ sourceId: "TN-001", sourceType: "TEACHER_NOTE" }] } }])).toBe("COURSE_EXPLANATION");
   });
 
-  it("requires a complete calculation attempt to resolve its governed Diagnosis trace", () => {
+  it("requires ordered capability resolution and a governed Diagnosis trace", () => {
     const complete = request("Original problem: 2Mg + O2 -> 2MgO. Calculate mass MgO from 4.80 g Mg to 3 significant figures. Learner working: 4.80/24.0=0.200 mol, ratio 0.5, got 4.00 g. Diagnose my first mistake.");
     expect(() => enforceRoutePolicy(complete, response(), [], [])).toThrow("LEARNER_DIAGNOSIS_COMPLETE");
-    expect(enforceRoutePolicy(complete, response({ diagnosisTraceId: "diagnosis-1", evidenceRefs: ["diagnosis-1"] }), [call("run_learner_diagnosis", "diagnosis-call")], [{ name: "run_learner_diagnosis", data: { traceId: "diagnosis-1" } }])).toBe("LEARNER_DIAGNOSIS_COMPLETE");
+    expect(() => enforceRoutePolicy(complete, response({ diagnosisTraceId: "diagnosis-1", evidenceRefs: ["diagnosis-1"] }), [call("run_learner_diagnosis", "diagnosis-call")], [{ name: "run_learner_diagnosis", data: { traceId: "diagnosis-1" } }])).toThrow("ordered capability resolution");
+    expect(enforceRoutePolicy(complete, response({ diagnosisTraceId: "diagnosis-1", evidenceRefs: ["cap-list", "capability-stoichiometric-product-mass@1.0.0", "diagnosis-1"] }), [call("list_capabilities", "cap-list"), call("get_capability", "capability-stoichiometric-product-mass@1.0.0"), call("run_learner_diagnosis", "diagnosis-call")], [{ name: "run_learner_diagnosis", data: { traceId: "diagnosis-1" } }])).toBe("LEARNER_DIAGNOSIS_COMPLETE");
   });
 
   it("requires incomplete evidence to produce no Diagnosis", () => {
