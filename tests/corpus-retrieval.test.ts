@@ -34,6 +34,29 @@ async function fixtureRepository(): Promise<{ readonly root: string; readonly re
 afterEach(() => { roots.length = 0; });
 
 describe("governed corpus retrieval", () => {
+  it("returns the current lexical Evidence Search response contract", async () => {
+    const { repository } = await fixtureRepository();
+    const result = await repository.search("limiting reagent", { calculationFamilyId: "STOICH-005" });
+
+    expect(result).toMatchObject({
+      retrievalTraceId: expect.stringMatching(/^retrieval-trace-/u),
+      query: "limiting reagent",
+      filters: { calculationFamilyId: "STOICH-005" },
+      results: [{
+        chunkId: "TN-003::note",
+        sourceId: "TN-003-LIMITING-REAGENT",
+        sourceType: "TEACHER_NOTE",
+        distributionScope: "SCHOOL_INTERNAL",
+        title: "Limiting reagent",
+        excerpt: expect.stringContaining("balanced-equation coefficient"),
+        syllabusCode: "9701",
+        learningOutcomeIds: ["2.4.1(d)"],
+        calculationFamilyIds: ["STOICH-005"],
+        score: expect.any(Number),
+      }],
+    });
+  });
+
   it("filters by board/version metadata and exact calculation family", async () => {
     const { repository } = await fixtureRepository();
     const match = await repository.search("limiting reagent", { examBoard: "CAIE", syllabusCode: "9701", syllabusVersion: "2025-2027", calculationFamilyId: "STOICH-005" });

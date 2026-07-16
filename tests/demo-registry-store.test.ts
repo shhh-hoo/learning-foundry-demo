@@ -15,6 +15,20 @@ function validV110() {
 }
 
 describe("local demo registry validation", () => {
+  it("lists the latest accepted version and resets to the published local snapshot", () => {
+    const store = new DemoRegistryStore(publishedComponents);
+    const original = store.get("stoichiometric-product-mass");
+    const accepted = validV110();
+
+    expect(store.accept(accepted).ok).toBe(true);
+    expect(store.get(accepted.id)?.version).toBe("1.1.0");
+    expect(store.list()).toContainEqual(accepted);
+
+    store.reset();
+    expect(store.get(accepted.id)).toEqual(original);
+    expect(store.list()).not.toContainEqual(accepted);
+  });
+
   it("accepts a valid published snapshot and rejects malformed or tampered content", () => {
     const store = new DemoRegistryStore(publishedComponents);
     const valid = validV110();
