@@ -23,13 +23,14 @@ describe("human-confirmed product writes and task isolation", () => {
     let state = applyAgentRun(initial, "help", productTrace(initial.conversationId), []);
     state = confirmLibraryProposal(state);
     state = confirmScheduleProposal(state);
+    state = { ...state, capabilityGaps: [{ id: "gap-existing", summary: "Existing historical gap", missingEvidence: [], origin: "TOOL_OUTPUT" }] };
     const previousConversationId = state.conversationId;
     const next = startNewLearningTask(state);
 
     expect(next.conversationId).not.toBe(previousConversationId);
     expect(next.messages).toEqual([]);
     expect(next.pendingResponse).toBeNull();
-    expect(next.capabilityGaps).toEqual([]);
+    expect(next.capabilityGaps).toEqual(state.capabilityGaps);
     expect(next.library).toEqual(state.library);
     expect(next.schedule).toEqual(state.schedule);
     expect(next.agentTraces).toEqual(state.agentTraces);
