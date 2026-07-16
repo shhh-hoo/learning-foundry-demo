@@ -184,10 +184,10 @@ footer { padding:3rem clamp(1rem,6vw,6rem); background:var(--ink); color:white; 
 .schedule-card>div:last-child { display:flex; align-items:flex-end; flex-direction:column; gap:.5rem; min-width:140px; }
 .button-link { border:1px solid var(--ink); color:var(--ink); padding:.55rem .7rem; text-decoration:none; font-size:.7rem; font-weight:700; }
 
-.seeded-note { margin:1.5rem 0 1rem; background:#f6eddd; border-left:3px solid var(--orange); display:grid; grid-template-columns:auto auto 1fr; align-items:center; gap:1rem; padding:1rem; }
-.seeded-note strong { font-size:.78rem; }
-.seeded-note span { font:600 .62rem DM Mono, monospace; color:var(--red); text-transform:uppercase; }
-.seeded-note p { margin:0; text-align:right; color:#6d716d; font-size:.68rem; }
+.provenance-note { margin:1.5rem 0 1rem; background:#f6eddd; border-left:3px solid var(--orange); display:grid; grid-template-columns:auto auto 1fr; align-items:center; gap:1rem; padding:1rem; }
+.provenance-note strong { font-size:.78rem; }
+.provenance-note span { font:600 .62rem DM Mono, monospace; color:var(--red); text-transform:uppercase; }
+.provenance-note p { margin:0; text-align:right; color:#6d716d; font-size:.68rem; }
 .trace-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:.75rem; }
 .trace-grid article { border:1px solid var(--line); background:#fff; display:flex; gap:.8rem; padding:.85rem; min-width:0; }
 .trace-grid article>span { font:500 .65rem DM Mono, monospace; color:var(--green); }
@@ -255,9 +255,9 @@ footer { padding:3rem clamp(1rem,6vw,6rem); background:var(--ink); color:white; 
   .diagnosis-banner { grid-template-columns:1fr 1fr; gap:1rem; }
   .diagnosis-banner>div:first-child { grid-column:1/-1; }
   .timeline>article { grid-template-columns:1fr; gap:1rem; }
-  .schedule-card,.lifecycle-action,.seeded-note { flex-direction:column; display:flex; align-items:stretch; }
+  .schedule-card,.lifecycle-action,.provenance-note { flex-direction:column; display:flex; align-items:stretch; }
   .schedule-card>div:last-child { align-items:stretch; }
-  .seeded-note p { text-align:left; }
+  .provenance-note p { text-align:left; }
   .pattern-copy dl { grid-template-columns:1fr; }
   .evidence-rail { grid-template-columns:1fr; }
   .candidate-handoff { grid-template-columns:1fr; }

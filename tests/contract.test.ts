@@ -4,7 +4,7 @@ import { massDraft } from "../src/components/stoichiometric-product-mass";
 import { publishedComponents } from "../src/components/published";
 import { diagnosticLearningComponentSchema, publishedDiagnosticLearningComponentSchema } from "../src/contracts/published-component";
 import { contentHashMatches } from "../src/governance/content-hash";
-import { evaluateComponent } from "../src/governance/evaluation";
+import { runComponentContractChecks } from "../src/governance/component-contract-checks";
 import { standardTrainerCapability } from "../src/runtime/capability";
 import { caie9701StandardPack } from "../src/standards/caie-9701";
 
@@ -18,7 +18,7 @@ describe("canonical component contract", () => {
 
   it("rejects a malformed graph", () => {
     const malformed = { ...clone(massDraft), reasoningGraph: { ...massDraft.reasoningGraph, pedagogicalOrder: [...massDraft.reasoningGraph.pedagogicalOrder, "missing-node"] } };
-    const report = evaluateComponent(malformed, caie9701StandardPack, standardTrainerCapability);
+    const report = runComponentContractChecks(malformed, caie9701StandardPack, standardTrainerCapability);
     expect(report.checks.find((check) => check.id === "reasoning_graph_integrity")?.status).toBe("FAIL");
   });
 
@@ -29,13 +29,13 @@ describe("canonical component contract", () => {
       { ...massDraft.formulaDefinitions[0], expression: { ...expression, left: { ...expression.left, reference: { ...expression.left.reference, factId: "missing-fact" } } } },
       ...massDraft.formulaDefinitions.slice(1),
     ] };
-    const report = evaluateComponent(malformed, caie9701StandardPack, standardTrainerCapability);
+    const report = runComponentContractChecks(malformed, caie9701StandardPack, standardTrainerCapability);
     expect(report.checks.find((check) => check.id === "formula_reference_integrity")?.status).toBe("FAIL");
   });
 
   it("separates schema validity from unsupported runtime target", () => {
     const unsupported = { ...clone(massDraft), target: { ...massDraft.target, kind: "PH" as const } };
-    const report = evaluateComponent(unsupported, caie9701StandardPack, standardTrainerCapability);
+    const report = runComponentContractChecks(unsupported, caie9701StandardPack, standardTrainerCapability);
     expect(report.checks.find((check) => check.id === "schema_validity")?.status).toBe("PASS");
     expect(report.checks.find((check) => check.id === "runtime_capability_compatibility")?.status).toBe("FAIL");
   });

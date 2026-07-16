@@ -1,0 +1,83 @@
+{
+  "caseId": "CASE-STOICH-001",
+  "title": "Magnesium to magnesium oxide: wrong coefficient ratio",
+  "distributionScope": "PUBLIC_ORIGINAL",
+  "syllabusOutcomeIds": [
+    "2.4.1(a)"
+  ],
+  "calculationFamilyIds": [
+    "STOICH-001",
+    "PRACT-001"
+  ],
+  "problemPrompt": "Magnesium reacts with excess oxygen: 2Mg + O2 → 2MgO. A 4.80 g sample of Mg reacts completely. Use Ar(Mg)=24.0 and Mr(MgO)=40.0. Calculate the mass of MgO formed to 3 significant figures.",
+  "requiredEvidence": {
+    "equations": [
+      "2Mg + O2 → 2MgO"
+    ],
+    "givenValues": [
+      {
+        "label": "mass of Mg",
+        "value": 4.8,
+        "unit": "g"
+      },
+      {
+        "label": "Ar(Mg)",
+        "value": 24.0,
+        "unit": ""
+      },
+      {
+        "label": "Mr(MgO)",
+        "value": 40.0,
+        "unit": ""
+      }
+    ],
+    "targetQuantity": "mass of MgO",
+    "answerRequirement": "3 significant figures"
+  },
+  "canonicalStrategy": {
+    "strategyId": "MOLES_RATIO_MASS",
+    "steps": [
+      {
+        "id": "amount-magnesium",
+        "expression": "4.80 / 24.0",
+        "result": 0.2,
+        "unit": "mol"
+      },
+      {
+        "id": "apply-mole-ratio",
+        "expression": "0.200 × (2/2)",
+        "result": 0.2,
+        "unit": "mol MgO"
+      },
+      {
+        "id": "mass-magnesium-oxide",
+        "expression": "0.200 × 40.0",
+        "result": 8.0,
+        "unit": "g"
+      }
+    ]
+  },
+  "validAlternativeStrategies": [],
+  "expectedAnswer": {
+    "value": 8.0,
+    "unit": "g",
+    "significantFigures": 3
+  },
+  "failureTaxonomy": [
+    {
+      "failureCode": "WRONG_STOICHIOMETRIC_RATIO",
+      "firstPedagogicalIssue": "FORMULA",
+      "wrongWorking": "0.200 × 0.5 = 0.100 mol MgO",
+      "supportHint": "Compare only the Mg and MgO coefficients: 2:2."
+    }
+  ],
+  "sourceRefs": [
+    "TN-001-COEFFICIENTS-TO-MOLE-RATIOS",
+    "TN-002-CALCULATION-ROUTE-SELECTION"
+  ],
+  "teacherReview": {
+    "reviewer": "unassigned",
+    "status": "DRAFT",
+    "notes": ""
+  }
+}

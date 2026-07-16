@@ -1,0 +1,100 @@
+{
+  "caseId": "CASE-PURITY-001",
+  "title": "Purity from hydrogen gas volume",
+  "distributionScope": "PUBLIC_ORIGINAL",
+  "syllabusOutcomeIds": [
+    "2.4.1(a)",
+    "2.4.1(b)"
+  ],
+  "calculationFamilyIds": [
+    "STOICH-003",
+    "GAS-002",
+    "PRACT-007"
+  ],
+  "problemPrompt": "A 0.600 g impure magnesium sample reacts with excess hydrochloric acid: Mg + 2HCl → MgCl2 + H2. The hydrogen collected at room conditions has a volume of 480 cm3. Use molar gas volume 24 000 cm3 mol−1 and Ar(Mg)=24.0. Calculate the percentage purity of the magnesium sample.",
+  "requiredEvidence": {
+    "equations": [
+      "Mg + 2HCl → MgCl2 + H2"
+    ],
+    "givenValues": [
+      {
+        "label": "sample mass",
+        "value": 0.6,
+        "unit": "g"
+      },
+      {
+        "label": "hydrogen volume",
+        "value": 480,
+        "unit": "cm3"
+      },
+      {
+        "label": "molar gas volume",
+        "value": 24000,
+        "unit": "cm3 mol-1"
+      },
+      {
+        "label": "Ar(Mg)",
+        "value": 24.0,
+        "unit": ""
+      }
+    ],
+    "targetQuantity": "percentage purity of Mg",
+    "answerRequirement": "percentage"
+  },
+  "canonicalStrategy": {
+    "strategyId": "GAS_STOICHIOMETRY_PURITY",
+    "steps": [
+      {
+        "id": "n-h2",
+        "expression": "480/24000",
+        "result": 0.02,
+        "unit": "mol"
+      },
+      {
+        "id": "n-mg",
+        "expression": "0.0200×(1/1)",
+        "result": 0.02,
+        "unit": "mol"
+      },
+      {
+        "id": "m-mg",
+        "expression": "0.0200×24.0",
+        "result": 0.48,
+        "unit": "g"
+      },
+      {
+        "id": "purity",
+        "expression": "0.480/0.600×100",
+        "result": 80.0,
+        "unit": "%"
+      }
+    ]
+  },
+  "validAlternativeStrategies": [],
+  "expectedAnswer": {
+    "value": 80.0,
+    "unit": "%",
+    "significantFigures": 3
+  },
+  "failureTaxonomy": [
+    {
+      "failureCode": "PURITY_DENOMINATOR_WRONG",
+      "firstPedagogicalIssue": "FORMULA",
+      "supportHint": "The denominator is the original impure sample mass."
+    },
+    {
+      "failureCode": "GAS_VOLUME_NOT_CONVERTED_TO_AMOUNT",
+      "firstPedagogicalIssue": "STRATEGY",
+      "supportHint": "Use the stated molar gas volume first."
+    }
+  ],
+  "sourceRefs": [
+    "TN-004-PERCENTAGE-PURITY",
+    "TN-002-CALCULATION-ROUTE-SELECTION"
+  ],
+  "teacherReview": {
+    "reviewer": "unassigned",
+    "status": "DRAFT",
+    "notes": ""
+  }
+}

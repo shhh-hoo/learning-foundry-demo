@@ -5,7 +5,7 @@ The Product Experience is available at `?view=experience`. It is a deterministic
 - Chat retrieves the CAIE 9701 Stoichiometry standard, selects the published mass component, and calls the existing runtime preview adapter.
 - Library groups trusted resources, published components, diagnostic evidence, correction artifacts, and candidates.
 - Schedule creates one immediate review route and one delayed transfer retry three days later.
-- Component Lifecycle turns three seeded evidence fixtures into a promotable pattern.
+- Component Lifecycle turns three matching actual local Agent runs into a teacher-reviewable pattern.
 
 The orchestration is deliberately bounded. It does not call an LLM or accept arbitrary chemistry questions. Its response is grounded in `FORMULA / WRONG_STOICHIOMETRIC_RATIO`, the failure code returned by `evaluatePreviewAttempt` for the selected published component.
 

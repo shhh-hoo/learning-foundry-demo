@@ -1,0 +1,77 @@
+{
+  "schemaVersion": "1.0.0",
+  "suiteId": "9701-retrieval-v0.1",
+  "cases": [
+    {
+      "caseId": "RET-001",
+      "query": "Why do coefficients in a balanced equation give mole ratios?",
+      "filters": {
+        "examBoard": "CAIE",
+        "syllabusCode": "9701",
+        "syllabusVersion": "2025-2027"
+      },
+      "requiredSourceIds": [
+        "TN-001-COEFFICIENTS-TO-MOLE-RATIOS"
+      ],
+      "requiredFamilyIds": [
+        "CORE-001",
+        "CORE-004"
+      ],
+      "forbiddenTop3SourceIds": [
+        "TN-005-TITRATION-CALCULATION-ROUTE"
+      ]
+    },
+    {
+      "caseId": "RET-002",
+      "query": "How do I decide which reactant is limiting?",
+      "filters": {
+        "examBoard": "CAIE",
+        "syllabusCode": "9701",
+        "syllabusVersion": "2025-2027"
+      },
+      "requiredSourceIds": [
+        "TN-003-LIMITING-REAGENT"
+      ],
+      "requiredFamilyIds": [
+        "STOICH-005"
+      ],
+      "forbiddenTop3SourceIds": []
+    },
+    {
+      "caseId": "RET-003",
+      "query": "I have gas volume from an impure magnesium sample. How do I find purity?",
+      "filters": {
+        "examBoard": "CAIE",
+        "syllabusCode": "9701",
+        "syllabusVersion": "2025-2027"
+      },
+      "requiredSourceIds": [
+        "TN-004-PERCENTAGE-PURITY",
+        "TN-002-CALCULATION-ROUTE-SELECTION"
+      ],
+      "requiredFamilyIds": [
+        "STOICH-003",
+        "GAS-002",
+        "PRACT-007"
+      ],
+      "forbiddenTop3SourceIds": []
+    },
+    {
+      "caseId": "RET-004",
+      "query": "Which titres should I average before a titration calculation?",
+      "filters": {
+        "examBoard": "CAIE",
+        "syllabusCode": "9701",
+        "syllabusVersion": "2025-2027"
+      },
+      "requiredSourceIds": [
+        "TN-005-TITRATION-CALCULATION-ROUTE"
+      ],
+      "requiredFamilyIds": [
+        "PRACT-003",
+        "TITR-001"
+      ],
+      "forbiddenTop3SourceIds": []
+    }
+  ]
+}

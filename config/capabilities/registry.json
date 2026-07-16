@@ -1,0 +1,27 @@
+{
+  "version": "1.0.0",
+  "capabilities": [
+    {
+      "id": "stoichiometric-product-mass",
+      "version": "1.0.0",
+      "purpose": "Diagnose the first pedagogical issue in structured stoichiometric product-mass working.",
+      "requiredInput": "componentId stoichiometric-product-mass; componentVersion 1.0.0; strategyId MOLES_RATIO_MASS; evidencedReasoningNodeIds select-data, identify-target, amount-magnesium, apply-mole-ratio, amount-magnesium-oxide, mass-magnesium-oxide, report-unit, report-precision; finalAnswer value, unit and significantFigures; optional stoichiometricRatio and arithmeticWorkingValue",
+      "outputContract": "Decision, first pedagogical issue, failure code, evidence, support hint and trace id",
+      "limitations": ["Only published MASS component contracts", "Requires structured working evidence"],
+      "readiness": "READY",
+      "runtimeEndpoint": "http://127.0.0.1:4177/diagnose",
+      "visibility": "AGENT"
+    },
+    {
+      "id": "kp-from-equilibrium-moles",
+      "version": "1.0.0",
+      "purpose": "Legacy regression coverage for a simplified Kp contract.",
+      "requiredInput": "Version-pinned structured learner attempt",
+      "outputContract": "Deterministic legacy diagnosis trace",
+      "limitations": ["Engineering regression only", "Not a default learner capability"],
+      "readiness": "LEGACY",
+      "runtimeEndpoint": "http://127.0.0.1:4177/diagnose",
+      "visibility": "ENGINEERING_ONLY"
+    }
+  ]
+}

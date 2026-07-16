@@ -6,6 +6,18 @@
   "scripts": {
     "dev": "vite",
     "demo:local": "tsx scripts/start-local-demo.ts",
+    "registry:demo": "tsx scripts/demo-registry-server.ts",
+    "agent:gateway": "tsx scripts/agent-gateway-server.ts",
+    "policy:audit": "tsx scripts/audit-policy.ts",
+    "agenteval:live": "tsx scripts/agenteval-live.ts",
+    "agenteval:checkpoint": "AGENT_EVAL_CHECKPOINT=1 tsx scripts/agenteval-live.ts",
+    "agenteval:reliability": "AGENT_EVAL_RELIABILITY=1 tsx scripts/agenteval-live.ts",
+    "agenteval:report": "tsx scripts/agenteval-report.ts",
+    "agenteval:compare": "tsx scripts/agenteval-compare.ts",
+    "corpus:ingest": "tsx scripts/corpus-ingest.ts",
+    "corpus:inspect": "tsx scripts/corpus-inspect.ts",
+    "corpus:export:public": "tsx scripts/corpus-export-public.ts",
+    "storyboard": "tsx scripts/capture-storyboard.ts",
     "check": "tsc -b --pretty false",
     "test": "vitest run",
     "build": "tsc -b && vite build",
@@ -13,8 +25,14 @@
     "sync:trainer": "tsx scripts/sync-trainer.ts"
   },
   "dependencies": {
+    "ajv": "^8.20.0",
+    "katex": "^0.17.0",
+    "pdfjs-dist": "^5.6.205",
     "react": "19.2.7",
     "react-dom": "19.2.7",
+    "react-markdown": "^10.1.0",
+    "rehype-katex": "^7.0.1",
+    "remark-math": "^6.0.0",
     "zod": "4.3.6"
   },
   "devDependencies": {
@@ -26,6 +44,7 @@
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.3",
     "jsdom": "29.1.1",
+    "playwright": "^1.61.1",
     "tsx": "4.21.0",
     "typescript": "7.0.2",
     "vite": "8.1.4",

@@ -1,70 +1,67 @@
-# Learning Foundry Demo
+# Learning Foundry
 
-Learning Foundry connects learner-facing product experience to governed learning components. Standard Trainer is one downstream deterministic runtime.
+Learning Foundry is a governed learning system where a real DeepSeek Agent uses explicit tools, deterministic diagnosis and human publication gates.
 
-This repository implements two query-routed surfaces for a CAIE 9701 Chemistry vertical slice:
+- **Learner Workspace** — real learner input, source-grounded Agent responses, Learner Diagnosis evidence, and user-confirmed Library or Schedule writes.
+- **Foundry Studio** — a configurable repeated-diagnosis signal from PRODUCT runs, a teacher-operated governed Hint Editor, Component Contract Checks, Expert Review and publication.
+- **Engineering Inspector** — real Agent Traces, AgentEval reports, Learner Diagnosis, Runtime Validation, Component Registry and system boundaries.
+- **Demo Shell** — an event-driven observer around the product surfaces; it is not the product and cannot create evidence.
 
-- `?view=experience`: Chat, Library, Schedule, learning evidence, and Conversation-to-Component promotion.
-- `?view=governance`: standard packs, deterministic authoring, Foundry evaluation, expert review, immutable publication, and runtime preview.
+No key means no model answer, tool result, Trace, pattern, candidate, Library artifact or Schedule item. Presets only fill learner input and are recorded as `PRESET_INPUT`.
 
-> Automated component evaluation does not replace subject-expert approval. It detects structural, numerical and runtime-compatibility failures before expert review.
-
-## Demo components
-
-- `kp-from-equilibrium-moles@1.0.0`: a simplified migration from `KP_FROM_EQUILIBRIUM_MOLES_V2_GOLD`, with bounded happy-path compatibility and explicit omitted V2 capabilities.
-- `stoichiometric-product-mass@1.0.0`: expert-authored mass calculation using `2Mg + O₂ → 2MgO`.
-- `deterministic-demo-generator`: emits one valid and one deliberately invalid stoichiometry draft. It is a local simulation, not a model provider.
-
-## Architecture
+## Local services
 
 ```text
-Product Experience (Chat / Library / Schedule / Evidence)
-→ capability routing through trusted standards and published components
-→ Conversation-to-Component candidate
-→ Governance (evaluation / expert review / publication)
-→ Standard Trainer deterministic runtime
+4173  Learning Foundry UI
+4174  Standard Trainer UI
+4175  Component Registry
+4176  DeepSeek Agent Gateway
+4177  Trainer Diagnosis API
 ```
 
-The canonical TypeScript contract and Zod runtime schema live in `src/contracts`. `dist-contract` is generated and is the only cross-repository integration surface. Experience session state uses browser `localStorage`; no database or identity claim is introduced.
-
-## Run and verify
+Export the values shown in `docs/DEEPSEEK_LOCAL_SETUP.md`, or copy `.env.local.example` to the gitignored `.env.local`. `DEEPSEEK_API_KEY` and `DEEPSEEK_MODEL` are both required for Agent runs. Never expose the key through Vite variables or browser storage.
 
 ```bash
-npm ci
+npm install
 npm run demo:local
 ```
 
-The local demo starts:
+Open `http://127.0.0.1:4173/`. Standard Trainer must exist at `../standard-trainer-demo` unless `TRAINER_REPO` points elsewhere.
 
-```text
-Foundry Experience: http://localhost:4173/?view=experience
-Foundry Governance: http://localhost:4173/?view=governance
-Standard Trainer:   http://localhost:4174/
-```
+## Governed 9701 corpus
 
-The sibling `../standard-trainer-demo` checkout is required. The launcher reports an explicit clone instruction when it is absent and shuts both processes down together.
-
-Verification commands:
+Place the two school-internal source files at `private-sources/9701-2025-2027-syllabus.pdf` and `private-sources/Chem_Calculation_Book_Almost_Everything.pdf`. Both `private-sources/` and `.local-data/corpus/` are gitignored. Source authority, versions and distribution rules come from `corpus/02_SOURCE_MANIFEST.json`; source bytes never enter Git or retrieval traces.
 
 ```bash
-npm run check
+npm run corpus:ingest
+npm run corpus:inspect
+```
+
+Ingestion validates every chunk against `corpus/04_RETRIEVAL_CHUNK_SCHEMA.json`, then writes a content-addressed immutable lexical index. Gateway startup reports registered/missing sources, the index version, and chunk counts by source type and distribution scope. The public-safe export command includes only source metadata plus the original Teacher Notes and structured cases.
+
+## Verification
+
+```bash
+npm run policy:audit
 npm test
+npm run check
 npm run build
-npm run export:components
+npm run agenteval:checkpoint
+npm run agenteval:live
+npm run agenteval:report
+npm run agenteval:compare -- --baseline <evalRunId> --candidate <evalRunId>
 ```
 
-To sync only published artifacts into a sibling Trainer checkout:
+`agenteval:live` requires the real server-side DeepSeek configuration and returns non-zero if it is absent. Automated Tests validate the harness with controlled fixtures; they do not claim that a live AgentEval passed.
 
-```bash
-npm run sync:trainer
-```
+Product and AgentEval evidence have required `runPurpose` classification and separate physical stores. Diagnosis problem facts must be backed by exact quotes from the current user message before the Trainer API is called.
 
-Set `TRAINER_REPO=/path/to/checkout` when the sibling checkout is not at `../standard-trainer-demo`.
+## Documentation
 
-## Product boundaries
-
-Chat is deterministic orchestration, not a general assistant and not an external model call. The three similar learner traces are seeded fixtures, not production analytics. The demo has no multi-user backend, authentication, student database, or production identity. The current runtime supports `KP` and `MASS`; other target kinds fail compatibility until a verified adapter exists.
-
-Conversation-derived provenance is draft-only metadata. Published components retain the existing `EXPERT_AUTHORED` contract origin and require the existing evaluation, approval, versioning, and publication path.
-
-See [Product Experience](docs/PRODUCT_EXPERIENCE.md), [Conversation to Component](docs/CONVERSATION_TO_COMPONENT.md), [Local Demo](docs/LOCAL_DEMO.md), [Architecture](docs/ARCHITECTURE.md), [Demo](docs/DEMO.md), and [Case Study](docs/CASE_STUDY.md).
+- [Real Agent architecture](docs/REAL_AGENT_ARCHITECTURE.md)
+- [DeepSeek local setup](docs/DEEPSEEK_LOCAL_SETUP.md)
+- [AgentEval](docs/AGENT_EVAL.md)
+- [Data-origin policy](docs/DATA_ORIGIN_POLICY.md)
+- [Terminology](docs/TERMINOLOGY.md)
+- [Capability Registry](docs/CAPABILITY_REGISTRY.md)
+- [Product surfaces](docs/PRODUCT_SURFACES.md)

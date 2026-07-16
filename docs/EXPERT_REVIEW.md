@@ -1,20 +1,5 @@
-# Expert review and publishing
+# Expert Review
 
-Lifecycle:
+Expert Review requires a user-entered reviewer name and notes followed by explicit confirmation. Empty reviewer identity or notes block approval and publication. Confirmed review is a `HUMAN_REVIEW` action.
 
-```text
-EMPTY → DRAFT → EVALUATION_FAILED | READY_FOR_REVIEW
-READY_FOR_REVIEW → APPROVED → PUBLISHED → REVISION_DRAFT
-```
-
-Rules enforced by `ComponentLifecycle`:
-
-- a failed or absent evaluation cannot be approved;
-- an unapproved component cannot be published;
-- editing invalidates evaluation;
-- editing an approved component removes approval;
-- publication creates a deeply frozen snapshot;
-- a revision never overwrites a published version.
-
-Version increments are major for schema-breaking change, minor for content change, and patch for compatible metadata change. The static demo records reviewer and publisher identities as authored demo metadata; it does not authenticate those identities.
-
+Component Contract Checks must pass first. Editing a draft invalidates the prior report and any approval. Publication produces a frozen, versioned component snapshot.

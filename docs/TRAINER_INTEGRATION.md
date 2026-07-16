@@ -1,18 +1,7 @@
 # Standard Trainer integration
 
-Run `npm run export:components` before syncing. `npm run sync:trainer` copies only:
+Standard Trainer exposes `GET /health`, `POST /diagnose`, `GET /diagnoses` and `GET /diagnoses/:traceId` on port 4177. The API and UI share the same registry merge, Runtime Validation, target adapter, diagnosis engine, support selection and version trace. Completed API diagnoses are immutable file-backed records separated into `.local-data/product-diagnoses/` and `.local-data/agent-eval-diagnoses/` by `runPurpose`.
 
-```text
-manifest.json
-diagnostic-learning-component.schema.json
-kp-from-equilibrium-moles.json
-stoichiometric-product-mass.json
-```
+The Agent tool `run_learner_diagnosis` calls this API only after Gateway validates a complete original problem context, learner working and exact quotes from the current user message. The request and persisted record retain those provenance quotes. Learning Foundry does not duplicate diagnosis logic and does not alter returned failure codes.
 
-Each component JSON wrapper begins with `_generated: "Generated from learning-foundry-demo. Do not edit manually."` The Trainer unwraps it, validates the complete nested value against the generated canonical JSON Schema, recomputes the content hash, enforces an exact manifest-to-file bijection, resolves internal references, verifies its capability profile, and selects a target adapter. Any mismatch fails closed before learner evidence is evaluated.
-
-The Kp snapshot is a simplified migration with bounded happy-path compatibility. The legacy V2 reasoning graph, both accepted strategies, recognition gating, independent-stage evidence, assistance provenance, and full V2 failure taxonomy remain outside this published contract version.
-
-The Trainer registry API supports list and version-aware get operations. Active attempts pin component ID, version, and publication hash. Trainer evidence records those values with the runtime version.
-
-The sync is intentionally one-way. Foundry UI, drafts, rejected generated components, and evaluation reports are not copied into Trainer.
+Kp artifacts remain for legacy regression, migration history and engineering inspection. MASS is the first learner-facing capability.

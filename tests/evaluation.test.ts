@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { massDraft } from "../src/components/stoichiometric-product-mass";
 import { generateInvalidStoichiometryDraft, generateValidStoichiometryDraft } from "../src/generation/deterministic-generator";
-import { evaluateComponent } from "../src/governance/evaluation";
+import { runComponentContractChecks } from "../src/governance/component-contract-checks";
 import { standardTrainerCapability } from "../src/runtime/capability";
 import { caie9701StandardPack } from "../src/standards/caie-9701";
 
 const clone = <T,>(value: T): T => structuredClone(value);
-const report = (component: unknown) => evaluateComponent(component, caie9701StandardPack, standardTrainerCapability);
+const report = (component: unknown) => runComponentContractChecks(component, caie9701StandardPack, standardTrainerCapability);
 const status = (component: unknown, id: string) => report(component).checks.find((check) => check.id === id)?.status;
 
-describe("Foundry component evaluation", () => {
+describe("Component Contract Checks", () => {
   it("passes a valid stoichiometry component and deterministic generated draft", () => {
     expect(report(massDraft).outcome).toBe("PASSED");
     expect(report(generateValidStoichiometryDraft()).outcome).toBe("PASSED");

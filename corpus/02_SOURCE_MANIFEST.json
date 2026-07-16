@@ -1,0 +1,41 @@
+{
+  "schemaVersion": "1.0.0",
+  "corpusId": "9701-calculation-school-internal-v0.1",
+  "distributionScope": "SCHOOL_INTERNAL",
+  "commercialExport": "BLOCKED_PENDING_RIGHTS_REVIEW",
+  "publicDemoPolicy": "METADATA_AND_ORIGINAL_TEACHER_NOTES_ONLY",
+  "sources": [
+    {
+      "sourceId": "CAIE-9701-SYLLABUS-2025-2027-V1",
+      "title": "Cambridge International AS & A Level Chemistry 9701 syllabus for 2025, 2026 and 2027",
+      "sourceType": "OFFICIAL_SYLLABUS",
+      "authority": "CURRICULUM_BOUNDARY",
+      "version": "1",
+      "published": "2022-09",
+      "examYears": [
+        2025,
+        2026,
+        2027
+      ],
+      "expectedLocalFilename": "9701-2025-2027-syllabus.pdf",
+      "ingestionScope": "FULL_DOCUMENT_PRIVATE_INDEX",
+      "publicExport": "METADATA_PAGE_REFERENCES_AND_SHORT_QUOTES_ONLY",
+      "notes": "Use for syllabus outcome mapping, units, significant figures and practical expectations."
+    },
+    {
+      "sourceId": "PEARSON-JIM-CLARK-CALCULATIONS-AS-A-LEVEL",
+      "title": "Calculations in AS/A Level Chemistry",
+      "author": "Jim Clark",
+      "publisher": "Pearson Education / Longman",
+      "isbn": "978-0-582-41127-2",
+      "firstPublished": 2000,
+      "impression": "Fifteenth impression 2010",
+      "sourceType": "SECONDARY_TEACHING_REFERENCE",
+      "authority": "PEDAGOGICAL_REFERENCE_NOT_CURRENT_SYLLABUS_AUTHORITY",
+      "expectedLocalFilename": "Chem_Calculation_Book_Almost_Everything.pdf",
+      "ingestionScope": "FULL_DOCUMENT_PRIVATE_INDEX_FOR_SCHOOL_USE",
+      "publicExport": "NO_VERBATIM_CHUNKS; DERIVED_ORIGINAL_TEACHER_NOTES_ONLY",
+      "notes": "Use to map calculation families, worked-example structures, hints and likely misconceptions. Syllabus always wins on current scope."
+    }
+  ]
+}

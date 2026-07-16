@@ -1,0 +1,86 @@
+{
+  "caseId": "CASE-MULTISTAGE-001",
+  "title": "Purity followed by aliquot titration",
+  "distributionScope": "PUBLIC_ORIGINAL",
+  "syllabusOutcomeIds": [
+    "2.4.1(a)",
+    "2.4.1(c)",
+    "2.4.1(d)",
+    "2.4.1(e)"
+  ],
+  "calculationFamilyIds": [
+    "STOICH-002",
+    "STOICH-003",
+    "SOL-002",
+    "TITR-001"
+  ],
+  "problemPrompt": "A 1.50 g impure carbonate MCO3 is dissolved in excess acid and the solution is made up to 250.0 cm3. A 25.0 cm3 aliquot requires 20.00 cm3 of 0.100 mol dm−3 NaOH to neutralise the remaining acid. Additional problem data define the initial acid amount and the carbonate reaction. Determine the percentage purity of MCO3.",
+  "requiredEvidence": {
+    "equations": [
+      "MCO3 + 2H+ → M2+ + CO2 + H2O",
+      "H+ + OH− → H2O"
+    ],
+    "givenValues": [
+      {
+        "label": "sample mass",
+        "value": 1.5,
+        "unit": "g"
+      },
+      {
+        "label": "final solution volume",
+        "value": 250.0,
+        "unit": "cm3"
+      },
+      {
+        "label": "aliquot volume",
+        "value": 25.0,
+        "unit": "cm3"
+      },
+      {
+        "label": "NaOH titre",
+        "value": 20.0,
+        "unit": "cm3"
+      },
+      {
+        "label": "NaOH concentration",
+        "value": 0.1,
+        "unit": "mol dm-3"
+      }
+    ],
+    "targetQuantity": "percentage purity of MCO3",
+    "answerRequirement": "cannot be completed until initial acid amount and Mr(MCO3) are supplied"
+  },
+  "canonicalStrategy": {
+    "strategyId": "MULTISTAGE_BACK_TITRATION_PURITY",
+    "steps": [
+      {
+        "id": "evidence-gate",
+        "expression": "verify initial acid amount and molar mass evidence",
+        "result": 0,
+        "unit": "missing-evidence gate"
+      }
+    ]
+  },
+  "validAlternativeStrategies": [],
+  "expectedAnswer": {
+    "value": 0,
+    "unit": "NEEDS_MORE_EVIDENCE",
+    "significantFigures": 1
+  },
+  "failureTaxonomy": [
+    {
+      "failureCode": "MISSING_INITIAL_REAGENT_AMOUNT",
+      "firstPedagogicalIssue": "EVIDENCE",
+      "supportHint": "Back titration needs the initial acid amount before the amount consumed can be found."
+    }
+  ],
+  "sourceRefs": [
+    "TN-006-MULTI-STAGE-STOICHIOMETRY",
+    "TN-005-TITRATION-CALCULATION-ROUTE"
+  ],
+  "teacherReview": {
+    "reviewer": "unassigned",
+    "status": "DRAFT",
+    "notes": "This is intentionally incomplete and should not invoke a numerical Diagnosis component."
+  }
+}
