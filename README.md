@@ -65,12 +65,15 @@ Product and AgentEval evidence have required `runPurpose` classification and sep
 
 Current runtime infrastructure is reached through narrow contracts for Agent execution, corpus search, Learning Capability execution, AgentEval target transport, trace storage and the local diagnostic Component Repository. The target seam covers health and one Agent run; selection, iteration, grading, persistence and reporting remain in the existing AgentEval runner. The current DeepSeek, lexical corpus, Standard Trainer, file-store and local-showcase implementations remain authoritative Legacy adapters; no candidate framework has authority.
 
+The Agent Gateway also contains a candidate-neutral shadow foundation. It is default-off, always returns the Legacy authoritative result, isolates candidate failure and writes role-separated normalized comparison records. No candidate implementation or framework dependency is included.
+
 ## Documentation
 
 - [Real Agent architecture](docs/REAL_AGENT_ARCHITECTURE.md)
 - [DeepSeek local setup](docs/DEEPSEEK_LOCAL_SETUP.md)
 - [AgentEval](docs/AGENT_EVAL.md)
 - [Runtime-boundary acceptance](docs/RUNTIME_BOUNDARY_ACCEPTANCE.md)
+- [Runtime shadow foundation acceptance](docs/RUNTIME_SHADOW_FOUNDATION_ACCEPTANCE.md)
 - [Data-origin policy](docs/DATA_ORIGIN_POLICY.md)
 - [Terminology](docs/TERMINOLOGY.md)
 - [Capability Registry](docs/CAPABILITY_REGISTRY.md)

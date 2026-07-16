@@ -30,3 +30,9 @@ The current product path is wired through these minimal contracts and concrete a
 Route classification, obligations, tool order, provenance, reference-class validation, corpus delivery policy, Component acceptance checks, AgentEval cases and graders remain outside commodity adapters. `AgentEvalTarget` owns only health and single-run transport; suite selection, case iteration, grading, eligibility, persistence and reporting remain in the current runner. The trace contract and observable-message types are provider-neutral, and the Component repository contract is asynchronous for durable or remote replacements. `CorpusSearchService` and the current diagnostic Component contract still expose Chemistry Reference Pack shapes; this milestone does not claim that they are domain-neutral Core contracts.
 
 No candidate runtime or framework is integrated, no authority has switched, and Legacy deletion is not authorized. See [RUNTIME_BOUNDARY_ACCEPTANCE.md](RUNTIME_BOUNDARY_ACCEPTANCE.md) for acceptance evidence and rollback scope.
+
+## Default-off runtime shadow foundation
+
+The Agent Gateway now builds one normalized request from the current Agent request, Foundry-owned Execution Plan and versioned policy inputs. The Legacy DeepSeek executor is explicitly `AUTHORITATIVE`. An optional `SHADOW` executor can consume the same normalized input, but its result is never returned to the learner, its failure or timeout is isolated, and it receives no Product State or authoritative trace writer.
+
+Shadow mode is disabled unless `RUNTIME_SHADOW_MODE=enabled`. No candidate executor is present in this milestone; explicitly enabling the mode records that absence rather than simulating a result. Normalized authoritative and shadow execution records use separate gitignored namespaces and exclude secrets, hidden reasoning and private paths. See [RUNTIME_SHADOW_FOUNDATION_ACCEPTANCE.md](RUNTIME_SHADOW_FOUNDATION_ACCEPTANCE.md).
