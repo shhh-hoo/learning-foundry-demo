@@ -32,6 +32,23 @@ describe("local demo registry validation", () => {
     expect(persisted).toBe(true);
   });
 
+  it("rejects malformed or tampered Components before the repository put boundary", async () => {
+    let putCount = 0;
+    const repository = {
+      reset: async () => {},
+      list: async () => [],
+      get: async () => null,
+      manifest: async () => ({ protocolVersion: "1.0.0" as const, generatedAt: "2026-07-16T10:00:00.000Z", components: [] }),
+      put: async (component) => { putCount += 1; return component; },
+    } satisfies DiagnosticComponentRepository;
+    const valid = validV110();
+    const tampered = { ...structuredClone(valid), presentation: { ...valid.presentation, title: "Tampered" } };
+
+    await expect(acceptPublishedDiagnosticComponent(repository, tampered)).resolves.toMatchObject({ ok: false, error: { code: "CONTENT_HASH_MISMATCH" } });
+    await expect(acceptPublishedDiagnosticComponent(repository, { id: "broken" })).resolves.toMatchObject({ ok: false, error: { code: "MALFORMED_COMPONENT" } });
+    expect(putCount).toBe(0);
+  });
+
   it("lists the latest accepted version and resets to the published local snapshot", async () => {
     const store = new DemoRegistryStore(publishedComponents);
     const original = await store.get("stoichiometric-product-mass");

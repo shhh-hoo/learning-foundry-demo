@@ -6,14 +6,14 @@ import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 import { buildPublicSafeExport } from "../scripts/lib/corpus-ingestion";
-import { CorpusRepository } from "../scripts/lib/corpus-repository";
+import { LegacyLexicalEvidenceSearch } from "../scripts/lib/corpus-repository";
 import type { CorpusChunk, CorpusIndexManifest } from "../src/corpus/types";
 
 const executeFile = promisify(execFile);
 const roots: string[] = [];
 const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
 
-async function fixtureRepository(): Promise<{ readonly root: string; readonly repository: CorpusRepository }> {
+async function fixtureRepository(): Promise<{ readonly root: string; readonly repository: LegacyLexicalEvidenceSearch }> {
   const root = await mkdtemp(join(tmpdir(), "corpus-retrieval-"));
   roots.push(root);
   const chunks: CorpusChunk[] = [
@@ -28,7 +28,7 @@ async function fixtureRepository(): Promise<{ readonly root: string; readonly re
   await writeFile(join(directory, "chunks.json"), chunksText);
   await writeFile(join(directory, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
   await writeFile(join(root, ".local-data/corpus/latest.json"), `${JSON.stringify({ indexVersion: version, indexHash: manifest.indexHash, manifestPath: `indexes/${version}/manifest.json` }, null, 2)}\n`);
-  return { root, repository: await CorpusRepository.open(root) };
+  return { root, repository: await LegacyLexicalEvidenceSearch.open(root) };
 }
 
 afterEach(() => { roots.length = 0; });

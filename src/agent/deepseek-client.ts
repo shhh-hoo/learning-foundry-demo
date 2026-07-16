@@ -7,6 +7,11 @@ export interface ModelMessage extends ObservableAgentMessage {
   readonly reasoning_content?: string;
 }
 
+export function toObservableAgentMessage(message: ModelMessage): ObservableAgentMessage {
+  const { reasoning_content: _hiddenReasoning, ...observable } = message;
+  return observable;
+}
+
 export interface ModelCallRequest {
   readonly messages: readonly ModelMessage[];
   readonly tools: readonly unknown[];

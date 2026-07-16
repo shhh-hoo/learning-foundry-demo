@@ -16,7 +16,7 @@ describe("replaceable runtime boundaries", () => {
     await expect(runtime.execute({
       capabilityId: "any-learning-capability",
       capabilityVersion: "1.0.0",
-      input: { learnerAttempt: "evidenced input" },
+      input: { componentId: "any-learning-capability", componentVersion: "1.0.0", learnerAttempt: "evidenced input" },
       runPurpose: "PRODUCT",
     })).resolves.toEqual({ traceId: "trainer-trace", result: { traceId: "trainer-trace", decision: "SOLVED" } });
     expect(requests.map((item) => [item.url, item.init?.method])).toEqual([
@@ -29,6 +29,21 @@ describe("replaceable runtime boundaries", () => {
       componentVersion: "1.0.0",
       runPurpose: "PRODUCT",
     });
+  });
+
+  it("preserves AGENT_EVAL purpose when the optional capability version is omitted", async () => {
+    const payloads: Record<string, unknown>[] = [];
+    const runtime = new LegacyTrainerCapabilityRuntime("http://127.0.0.1:4177/diagnose", async (_input, init) => {
+      if (init?.method === "POST") {
+        payloads.push(JSON.parse(String(init.body)) as Record<string, unknown>);
+        return Response.json({ ok: true, result: { traceId: "unversioned-trace" } });
+      }
+      return Response.json({ ok: true, diagnosis: { traceId: "unversioned-trace" } });
+    });
+
+    await runtime.execute({ capabilityId: "unversioned-capability", input: { learnerAttempt: "evidence" }, runPurpose: "AGENT_EVAL" });
+
+    expect(payloads).toEqual([{ componentId: "unversioned-capability", learnerAttempt: "evidence", runPurpose: "AGENT_EVAL" }]);
   });
 
   it("preserves the structured failure when a Legacy Trainer trace cannot be resolved", async () => {

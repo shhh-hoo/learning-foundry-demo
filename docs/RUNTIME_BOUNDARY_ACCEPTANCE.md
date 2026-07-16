@@ -25,7 +25,7 @@ Existing focused tests continue to cover:
 9. diagnostic Component publication and content-hash validation;
 10. AgentEval baseline selection and drift detection.
 
-This change adds explicit characterization for the full lexical response contract and local Registry version/reset behavior.
+This change adds explicit characterization for the full lexical response contract, governed capability identity and purpose, provider-neutral trace mapping, and local Registry async acceptance/version/reset behavior.
 
 ## Boundaries and current adapters
 
@@ -40,6 +40,19 @@ This change adds explicit characterization for the full lexical response contrac
 
 The existing `AgentModelClient` remains the narrow model-provider contract; no duplicate provider abstraction was added. Agent and workflow execution remain one boundary because the current code does not justify separate lifecycles.
 
+## Six-seam re-audit
+
+| Seam | Real implementation and caller | Credible replacement and neutrality | Focused protection | Foundry policy location |
+|---|---|---|---|---|
+| `AgentExecution` | `legacyDeepSeekAgentExecution` is called by the Agent gateway | another Agent/workflow executor can consume the same `AgentRunRequest`; no framework type appears | gateway execution and request-validation tests | route, obligations, tool policy and response validation remain outside the adapter contract |
+| `CorpusSearchService` | `LegacyLexicalEvidenceSearch` is constructed by the Agent gateway | another evidence-search engine can return the existing response contract; current Chemistry fields are explicitly not claimed as Core-neutral | full lexical response, filters, ranking and trace tests | delivery policy remains in `CorpusDeliveryPolicyRuntime` |
+| `LearningCapabilityRuntime` | `LegacyTrainerCapabilityRuntime` is called by the tool executor | another capability runtime can execute the governed capability identity without owning resolution policy | matching/mismatching identity, optional version, purpose and trace-resolution tests | capability resolution and provenance checks remain in the tool executor |
+| `AgentEvalTarget` | `LegacyGatewayAgentEvalTarget` is called by the live runner | another target transport can expose health and one Agent run without redefining the suite | health and single-run transport test plus CLI selection tests | selection, iteration, grading, eligibility, persistence and reports remain in AgentEval modules |
+| `AgentTraceStore` | `FileAgentTraceStore` is used by purpose-separated gateway repositories | another store can persist the provider-neutral record and observable messages | non-DeepSeek provider, DeepSeek compatibility/redaction and purpose-separation tests | response/reference validation remains upstream |
+| `DiagnosticComponentRepository` | `LocalShowcaseComponentRepository` is awaited by the Registry server | a durable or remote repository can implement the async methods | async candidate, latest-version, reset and fail-before-put tests | schema, publication and hash acceptance remain in `acceptPublishedDiagnosticComponent` |
+
+Each seam therefore has a real current implementation, a real entrypoint, a responsibility-accurate name, a credible replacement, focused tests and policy ownership outside the adapter. The lexical adapter is the actual implementation class rather than a renamed export-only alias.
+
 ## Foundry policy deliberately retained
 
 Adapters do not own:
@@ -53,7 +66,7 @@ Adapters do not own:
 
 `AgentEvalTarget` is only the transport seam for target health and one `AGENT_EVAL` Agent run. Suite selection, checkpoint/baseline/layer/dimension selection, the case loop, grading, eligibility, persistence and report semantics remain in `scripts/agenteval-live.ts` and the existing AgentEval modules. This milestone does not claim a stable external suite-runner boundary.
 
-The provider-neutral trace contract and persisted observable-message types live in `src/agent/trace-store.ts`; provider identity is a string and the contract does not import the DeepSeek adapter. `ModelMessage` remains a DeepSeek adapter extension, while `FileAgentTraceStore` accepts the neutral observable shape.
+The provider-neutral trace contract and persisted observable-message types live in `src/agent/trace-store.ts`; provider identity is a string and the contract does not import the DeepSeek adapter. `ModelMessage` remains a DeepSeek adapter extension, and `toObservableAgentMessage` removes provider-only hidden reasoning before `FileAgentTraceStore` receives the neutral observable shape.
 
 The diagnostic Component repository is asynchronous so a durable or remote implementation can satisfy the same contract. The local repository stores already accepted snapshots. The server awaits the Foundry-owned `acceptPublishedDiagnosticComponent` check and repository operations; the prior `accept` method remains as an asynchronous compatibility delegate.
 
@@ -79,17 +92,19 @@ No Learning Loop or Reference Pack cases were invented.
 
 Automated validation completed:
 
-- `npm test` — 28 files, 158 tests passed;
+- `npm test` — 28 files, 161 tests passed;
 - `npm run check` — passed;
 - `npm run build` — passed;
 - `git diff --check` — passed;
 - focused boundary and AgentEval tests — passed.
 
-Live AgentEval checkpoint and baseline:
+Live Legacy AgentEval used the configured server-side DeepSeek model, governed 934-chunk corpus, Component Registry and Standard Trainer Diagnosis API:
 
-`NOT RUN — required live environment unavailable`
+- checkpoint `agenteval-2026-07-16T17-58-14-014Z-3100e96f` — 6/6 passed;
+- first versioned 1.2.0 baseline `agenteval-2026-07-16T17-58-56-507Z-3c87dea9` — 17/18 passed; `diagnosis-02` ended with `INVALID_AGENT_RESPONSE` after two invalid provider responses;
+- full baseline repeat `agenteval-2026-07-16T18-01-04-184Z-e67b9342` — 14/18 passed; the case-level record preserves three grader differences and one `INVALID_AGENT_RESPONSE` infrastructure failure.
 
-The real DeepSeek key and model were not configured. Fixture tests are not reported as live validation.
+The baseline commands correctly exited non-zero and are not reported as passed. No case, grader or policy was weakened, and no full 73-case live validation or candidate parity is claimed.
 
 ## Scope, rollback and authority
 

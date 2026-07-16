@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createHash, randomUUID } from "node:crypto";
 import { resolve } from "node:path";
-import { createDeepSeekClient } from "../src/agent/deepseek-client.ts";
+import { createDeepSeekClient, toObservableAgentMessage } from "../src/agent/deepseek-client.ts";
 import { createAgentGateway, type AgentExecution } from "../src/agent/gateway.ts";
 import { resolveAgentExecutionPlan } from "../src/agent/route-policy.ts";
 import { AGENT_PROMPT_VERSION, buildAgentSystemPrompt, runAgent } from "../src/agent/run-agent.ts";
@@ -52,7 +52,7 @@ const legacyDeepSeekAgentExecution: AgentExecution | null = client ? {
     const traceId = `agent-trace-${randomUUID()}`; const startedAt = new Date().toISOString();
     await traceRepository.start({ traceId, request, initialRoute, obligations: executionPlan.obligations, provider: "deepseek", model, thinkingMode, prompt: { version: AGENT_PROMPT_VERSION, contentHash: contentHash(observableSystemPrompt) }, capabilityRegistry: { version: capabilities.version, contentHash: contentHash(JSON.stringify(capabilities)) }, toolDefinitions: { version: toolConfig.version, contentHash: contentHash(JSON.stringify(toolConfig)) }, startedAt });
     try {
-      const trace = await runAgent({ request, initialRoute, initialObligations: executionPlan.obligations, model, thinkingMode, systemPrompt, promptVersion: AGENT_PROMPT_VERSION, capabilityRegistryVersion: capabilities.version, toolDefinitions: toolConfig.tools, modelClient: client, tools, createId: () => traceId, onToolResult: (result) => toolResults.push(result), onModelResponse: (message, usage) => traceRepository.appendModelResponse(traceId, message, usage), onToolExecution: (execution) => traceRepository.appendToolExecution(traceId, execution) });
+      const trace = await runAgent({ request, initialRoute, initialObligations: executionPlan.obligations, model, thinkingMode, systemPrompt, promptVersion: AGENT_PROMPT_VERSION, capabilityRegistryVersion: capabilities.version, toolDefinitions: toolConfig.tools, modelClient: client, tools, createId: () => traceId, onToolResult: (result) => toolResults.push(result), onModelResponse: (message, usage) => traceRepository.appendModelResponse(traceId, toObservableAgentMessage(message), usage), onToolExecution: (execution) => traceRepository.appendToolExecution(traceId, execution) });
       await traceRepository.complete(traceId, trace.finalResponse, trace.completedAt, trace.route);
       return { trace, toolResults };
     } catch (error) {
