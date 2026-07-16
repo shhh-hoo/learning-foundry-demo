@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { AGENT_EVAL_LAYERS, type AgentEvalLayer, type DiagnosisGeneralizationDimension, type RetrievalGeneralizationVariant } from "../../src/agent/agenteval-suite";
+import { AGENT_EVAL_DIMENSIONS, AGENT_EVAL_LAYERS, type AgentEvalDimension, type AgentEvalLayer, type DiagnosisGeneralizationDimension, type ExpectedCapabilityResolution, type RetrievalGeneralizationVariant } from "../../src/agent/agenteval-suite";
 import type { TokenUsage } from "../../src/agent/types";
 
 interface VersionedHash { readonly version: string; readonly contentHash: string }
@@ -15,8 +15,10 @@ export interface PersistedAgentEvalCase {
   readonly sourceCaseId?: string;
   readonly category: string;
   readonly suiteLayers?: readonly AgentEvalLayer[];
+  readonly evaluationDimensions?: readonly AgentEvalDimension[];
   readonly retrievalVariant?: RetrievalGeneralizationVariant;
   readonly diagnosisDimensions?: readonly DiagnosisGeneralizationDimension[];
+  readonly expectedCapabilityResolution?: ExpectedCapabilityResolution;
   readonly runPurpose: "AGENT_EVAL";
   readonly agentTraceId?: string;
   readonly eligibility?: AgentEvalEligibility;
@@ -29,11 +31,13 @@ export interface PersistedAgentEvalCase {
   readonly terminalError?: { readonly code: string; readonly message: string };
 }
 export interface PersistedAgentEvalRun {
-  readonly schemaVersion: "1.0.0";
+  readonly schemaVersion: "1.0.0" | "1.1.0";
   readonly evalRunId: string;
   readonly runPurpose: "AGENT_EVAL";
   readonly status: "RUNNING" | "COMPLETED" | "INTERRUPTED";
   readonly totalPlannedCases: number;
+  readonly selection?: AgentEvalRunSelection;
+  readonly suitePlan?: AgentEvalSuitePlan;
   readonly suiteVersion: string;
   readonly caseFileHash: string;
   readonly provider: string;
@@ -48,10 +52,30 @@ export interface PersistedAgentEvalRun {
   readonly cases: readonly PersistedAgentEvalCase[];
 }
 
+export interface AgentEvalRunSelection {
+  readonly mode: "FULL" | "CHECKPOINT" | "BASELINE" | "LAYER" | "DIMENSION";
+  readonly value?: string;
+}
+
+export interface AgentEvalSuitePlan {
+  readonly layerCaseIds: Readonly<Record<AgentEvalLayer, readonly string[]>>;
+  readonly dimensionCaseIds: Readonly<Record<AgentEvalDimension, readonly string[]>>;
+  readonly capabilityResolutionCaseIds?: Readonly<Record<ExpectedCapabilityResolution, readonly string[]>>;
+}
+
 export interface AgentEvalMetricSummary {
   readonly eligibleCases: number;
   readonly passedCases: number;
   readonly rate: number;
+}
+
+export interface AgentEvalCoverageMetricSummary {
+  readonly plannedCases: number;
+  readonly executedCases: number;
+  readonly passedCases: number;
+  readonly coverageComplete: boolean;
+  readonly rate: number | null;
+  readonly status: "NOT_RUN" | "PARTIAL" | "COMPLETE";
 }
 
 export interface AgentEvalReport {
@@ -76,7 +100,11 @@ export interface AgentEvalReport {
   readonly diagnosisFidelity: number;
   readonly diagnosisFidelityMetric: AgentEvalMetricSummary;
   readonly sourceGroundingMetric: AgentEvalMetricSummary;
-  readonly layerMetrics: Readonly<Record<AgentEvalLayer, AgentEvalMetricSummary>>;
+  readonly selection: AgentEvalRunSelection | null;
+  readonly layerMetrics: Readonly<Record<AgentEvalLayer, AgentEvalCoverageMetricSummary>>;
+  readonly dimensionMetrics: Readonly<Record<AgentEvalDimension, AgentEvalCoverageMetricSummary>>;
+  readonly supportedInputGeneralizationMetric: AgentEvalCoverageMetricSummary;
+  readonly capabilityBoundaryComplianceMetric: AgentEvalCoverageMetricSummary;
   readonly latencyMs: number;
   readonly tokenUsage: { readonly promptTokens: number; readonly completionTokens: number; readonly totalTokens: number };
   readonly estimatedCostUsd: number | null;
@@ -142,12 +170,34 @@ function metric(run: PersistedAgentEvalRun, check: string, eligibility: keyof Ag
   return { eligibleCases: relevant.length, passedCases, rate: relevant.length ? passedCases / relevant.length : emptyValue };
 }
 
-function metricByLayer(run: PersistedAgentEvalRun): Readonly<Record<AgentEvalLayer, AgentEvalMetricSummary>> {
-  return Object.fromEntries(AGENT_EVAL_LAYERS.map((layer) => {
-    const relevant = run.cases.filter((item) => item.suiteLayers?.includes(layer));
-    const passedCases = relevant.filter((item) => item.passed).length;
-    return [layer, { eligibleCases: relevant.length, passedCases, rate: relevant.length ? passedCases / relevant.length : 0 }];
-  })) as Record<AgentEvalLayer, AgentEvalMetricSummary>;
+function coverageMetric(plannedCaseIds: readonly string[], executedCases: readonly PersistedAgentEvalCase[]): AgentEvalCoverageMetricSummary {
+  const planned = new Set(plannedCaseIds);
+  const relevant = executedCases.filter((item) => planned.has(item.sourceCaseId ?? item.caseId));
+  const passedCases = relevant.filter((item) => item.passed).length;
+  const coverageComplete = planned.size > 0 && relevant.length === planned.size;
+  const status = coverageComplete ? "COMPLETE" : relevant.length ? "PARTIAL" : "NOT_RUN";
+  return {
+    plannedCases: planned.size,
+    executedCases: relevant.length,
+    passedCases,
+    coverageComplete,
+    rate: coverageComplete ? passedCases / planned.size : null,
+    status,
+  };
+}
+
+function metricByLayer(run: PersistedAgentEvalRun): Readonly<Record<AgentEvalLayer, AgentEvalCoverageMetricSummary>> {
+  return Object.fromEntries(AGENT_EVAL_LAYERS.map((layer) => [
+    layer,
+    coverageMetric(run.suitePlan?.layerCaseIds[layer] ?? [], run.cases),
+  ])) as Record<AgentEvalLayer, AgentEvalCoverageMetricSummary>;
+}
+
+function metricByDimension(run: PersistedAgentEvalRun): Readonly<Record<AgentEvalDimension, AgentEvalCoverageMetricSummary>> {
+  return Object.fromEntries(AGENT_EVAL_DIMENSIONS.map((dimension) => [
+    dimension,
+    coverageMetric(run.suitePlan?.dimensionCaseIds[dimension] ?? [], run.cases),
+  ])) as Record<AgentEvalDimension, AgentEvalCoverageMetricSummary>;
 }
 
 export function buildAgentEvalReport(run: PersistedAgentEvalRun): AgentEvalReport {
@@ -167,7 +217,10 @@ export function buildAgentEvalReport(run: PersistedAgentEvalRun): AgentEvalRepor
     passRate: run.cases.length ? run.cases.filter((item) => item.passed).length / run.cases.length : 0,
     requiredToolAccuracy: requiredToolMetric.rate, requiredToolMetric,
     forbiddenToolRate: 1 - forbiddenToolComplianceMetric.rate, forbiddenToolComplianceMetric,
-    diagnosisFidelity: diagnosisFidelityMetric.rate, diagnosisFidelityMetric, sourceGroundingMetric, layerMetrics: metricByLayer(run),
+    diagnosisFidelity: diagnosisFidelityMetric.rate, diagnosisFidelityMetric, sourceGroundingMetric,
+    selection: run.selection ?? null, layerMetrics: metricByLayer(run), dimensionMetrics: metricByDimension(run),
+    supportedInputGeneralizationMetric: coverageMetric(run.suitePlan?.capabilityResolutionCaseIds?.FULL_MATCH ?? [], run.cases),
+    capabilityBoundaryComplianceMetric: coverageMetric(run.suitePlan?.capabilityResolutionCaseIds?.NO_MATCH ?? [], run.cases),
     latencyMs: run.cases.reduce((sum, item) => sum + item.latencyMs, 0), tokenUsage: usage,
     estimatedCostUsd: unpricedCases === 0 ? knownEstimatedCostUsd : null,
     knownEstimatedCostUsd, pricedCases, unpricedCases, costCoverage: run.cases.length ? pricedCases / run.cases.length : 0,

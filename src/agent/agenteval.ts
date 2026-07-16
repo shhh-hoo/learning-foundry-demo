@@ -9,8 +9,10 @@ export interface AgentEvalCase {
   readonly allowedCapabilities: readonly string[]; readonly expectedFailureCode?: string | null; readonly forbiddenClaims?: readonly string[]; readonly tags: readonly string[];
   readonly requiredSourceIds?: readonly string[];
   readonly suiteLayers?: readonly import("./agenteval-suite").AgentEvalLayer[];
+  readonly evaluationDimensions?: readonly import("./agenteval-suite").AgentEvalDimension[];
   readonly retrievalVariant?: import("./agenteval-suite").RetrievalGeneralizationVariant;
   readonly diagnosisDimensions?: readonly import("./agenteval-suite").DiagnosisGeneralizationDimension[];
+  readonly expectedCapabilityResolution?: import("./agenteval-suite").ExpectedCapabilityResolution;
 }
 export interface AgentEvalToolResult { readonly name: string; readonly resultRef: string; readonly data: unknown }
 export interface AgentEvalGrade { readonly passed: boolean; readonly checks: Readonly<Record<string, boolean>>; readonly errors: readonly string[] }

@@ -14,7 +14,7 @@ This file is historical evidence for suite `1.2.0`. Its `18/18` result covers ei
 
 The historical six-execution checkpoint also used only five unique source cases: `diagnosis-01` was executed twice, while the synthetic D case overwrote its source `requiredTools` and therefore failed to preserve the capability-inspection obligation. The final 18-case run did independently include `gap-01`, so its recorded result remains valid within the old bounded suite; only the checkpoint-independence claim was overstated.
 
-Suite `2.0.0` supersedes this evaluation contract with six independent checkpoint sources and 73 layered cases. It does not retroactively claim a live pass; new live results must be recorded separately.
+Suite `2.0.0` supersedes this evaluation contract with six independent checkpoint sources and 73 cases classified by formal suite layers and orthogonal evaluation dimensions. It does not retroactively claim a live pass; new live results must be recorded separately. The eighteen behavioral expectation records are preserved in `agent-eval/baselines/1.2.0-contract.jsonl`.
 
 ## Delivery boundary
 
@@ -53,7 +53,7 @@ Result: 6/6 passed; required-tool, forbidden-tool compliance, Diagnosis fidelity
 |---|---|---|
 | A course explanation | `agent-trace-d50f4a04-5dec-45e3-b474-7dd12916dfc9` | — |
 | B incomplete working | `agent-trace-510c6878-927b-4e73-9770-67329148536a` | — |
-| C complete MgO diagnosis | `agent-trace-e6f22001-9e16-43c8-b353-1af71b60e3f3` | `trainer-trace-7cb842bd-8365-4bfd-b20a-1c3ba420f74e` |
+| C complete registered diagnosis | `agent-trace-e6f22001-9e16-43c8-b353-1af71b60e3f3` | `trainer-trace-7cb842bd-8365-4bfd-b20a-1c3ba420f74e` |
 | D multi-stage incomplete evidence | `agent-trace-cd649bc9-e96c-48e7-8d69-49b9d16e431b` | — |
 | diagnosis-01 | `agent-trace-eb952f77-da67-4e0f-a42d-6d8e20f941d8` | `trainer-trace-b70d5909-e41f-4355-9f26-70694d726276` |
 | diagnosis-02 | `agent-trace-25e39539-1844-4a45-ad14-71ab2ae0e8ed` | `trainer-trace-796fc093-3ffe-4656-a478-903de94bf7c7` |

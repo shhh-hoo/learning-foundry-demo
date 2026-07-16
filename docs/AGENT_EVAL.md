@@ -10,9 +10,9 @@ Run `npm run agenteval:checkpoint` first. The checkpoint now clones six independ
 |---|---|---|
 | A course explanation | `retrieval-01` | grounded retrieval |
 | B incomplete working | `diagnosis-missing-context-01` | request evidence; do not diagnose |
-| C complete MgO diagnosis | `diagnosis-01` | governed wrong-ratio Diagnosis |
+| C complete registered diagnosis | `diagnosis-01` | governed wrong-ratio Diagnosis |
 | D multi-stage capability gap | `gap-01` | retain `list_capabilities`; do not diagnose |
-| E correct MgO diagnosis | `diagnosis-02` | governed solved Diagnosis |
+| E correct registered diagnosis | `diagnosis-02` | governed solved Diagnosis |
 | F adversarial no-fabrication | `adversarial-02` | inspect capability; do not invent a trace |
 
 The prior checkpoint executed `diagnosis-01` twice and overwrote D's `requiredTools`. Those defects are fixed; `sourceCaseId` is now retained in the result so independence is auditable.
@@ -24,18 +24,43 @@ Cases can belong to more than one layer. Layer counts therefore overlap.
 | Layer | Cases | Purpose | Command |
 |---|---:|---|---|
 | `SMOKE` | 6 | fast independent checkpoint | `npm run agenteval:checkpoint` |
-| `CONTRACT` | 16 | bounded original product contracts | `npm run agenteval:contract` |
-| `GENERALIZATION` | 55 | retrieval and Diagnosis variation | `npm run agenteval:generalization` |
+| `CORE_CONTRACT` | 16 | bounded original product contracts | `npm run agenteval:core-contract` |
+| `REFERENCE_PACK` | 0 | governed reference-pack acceptance | `npm run agenteval:reference-pack` |
+| `GENERALIZATION` | 55 | supported-input variation and explicit capability boundaries | `npm run agenteval:generalization` |
 | `ADVERSARIAL` | 3 | no fabrication and safety boundaries | `npm run agenteval:adversarial` |
-| `RETRIEVAL` | 45 | retrieval-specific behavior | `npm run agenteval:retrieval` |
+| `LEARNING_LOOP` | 0 | linked correction and retry evidence | `npm run agenteval:learning-loop` |
 
-`npm run agenteval:live` runs all 73 cases. Layer names and case taxonomy are validated before the first model call; duplicate IDs, missing/unknown layers, unknown retrieval variants and unknown Diagnosis dimensions fail closed.
+Evaluation dimensions are orthogonal to suite layers: `CONTEXT`, `RETRIEVAL`, `INTERPRETATION`, `PEDAGOGY`, `COMPONENT`, `OUTCOME` and `CAPABILITY_BOUNDARY`. `npm run agenteval:retrieval` selects the `RETRIEVAL` dimension; it does not define another top-level suite layer.
 
-Retrieval generalisation includes 10 English paraphrases, 10 Chinese queries, 10 bilingual queries, 5 implicit-concept queries and 5 near-neighbour distractors. Diagnosis generalisation varies reaction, numbers, units, word order, correct and incorrect results, wrong ratios, arithmetic and significant figures.
+`npm run agenteval:live` runs all 73 cases. Layer, dimension, retrieval-variant, Diagnosis-dimension and capability-resolution taxonomy is validated before the first model call. Duplicate IDs, missing or unknown taxonomy and inconsistent contracts fail closed.
 
-The current governed Trainer is intentionally restricted to its registered fixed MgO problem. Different reactions, numbers or units are therefore capability-boundary cases: the correct behavior is registry inspection plus `CAPABILITY_GAP`, not silently forcing them through the MgO Trainer. Same-problem wording and error variations still require the governed Diagnosis path.
+Agent retrieval grounding generalisation includes 10 English paraphrases, 10 Chinese queries, 10 bilingual queries, 5 implicit-concept queries and 5 near-neighbour distractors. These cases verify route/tool selection and required source grounding. They are not a retrieval-engine benchmark and do not report Recall@K, MRR, nDCG, source rank, irrelevant top-three results, lexical/dense contribution or reranker delta.
 
-No live `2.0.0` pass is claimed by this document. Automated tests verify suite integrity and harness behavior; a live result must come from the configured gateway, provider and real tools.
+The current governed Trainer implements a registered single-problem contract. Inputs outside that contract are labelled `NO_MATCH`: success means registry inspection plus `CAPABILITY_GAP`, not Trainer generalisation. Supported variations are labelled `FULL_MATCH` and still require the governed Diagnosis path. Reports therefore expose separate `supportedInputGeneralizationMetric` and `capabilityBoundaryComplianceMetric` values; boundary compliance cannot raise the supported-input score.
+
+## Baseline and report completeness
+
+The original suite `1.2.0` behavior contract is versioned at `agent-eval/baselines/1.2.0-contract.jsonl`. CI compares the current cases against its `caseId`, input and behavioral expectation fields. Taxonomy metadata is intentionally outside that baseline. Any behavioral change must update the versioned contract explicitly.
+
+Run only those eighteen regression cases with:
+
+```bash
+npm run agenteval:baseline
+```
+
+Every new run persists its selection mode (`FULL`, `CHECKPOINT`, `BASELINE`, `LAYER` or `DIMENSION`) and the complete suite plan. Layer and dimension reports use these states:
+
+| Status | Meaning | Rate |
+|---|---|---|
+| `NOT_RUN` | no planned case in that category was executed, including an empty planned category | `null` |
+| `PARTIAL` | only part of the complete category plan was executed | `null` |
+| `COMPLETE` | every planned case in that category was executed | passed/planned |
+
+This prevents a retrieval-dimension subset from presenting its `CORE_CONTRACT` intersection as a complete contract pass. An empty `LEARNING_LOOP` is represented as `plannedCases=0`, `status=NOT_RUN`, `rate=null`.
+
+No full-suite live `2.0.0` pass is claimed by this document. Automated tests verify suite integrity and harness behavior; a live result must come from the configured gateway, provider and real tools.
+
+The PR #5 readiness runs are recorded in [PR5_EVAL_CONTRACT_HARDENING_ACCEPTANCE.md](PR5_EVAL_CONTRACT_HARDENING_ACCEPTANCE.md). They establish checkpoint 6/6 and versioned baseline 18/18 only, not a full 73-case pass.
 
 The gateway classifies an initial application route before the provider call. Each Agent trace records `initialRoute` and the validated final `route`; the route-specific instruction is included in the persisted prompt hash.
 

@@ -25,7 +25,7 @@ describe("AgentEval deterministic graders", () => {
 
     const checkpoint = buildAgentEvalCheckpoint(sourceCases);
 
-    expect(checkpoint.map((item) => item.caseId)).toEqual(["A-course-explanation", "B-incomplete-working", "C-complete-MgO-diagnosis", "D-multi-stage-capability-gap", "E-correct-MgO-diagnosis", "F-adversarial-no-fabrication"]);
+    expect(checkpoint.map((item) => item.caseId)).toEqual(["A-course-explanation", "B-incomplete-working", "C-complete-registered-diagnosis", "D-multi-stage-capability-gap", "E-correct-registered-diagnosis", "F-adversarial-no-fabrication"]);
     expect(checkpoint.map((item) => item.sourceCaseId)).toEqual(["retrieval-01", "diagnosis-missing-context-01", "diagnosis-01", "gap-01", "diagnosis-02", "adversarial-02"]);
     expect([...new Set(checkpoint.map((item) => item.sourceCaseId))]).toHaveLength(6);
     expect(checkpoint.find((item) => item.caseId === "D-multi-stage-capability-gap")?.requiredTools).toEqual(["list_capabilities"]);

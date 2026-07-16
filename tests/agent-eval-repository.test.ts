@@ -6,15 +6,77 @@ import { AgentEvalRepository, buildAgentEvalReport, compareAgentEvalReports, typ
 
 function run(evalRunId: string, passed: boolean): PersistedAgentEvalRun {
   return {
-    schemaVersion: "1.0.0", evalRunId, runPurpose: "AGENT_EVAL", status: "COMPLETED", totalPlannedCases: 1, suiteVersion: "1.1.0", caseFileHash: "sha256-cases",
+    schemaVersion: "1.1.0", evalRunId, runPurpose: "AGENT_EVAL", status: "COMPLETED", totalPlannedCases: 1, selection: { mode: "FULL" },
+    suitePlan: {
+      layerCaseIds: { SMOKE: [], CORE_CONTRACT: ["diagnosis-01"], REFERENCE_PACK: [], GENERALIZATION: ["diagnosis-01"], ADVERSARIAL: [], LEARNING_LOOP: [] },
+      dimensionCaseIds: { CONTEXT: [], RETRIEVAL: [], INTERPRETATION: ["diagnosis-01"], PEDAGOGY: [], COMPONENT: [], OUTCOME: [], CAPABILITY_BOUNDARY: [] },
+    },
+    suiteVersion: "1.1.0", caseFileHash: "sha256-cases",
     provider: "deepseek", model: "deepseek-v4-flash", thinkingMode: "disabled",
     prompt: { version: "1.3.0", contentHash: "prompt" }, capabilityRegistry: { version: "1", contentHash: "capabilities" }, toolDefinitions: { version: "1", contentHash: "tools" },
     startedAt: "2026-07-16T00:00:00.000Z", completedAt: "2026-07-16T00:00:02.000Z",
-    cases: [{ caseId: "diagnosis-01", category: "diagnosis", suiteLayers: ["CONTRACT", "GENERALIZATION"], runPurpose: "AGENT_EVAL", agentTraceId: "agent-1", eligibility: { requiredTools: true, forbiddenTools: false, diagnosisFidelity: true, sourceGrounding: false }, passed, checks: { requiredTools: passed, forbiddenTools: true, diagnosisFidelity: passed }, errors: passed ? [] : ["diagnosisFidelity"], latencyMs: 2000, tokenUsage: { promptTokens: 100, completionTokens: 20, totalTokens: 120 }, estimatedCostUsd: 0.001 }],
+    cases: [{ caseId: "diagnosis-01", category: "diagnosis", suiteLayers: ["CORE_CONTRACT", "GENERALIZATION"], evaluationDimensions: ["INTERPRETATION"], runPurpose: "AGENT_EVAL", agentTraceId: "agent-1", eligibility: { requiredTools: true, forbiddenTools: false, diagnosisFidelity: true, sourceGrounding: false }, passed, checks: { requiredTools: passed, forbiddenTools: true, diagnosisFidelity: passed }, errors: passed ? [] : ["diagnosisFidelity"], latencyMs: 2000, tokenUsage: { promptTokens: 100, completionTokens: 20, totalTokens: 120 }, estimatedCostUsd: 0.001 }],
   };
 }
 
 describe("AgentEvalRepository", () => {
+  it("distinguishes partial layer coverage from a complete layer result", () => {
+    const partial = {
+      ...run("retrieval-subset", true),
+      selection: { mode: "DIMENSION", value: "RETRIEVAL" },
+      suitePlan: {
+        layerCaseIds: {
+          SMOKE: [],
+          CORE_CONTRACT: Array.from({ length: 16 }, (_, index) => `contract-${index + 1}`),
+          REFERENCE_PACK: [],
+          GENERALIZATION: [],
+          ADVERSARIAL: [],
+          LEARNING_LOOP: [],
+        },
+        dimensionCaseIds: {},
+      },
+      totalPlannedCases: 5,
+      cases: Array.from({ length: 5 }, (_, index) => ({
+        ...run("case", true).cases[0]!,
+        caseId: `contract-${index + 1}`,
+        suiteLayers: ["CORE_CONTRACT"],
+      })),
+    } as unknown as PersistedAgentEvalRun;
+
+    expect(buildAgentEvalReport(partial)).toMatchObject({
+      selection: { mode: "DIMENSION", value: "RETRIEVAL" },
+      layerMetrics: {
+        CORE_CONTRACT: { plannedCases: 16, executedCases: 5, passedCases: 5, coverageComplete: false, rate: null, status: "PARTIAL" },
+        LEARNING_LOOP: { plannedCases: 0, executedCases: 0, passedCases: 0, coverageComplete: false, rate: null, status: "NOT_RUN" },
+      },
+    });
+  });
+
+  it("reports supported-input generalization separately from boundary compliance", () => {
+    const baseCase = run("case", true).cases[0]!;
+    const separated = {
+      ...run("generalization", true),
+      suitePlan: {
+        ...run("generalization", true).suitePlan,
+        capabilityResolutionCaseIds: {
+          FULL_MATCH: ["supported-input"],
+          PARTIAL_MATCH: [],
+          NO_MATCH: ["boundary-input"],
+        },
+      },
+      totalPlannedCases: 2,
+      cases: [
+        { ...baseCase, caseId: "supported-input", expectedCapabilityResolution: "FULL_MATCH", passed: true },
+        { ...baseCase, caseId: "boundary-input", expectedCapabilityResolution: "NO_MATCH", passed: false },
+      ],
+    } as unknown as PersistedAgentEvalRun;
+
+    expect(buildAgentEvalReport(separated)).toMatchObject({
+      supportedInputGeneralizationMetric: { plannedCases: 1, executedCases: 1, passedCases: 1, status: "COMPLETE", rate: 1 },
+      capabilityBoundaryComplianceMetric: { plannedCases: 1, executedCases: 1, passedCases: 0, status: "COMPLETE", rate: 0 },
+    });
+  });
+
   it("checkpoints each completed case and preserves an interrupted partial run", async () => {
     const directory = await mkdtemp(path.join(tmpdir(), "agent-eval-runs-"));
     const repository = new AgentEvalRepository(directory);
@@ -46,9 +108,9 @@ describe("AgentEvalRepository", () => {
     expect(baseline.passRate).toBe(0);
     expect(candidate.passRate).toBe(1);
     expect(candidate.layerMetrics).toMatchObject({
-      SMOKE: { eligibleCases: 0, passedCases: 0, rate: 0 },
-      CONTRACT: { eligibleCases: 1, passedCases: 1, rate: 1 },
-      GENERALIZATION: { eligibleCases: 1, passedCases: 1, rate: 1 },
+      SMOKE: { plannedCases: 0, executedCases: 0, passedCases: 0, rate: null, status: "NOT_RUN" },
+      CORE_CONTRACT: { plannedCases: 1, executedCases: 1, passedCases: 1, rate: 1, status: "COMPLETE" },
+      GENERALIZATION: { plannedCases: 1, executedCases: 1, passedCases: 1, rate: 1, status: "COMPLETE" },
     });
     expect(compareAgentEvalReports(baseline, candidate)).toMatchObject({ baselineEvalRunId: "run-a", candidateEvalRunId: "run-b", delta: { passRate: 1, diagnosisFidelity: 1 } });
   });

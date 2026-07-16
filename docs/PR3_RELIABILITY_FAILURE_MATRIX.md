@@ -2,7 +2,7 @@
 
 Baseline: full AgentEval run `agenteval-2026-07-16T10-55-34-288Z-4a3da608` (`suiteVersion 1.1.0`, 7/18 passed). This matrix is derived from the local sanitised run and AgentTrace records. It classifies the eleven failures before remediation; no case is deleted or weakened.
 
-Scope note: this is a historical failure matrix for the bounded 18-case suite. The later `18/18` result records correction of those exact contracts, not generalisation beyond them. Suite `2.0.0` adds the separate `GENERALIZATION`, `ADVERSARIAL` and `RETRIEVAL` layers and must earn its own live result.
+Scope note: this is a historical failure matrix for the bounded 18-case suite. The later `18/18` result records correction of those exact contracts, not generalisation beyond them. Suite `2.0.0` adds formal suite layers and orthogonal evaluation dimensions; it must earn its own live result. Retrieval is a dimension, not a top-level layer.
 
 | caseId | initialRoute | finalRoute | successfulTools | failedTools | terminalError | expected | actual | failureLayer | classification | recommended correction |
 |---|---|---|---|---|---|---|---|---|---|---|
