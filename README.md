@@ -57,6 +57,10 @@ npm run agenteval:retrieval
 npm run agenteval:live
 npm run agenteval:report
 npm run agenteval:compare -- --baseline <evalRunId> --candidate <evalRunId>
+npm run runtime:parity:fixture
+npm run runtime:parity:checkpoint -- --run <evalRunId>
+npm run runtime:parity:baseline -- --run <evalRunId>
+npm run runtime:parity:self-check -- --run <evalRunId>
 ```
 
 `agenteval:live` requires the real server-side DeepSeek configuration and returns non-zero if it is absent. The full `2.0.0` contract contains 73 cases across the formal suite layers; retrieval is an orthogonal assessment dimension. Automated Tests validate the runner with controlled fixtures; they do not claim that a live AgentEval passed.
@@ -67,6 +71,8 @@ Current runtime infrastructure is reached through narrow contracts for Agent exe
 
 The Agent Gateway also contains a candidate-neutral shadow foundation. It is default-off, always returns the Legacy authoritative result, isolates candidate failure and writes role-separated normalized comparison records. No candidate implementation or framework dependency is included.
 
+The case-level runtime parity harness consumes those role-separated records, reuses AgentEval cases and graders, and writes redacted comparison artifacts under `.runtime-parity-results/`. Missing candidate evidence is `NOT_EXECUTED` and exits non-zero. `runtime:parity:self-check` is explicitly Legacy harness validation, not candidate parity.
+
 ## Documentation
 
 - [Real Agent architecture](docs/REAL_AGENT_ARCHITECTURE.md)
@@ -74,6 +80,8 @@ The Agent Gateway also contains a candidate-neutral shadow foundation. It is def
 - [AgentEval](docs/AGENT_EVAL.md)
 - [Runtime-boundary acceptance](docs/RUNTIME_BOUNDARY_ACCEPTANCE.md)
 - [Runtime shadow foundation acceptance](docs/RUNTIME_SHADOW_FOUNDATION_ACCEPTANCE.md)
+- [Runtime parity acceptance](docs/RUNTIME_PARITY_ACCEPTANCE.md)
+- [Runtime candidate readiness](docs/RUNTIME_CANDIDATE_READINESS.md)
 - [Data-origin policy](docs/DATA_ORIGIN_POLICY.md)
 - [Terminology](docs/TERMINOLOGY.md)
 - [Capability Registry](docs/CAPABILITY_REGISTRY.md)
