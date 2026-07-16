@@ -1,16 +1,18 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { AGENT_EVAL_SUITE_VERSION, gradeAgentCase, type AgentEvalCase, type AgentEvalToolResult } from "../src/agent/agenteval.ts";
+import { AGENT_EVAL_SUITE_VERSION, gradeAgentCase, type AgentEvalCase } from "../src/agent/agenteval.ts";
+import { LegacyAgentEvalHarness } from "../src/agent/agenteval-harness.ts";
 import { buildAgentEvalCheckpoint } from "../src/agent/agenteval-checkpoint.ts";
 import { buildAgentEvalReliabilitySprint } from "../src/agent/agenteval-reliability.ts";
 import { buildAgentEvalSuitePlan, parseAgentEvalDimension, parseAgentEvalLayer, selectAgentEvalBaseline, selectAgentEvalDimension, selectAgentEvalLayer, validateAgentEvalSuite, type AgentEvalBehaviorContract } from "../src/agent/agenteval-suite.ts";
 import { AGENT_PROMPT_VERSION, buildAgentSystemPrompt } from "../src/agent/run-agent.ts";
-import type { AgentTrace, TokenUsage } from "../src/agent/types.ts";
+import type { TokenUsage } from "../src/agent/types.ts";
 import { AgentEvalRepository, type AgentEvalEligibility, type AgentEvalRunSelection, type PersistedAgentEvalCase, type PersistedAgentEvalRun } from "./lib/agent-eval-repository.ts";
 
 interface Price { readonly cacheHitInput: number; readonly cacheMissInput: number; readonly output: number }
 const gateway = process.env.AGENT_GATEWAY_URL ?? "http://127.0.0.1:4176";
+const harness = new LegacyAgentEvalHarness(gateway);
 const rootDirectory = path.resolve(process.env.AGENT_EVAL_STORE_DIR ?? ".local-data/agent-eval-runs");
 const repository = new AgentEvalRepository(rootDirectory);
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
@@ -32,9 +34,7 @@ const eligibilityFor = (testCase: AgentEvalCase): AgentEvalEligibility => ({
 
 let activeEvalRunId: string | null = null;
 try {
-  const healthResponse = await fetch(`${gateway}/health`);
-  const health = await healthResponse.json() as { configured?: boolean; provider?: string; model?: string | null; thinkingMode?: string };
-  if (!healthResponse.ok || !health.configured || !health.model) throw new Error("AGENT_NOT_CONFIGURED: Set DEEPSEEK_API_KEY and DEEPSEEK_MODEL, then start the local services.");
+  const health = await harness.health();
 
   const startedAt = new Date().toISOString();
   const evalRunId = `agenteval-${startedAt.replace(/[:.]/g, "-")}-${randomUUID().slice(0, 8)}`;
@@ -93,13 +93,12 @@ try {
       ...(testCase.diagnosisDimensions ? { diagnosisDimensions: testCase.diagnosisDimensions } : {}),
       ...(testCase.expectedCapabilityResolution ? { expectedCapabilityResolution: testCase.expectedCapabilityResolution } : {}),
     };
-    const response = await fetch(`${gateway}/agent/runs`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ conversationId: `${evalRunId}-${testCase.caseId}`, inputOrigin: testCase.inputOrigin, runPurpose: "AGENT_EVAL", messages: [{ role: "user", content: testCase.input }] }) });
-    const body = await response.json() as { ok?: boolean; trace?: AgentTrace; toolResults?: readonly AgentEvalToolResult[]; error?: { code?: string; message?: string } };
+    const body = await harness.execute({ conversationId: `${evalRunId}-${testCase.caseId}`, inputOrigin: testCase.inputOrigin, runPurpose: "AGENT_EVAL", messages: [{ role: "user", content: testCase.input }] });
     let result: PersistedAgentEvalCase;
-    if (!response.ok || !body.ok || !body.trace) {
-      result = { ...caseMetadata, runPurpose: "AGENT_EVAL", eligibility, passed: false, checks: {}, errors: [body.error?.code ?? "AGENT_RUN_FAILED"], latencyMs: Date.now() - caseStarted, estimatedCostUsd: null, terminalError: { code: body.error?.code ?? "AGENT_RUN_FAILED", message: body.error?.message ?? "Agent run did not return a trace." } };
+    if (!body.ok) {
+      result = { ...caseMetadata, runPurpose: "AGENT_EVAL", eligibility, passed: false, checks: {}, errors: [body.error.code], latencyMs: Date.now() - caseStarted, estimatedCostUsd: null, terminalError: body.error };
     } else {
-      const grade = gradeAgentCase(testCase, body.trace, body.toolResults ?? []);
+      const grade = gradeAgentCase(testCase, body.trace, body.toolResults);
       result = { ...caseMetadata, runPurpose: "AGENT_EVAL", agentTraceId: body.trace.traceId, eligibility, ...grade, latencyMs: body.trace.latencyMs, tokenUsage: body.trace.tokenUsage, estimatedCostUsd: estimateCost(body.trace.tokenUsage, price) };
     }
     await repository.appendCase(evalRunId, result); results.push(result);

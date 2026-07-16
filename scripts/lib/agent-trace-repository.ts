@@ -17,6 +17,17 @@ export interface PersistedAgentRun extends AgentRunStart {
 }
 export interface AgentRunQuery { readonly conversationId?: string; readonly status?: AgentRunStatus; readonly inputOrigin?: InputOrigin; readonly runPurpose?: RunPurpose; readonly startedFrom?: string; readonly startedTo?: string }
 
+export interface AgentTraceStore {
+  start(input: AgentRunStart): Promise<void>;
+  get(traceId: string): Promise<PersistedAgentRun | null>;
+  appendModelResponse(traceId: string, message: ModelMessage, usage?: TokenUsage): Promise<void>;
+  appendToolExecution(traceId: string, execution: PersistedToolExecution): Promise<void>;
+  complete(traceId: string, finalResponse: AgentResponseEnvelope, completedAt: string, route?: AgentRoute): Promise<void>;
+  fail(traceId: string, terminalError: { readonly code: string; readonly message: string }, completedAt: string): Promise<void>;
+  query(query?: AgentRunQuery): Promise<readonly PersistedAgentRun[]>;
+  clear(): Promise<void>;
+}
+
 function safeId(value: string): string { if (!/^[a-zA-Z0-9._-]+$/u.test(value)) throw new Error("INVALID_TRACE_ID: Trace id contains unsafe characters."); return value; }
 function sanitize(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(sanitize);
@@ -29,7 +40,7 @@ function addUsage(current: TokenUsage | undefined, next: TokenUsage | undefined)
   return { promptTokens: (current?.promptTokens ?? 0) + next.promptTokens, completionTokens: (current?.completionTokens ?? 0) + next.completionTokens, totalTokens: (current?.totalTokens ?? 0) + next.totalTokens, promptCacheHitTokens: (current?.promptCacheHitTokens ?? 0) + (next.promptCacheHitTokens ?? 0), promptCacheMissTokens: (current?.promptCacheMissTokens ?? 0) + (next.promptCacheMissTokens ?? 0) };
 }
 
-export class AgentTraceRepository {
+export class FileAgentTraceStore implements AgentTraceStore {
   constructor(readonly directory: string) {}
   private path(traceId: string) { return join(this.directory, `${safeId(traceId)}.json`); }
   private async write(record: PersistedAgentRun): Promise<void> {
@@ -56,14 +67,16 @@ export class AgentTraceRepository {
   }
 }
 
+export { FileAgentTraceStore as AgentTraceRepository };
+
 export class PurposeSeparatedAgentTraceRepository {
-  private readonly product: AgentTraceRepository;
-  private readonly agentEval: AgentTraceRepository;
+  private readonly product: AgentTraceStore;
+  private readonly agentEval: AgentTraceStore;
   constructor(productDirectory: string, agentEvalDirectory: string) {
-    this.product = new AgentTraceRepository(productDirectory);
-    this.agentEval = new AgentTraceRepository(agentEvalDirectory);
+    this.product = new FileAgentTraceStore(productDirectory);
+    this.agentEval = new FileAgentTraceStore(agentEvalDirectory);
   }
-  forPurpose(runPurpose: RunPurpose): AgentTraceRepository { return runPurpose === "PRODUCT" ? this.product : this.agentEval; }
+  forPurpose(runPurpose: RunPurpose): AgentTraceStore { return runPurpose === "PRODUCT" ? this.product : this.agentEval; }
   async get(traceId: string): Promise<PersistedAgentRun | null> { return await this.product.get(traceId) ?? await this.agentEval.get(traceId); }
   async query(query: AgentRunQuery = {}): Promise<readonly PersistedAgentRun[]> {
     if (query.runPurpose) return this.forPurpose(query.runPurpose).query(query);

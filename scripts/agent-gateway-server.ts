@@ -3,14 +3,15 @@ import { createServer } from "node:http";
 import { createHash, randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { createDeepSeekClient } from "../src/agent/deepseek-client.ts";
-import { createAgentGateway } from "../src/agent/gateway.ts";
+import { createAgentGateway, type AgentExecution } from "../src/agent/gateway.ts";
 import { resolveAgentExecutionPlan } from "../src/agent/route-policy.ts";
 import { AGENT_PROMPT_VERSION, buildAgentSystemPrompt, runAgent } from "../src/agent/run-agent.ts";
 import { createAgentToolExecutor, type CapabilityRecord } from "../src/agent/tool-executor.ts";
 import { PurposeSeparatedAgentTraceRepository } from "./lib/agent-trace-repository.ts";
-import { CorpusRepository, inspectCorpus } from "./lib/corpus-repository.ts";
-import type { CorpusSearchService } from "../src/corpus/types.ts";
+import { LegacyLexicalEvidenceSearch, inspectCorpus } from "./lib/corpus-repository.ts";
+import type { EvidenceSearch } from "../src/corpus/types.ts";
 import { createCorpusDeliveryPolicyRuntime } from "../src/corpus/delivery-policy.ts";
+import { LegacyTrainerCapabilityRuntime } from "../src/runtime/learning-capability-runtime.ts";
 
 const root = new URL("../", import.meta.url);
 const readText = (path: string) => readFile(new URL(path, root), "utf8");
@@ -29,8 +30,8 @@ const corpusDeliveryPolicy = createCorpusDeliveryPolicyRuntime(JSON.parse(corpus
 const systemPrompt = `${await readText("config/agent/instructions.md")}\nResponse policy: ${responsePolicy}`;
 function contentHash(value: string): string { return createHash("sha256").update(value).digest("hex"); }
 const corpusReport = await inspectCorpus();
-let corpus: CorpusSearchService;
-try { corpus = await CorpusRepository.open(); }
+let corpus: EvidenceSearch;
+try { corpus = await LegacyLexicalEvidenceSearch.open(); }
 catch { corpus = { search: async () => { throw new Error("CORPUS_INDEX_MISSING: run npm run corpus:ingest before starting the Agent Gateway."); } }; }
 const traceRepositories = new PurposeSeparatedAgentTraceRepository(
   resolve(process.env.PRODUCT_TRACE_STORE_DIR ?? process.env.TRACE_STORE_DIR ?? ".local-data/product-agent-runs"),
@@ -38,19 +39,16 @@ const traceRepositories = new PurposeSeparatedAgentTraceRepository(
 );
 const configured = Boolean(apiKey && model);
 const client = configured ? createDeepSeekClient({ apiKey, model, baseUrl, thinkingMode }) : null;
-const gateway = createAgentGateway({
-  configured,
-  model: model || null,
-  thinkingMode,
-  repository: traceRepositories,
-  ...(client ? { run: async (request) => {
+const capabilityRuntime = new LegacyTrainerCapabilityRuntime(diagnosisUrl);
+const legacyDeepSeekAgentExecution: AgentExecution | null = client ? {
+  execute: async (request) => {
     const toolResults: { readonly name: string; readonly resultRef: string; readonly data: unknown }[] = [];
     const traceRepository = traceRepositories.forPurpose(request.runPurpose);
     const currentUserMessage = [...request.messages].reverse().find((message) => message.role === "user")?.content ?? "";
     const executionPlan = resolveAgentExecutionPlan(request);
     const initialRoute = executionPlan.route;
     const observableSystemPrompt = buildAgentSystemPrompt(systemPrompt, initialRoute, executionPlan.obligations);
-    const tools = createAgentToolExecutor({ capabilities: capabilities.capabilities, corpus, corpusDeliveryPolicy, provider: "deepseek", diagnosisUrl, runPurpose: request.runPurpose, conversationId: request.conversationId, conversationEvidenceHash: contentHash(currentUserMessage), currentUserMessage });
+    const tools = createAgentToolExecutor({ capabilities: capabilities.capabilities, corpus, corpusDeliveryPolicy, provider: "deepseek", capabilityRuntime, runPurpose: request.runPurpose, conversationId: request.conversationId, conversationEvidenceHash: contentHash(currentUserMessage), currentUserMessage });
     const traceId = `agent-trace-${randomUUID()}`; const startedAt = new Date().toISOString();
     await traceRepository.start({ traceId, request, initialRoute, obligations: executionPlan.obligations, provider: "deepseek", model, thinkingMode, prompt: { version: AGENT_PROMPT_VERSION, contentHash: contentHash(observableSystemPrompt) }, capabilityRegistry: { version: capabilities.version, contentHash: contentHash(JSON.stringify(capabilities)) }, toolDefinitions: { version: toolConfig.version, contentHash: contentHash(JSON.stringify(toolConfig)) }, startedAt });
     try {
@@ -62,7 +60,14 @@ const gateway = createAgentGateway({
       await traceRepository.fail(traceId, { code, message: error instanceof Error ? error.message : String(error) }, new Date().toISOString());
       throw error;
     }
-  } } : {}),
+  },
+} : null;
+const gateway = createAgentGateway({
+  configured,
+  model: model || null,
+  thinkingMode,
+  repository: traceRepositories,
+  ...(legacyDeepSeekAgentExecution ? { execution: legacyDeepSeekAgentExecution } : {}),
 });
 
 const server = createServer(async (request, response) => {

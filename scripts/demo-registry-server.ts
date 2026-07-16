@@ -1,13 +1,13 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { publishedComponents } from "../src/components/published";
-import { DemoRegistryStore } from "../src/demo-registry/registry-store";
+import { LocalShowcaseComponentRepository, type ComponentRepository } from "../src/demo-registry/registry-store";
 
 const port = 4175;
 const allowedOrigins = new Set([
   "http://127.0.0.1:4173", "http://localhost:4173",
   "http://127.0.0.1:4174", "http://localhost:4174",
 ]);
-const store = new DemoRegistryStore(publishedComponents);
+const store: ComponentRepository = new LocalShowcaseComponentRepository(publishedComponents);
 
 function json(response: ServerResponse, status: number, body: unknown, origin?: string): void {
   response.statusCode = status;

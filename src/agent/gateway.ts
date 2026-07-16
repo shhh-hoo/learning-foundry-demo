@@ -8,11 +8,15 @@ const requestSchema = z.object({
   messages: z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().min(1) })).min(1),
 }).strict();
 
+export interface AgentExecution {
+  execute(request: AgentRunRequest): Promise<AgentTrace | { readonly trace: AgentTrace; readonly toolResults: readonly { readonly name: string; readonly resultRef: string; readonly data: unknown }[] }>;
+}
+
 interface GatewayOptions {
   readonly configured: boolean;
   readonly model: string | null;
   readonly thinkingMode: "enabled" | "disabled";
-  readonly run?: (request: AgentRunRequest) => Promise<AgentTrace | { readonly trace: AgentTrace; readonly toolResults: readonly { readonly name: string; readonly resultRef: string; readonly data: unknown }[] }>;
+  readonly execution?: AgentExecution;
   readonly repository?: { get(traceId: string): Promise<unknown | null>; query(query: { readonly conversationId?: string; readonly status?: "RUNNING" | "COMPLETED" | "FAILED"; readonly inputOrigin?: "USER_INPUT" | "PRESET_INPUT"; readonly runPurpose?: "PRODUCT" | "AGENT_EVAL"; readonly startedFrom?: string; readonly startedTo?: string }): Promise<readonly unknown[]>; clear?(runPurpose?: "PRODUCT" | "AGENT_EVAL"): Promise<void> };
 }
 
@@ -65,10 +69,10 @@ export function createAgentGateway(options: GatewayOptions) {
         return json(200, { ok: true, cleared: "agent-runs", runPurpose: purpose });
       }
       if (request.method === "POST" && url.pathname === "/agent/runs") {
-        if (!options.configured || !options.run) return json(503, { ok: false, error: { code: "AGENT_NOT_CONFIGURED", message: "Set DEEPSEEK_API_KEY and DEEPSEEK_MODEL on the server." } });
+        if (!options.configured || !options.execution) return json(503, { ok: false, error: { code: "AGENT_NOT_CONFIGURED", message: "Set DEEPSEEK_API_KEY and DEEPSEEK_MODEL on the server." } });
         try {
           const body = requestSchema.parse(await request.json());
-          const runResult = await options.run(body);
+          const runResult = await options.execution.execute(body);
           const trace = "trace" in runResult ? runResult.trace : runResult;
           const toolResults = "trace" in runResult ? runResult.toolResults : [];
           agentResponseEnvelopeSchema.parse(trace.finalResponse);

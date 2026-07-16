@@ -2,8 +2,9 @@ import { z } from "zod";
 import type { AgentToolExecutor, AgentToolResult } from "./run-agent";
 import { verifyProblemContextProvenance } from "./problem-context-provenance";
 import type { RunPurpose } from "./types";
-import type { CorpusSearchService } from "../corpus/types";
+import type { EvidenceSearch } from "../corpus/types";
 import { deliverCorpusSearchResponse, type CorpusDeliveryPolicyRuntime } from "../corpus/delivery-policy";
+import { LegacyTrainerCapabilityRuntime, type LearningCapabilityRuntime } from "../runtime/learning-capability-runtime";
 
 export interface CapabilityRecord {
   readonly id: string;
@@ -19,10 +20,11 @@ export interface CapabilityRecord {
 
 export interface ToolExecutorOptions {
   readonly capabilities: readonly CapabilityRecord[];
-  readonly corpus: CorpusSearchService;
+  readonly corpus: EvidenceSearch;
   readonly corpusDeliveryPolicy?: CorpusDeliveryPolicyRuntime;
   readonly provider?: string;
-  readonly diagnosisUrl: string;
+  readonly capabilityRuntime?: LearningCapabilityRuntime;
+  readonly diagnosisUrl?: string;
   readonly runPurpose?: RunPurpose;
   readonly conversationId?: string;
   readonly conversationEvidenceHash?: string;
@@ -172,7 +174,7 @@ function canonicalizeStoichiometryAttempt(input: z.infer<typeof diagnosisSchema>
 }
 
 export function createAgentToolExecutor(options: ToolExecutorOptions): AgentToolExecutor {
-  const fetcher = options.fetcher ?? globalThis.fetch;
+  const capabilityRuntime = options.capabilityRuntime ?? (options.diagnosisUrl ? new LegacyTrainerCapabilityRuntime(options.diagnosisUrl, options.fetcher) : null);
   const id = () => options.createId?.() ?? globalThis.crypto?.randomUUID?.() ?? Date.now().toString(36);
   return {
     async execute(name, value): Promise<AgentToolResult> {
@@ -206,15 +208,10 @@ export function createAgentToolExecutor(options: ToolExecutorOptions): AgentTool
         const provenance = verifyProblemContextProvenance(input.problemContext, input.problemContextEvidence, options.currentUserMessage);
         if (!provenance.ok) throw new ToolBoundaryError("UNVERIFIED_PROBLEM_CONTEXT", provenance.reasons.join("; "));
         verifyLearnerWorkingProvenance(input.attempt, options.currentUserMessage);
-        const response = await fetcher(options.diagnosisUrl, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...input, runPurpose: options.runPurpose }) });
-        const body = await response.json() as { readonly ok?: boolean; readonly result?: { readonly traceId?: string }; readonly error?: { readonly code?: string; readonly message?: string } };
-        if (!response.ok || !body.ok || !body.result?.traceId) throw new Error(`${body.error?.code ?? "TRAINER_DIAGNOSIS_FAILED"}: ${body.error?.message ?? `HTTP ${response.status}`}`);
-        const diagnosisBaseUrl = options.diagnosisUrl.replace(/\/diagnose\/?$/u, "");
-        const resolution = await fetcher(`${diagnosisBaseUrl}/diagnoses/${encodeURIComponent(body.result.traceId)}`);
-        const resolved = await resolution.json() as { readonly ok?: boolean; readonly diagnosis?: { readonly traceId?: string } };
-        if (!resolution.ok || !resolved.ok || resolved.diagnosis?.traceId !== body.result.traceId) throw new ToolBoundaryError("UNRESOLVABLE_DIAGNOSIS_TRACE", `Diagnosis trace ${body.result.traceId} did not resolve after persistence.`);
+        if (!capabilityRuntime) throw new ToolBoundaryError("CAPABILITY_RUNTIME_REQUIRED", "Learner Diagnosis requires a configured Learning Capability Runtime.");
+        const execution = await capabilityRuntime.execute({ capabilityId: input.componentId, capabilityVersion: input.componentVersion, input: { ...input }, runPurpose: options.runPurpose });
         const resultRef = `diagnosis-${id()}`;
-        return { resultRef, data: body.result, executedArguments: input, evidenceRefs: [resultRef, body.result.traceId] };
+        return { resultRef, data: execution.result, executedArguments: input, evidenceRefs: [resultRef, execution.traceId] };
       }
       if (name === "record_capability_gap") {
         const input = gapSchema.parse(value);

@@ -7,6 +7,18 @@ export type RegistryAcceptResult =
   | { readonly ok: true; readonly component: PublishedDiagnosticLearningComponent }
   | { readonly ok: false; readonly error: { readonly code: "MALFORMED_COMPONENT" | "UNSUPPORTED_SCHEMA" | "NOT_PUBLISHED" | "CONTENT_HASH_MISMATCH"; readonly message: string; readonly issues?: readonly string[] } };
 
+export interface ComponentRepository {
+  reset(): void;
+  list(): readonly PublishedDiagnosticLearningComponent[];
+  get(id: string): PublishedDiagnosticLearningComponent | null;
+  manifest(): {
+    readonly protocolVersion: "1.0.0";
+    readonly generatedAt: string;
+    readonly components: readonly { readonly id: string; readonly version: string; readonly schemaVersion: string; readonly contentHash: string }[];
+  };
+  accept(value: unknown): RegistryAcceptResult;
+}
+
 function versionParts(version: string): readonly number[] {
   return version.split(".").map(Number);
 }
@@ -19,7 +31,7 @@ function compareVersion(left: string, right: string): number {
   return 0;
 }
 
-export class DemoRegistryStore {
+export class LocalShowcaseComponentRepository implements ComponentRepository {
   private readonly initial: readonly PublishedDiagnosticLearningComponent[];
   private components: PublishedDiagnosticLearningComponent[];
 
@@ -62,3 +74,5 @@ export class DemoRegistryStore {
     return { ok: true, component: structuredClone(component) };
   }
 }
+
+export { LocalShowcaseComponentRepository as DemoRegistryStore };
