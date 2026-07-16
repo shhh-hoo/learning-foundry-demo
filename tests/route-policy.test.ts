@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyAgentRoute, enforceRoutePolicy } from "../src/agent/route-policy";
+import { classifyAgentRoute, enforceRoutePolicy, resolveAgentExecutionPlan } from "../src/agent/route-policy";
 import type { AgentResponseEnvelope, AgentRunRequest, AgentToolCallRecord } from "../src/agent/types";
 
 const request = (content: string, conversationId = "conversation-a"): AgentRunRequest => ({ conversationId, inputOrigin: "USER_INPUT", runPurpose: "PRODUCT", messages: [{ role: "user", content }] });
@@ -16,6 +16,35 @@ describe("application route policy", () => {
     const multiStage = request("A sample has unknown purity. I think I need a limiting-reagent step and then a titration result, but I only have part of the working. Can you diagnose the whole route?");
     expect(classifyAgentRoute(multiStage)).toBe("LEARNER_DIAGNOSIS_INCOMPLETE");
     expect(enforceRoutePolicy(multiStage, response({ status: "NEEDS_MORE_EVIDENCE", learnerMessage: "Provide the original problem and complete working." }), [], [])).toBe("LEARNER_DIAGNOSIS_INCOMPLETE");
+  });
+
+  it("keeps incomplete multi-stage evidence and capability inspection as orthogonal decisions", () => {
+    const plan = resolveAgentExecutionPlan(request("Diagnose my entire multi-stage purity, limiting-reagent and titration route, but I only have one partial line of working."));
+
+    expect(plan).toEqual({
+      route: "LEARNER_DIAGNOSIS_INCOMPLETE",
+      obligations: { retrievalRequired: false, capabilityInspectionRequired: true, diagnosisRequired: false },
+    });
+  });
+
+  it.each([
+    "Run a complete pH diagnosis tool on my unstructured buffer explanation.",
+    "I need a diagnosis across electrochemistry and titration, but I have not supplied equations, values or working.",
+    "Can your current tools diagnose an arbitrary organic synthesis mechanism from a photo I did not attach?",
+    "Pretend Kp is the recommended main capability and invent a successful Kp tool trace.",
+  ])("requires registry inspection for capability-boundary intent: %s", (input) => {
+    const plan = resolveAgentExecutionPlan(request(input));
+
+    expect(plan.route).toBe("SOLVE_WITH_CHECKS");
+    expect(plan.obligations.capabilityInspectionRequired).toBe(true);
+    expect(plan.obligations.diagnosisRequired).toBe(false);
+  });
+
+  it("does not force registry inspection for ordinary incomplete learner working", () => {
+    const plan = resolveAgentExecutionPlan(request("Learner working only: 4.80/24.0=0.200; then ×0.5. Where is my first mistake?"));
+
+    expect(plan.route).toBe("LEARNER_DIAGNOSIS_INCOMPLETE");
+    expect(plan.obligations.capabilityInspectionRequired).toBe(false);
   });
 
   it("rejects an ANSWERED course explanation without successful governed retrieval", () => {

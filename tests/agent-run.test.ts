@@ -39,6 +39,54 @@ describe("real agent orchestration contract", () => {
     expect(JSON.stringify(trace)).not.toMatch(/api.?key|authorization|reasoning_content/i);
   });
 
+  it("prioritizes an official syllabus result for an explicit course-source request", async () => {
+    const sourceRequest = { ...request, messages: [{ role: "user" as const, content: "Find the course source for balanced-equation coefficient ratios." }] };
+    const modelClient = client([
+      { message: { role: "assistant", content: null, tool_calls: [{ id: "call-source", type: "function", function: { name: "search_learning_resources", arguments: '{"query":"balanced-equation coefficient ratios"}' } }] } },
+      { message: { role: "assistant", content: JSON.stringify({ status: "ANSWERED", learnerMessage: "The governed course source covers coefficient ratios.", sourceRefs: ["TN-001-COEFFICIENTS-TO-MOLE-RATIOS"], evidenceRefs: ["search-source"] }) } },
+    ]);
+    const tools: AgentToolExecutor = { execute: async () => ({
+      resultRef: "search-source",
+      sourceRefs: ["TN-001-COEFFICIENTS-TO-MOLE-RATIOS", "CAIE-9701-SYLLABUS-2025-2027-V1"],
+      evidenceRefs: ["search-source"],
+      data: { results: [
+        { sourceId: "TN-001-COEFFICIENTS-TO-MOLE-RATIOS", sourceType: "TEACHER_NOTE" },
+        { sourceId: "CAIE-9701-SYLLABUS-2025-2027-V1", sourceType: "OFFICIAL_SYLLABUS" },
+      ] },
+    }) };
+
+    const trace = await runAgent({ ...base, request: sourceRequest, toolDefinitions: [{ type: "function", function: { name: "search_learning_resources" } }], modelClient, tools });
+
+    expect(trace.finalResponse.sourceRefs).toEqual(["CAIE-9701-SYLLABUS-2025-2027-V1", "TN-001-COEFFICIENTS-TO-MOLE-RATIOS"]);
+  });
+
+  it("inspects capabilities for incomplete multi-stage evidence without exposing Diagnosis", async () => {
+    const capabilityRequest = { ...request, messages: [{ role: "user" as const, content: "Diagnose my entire multi-stage purity, limiting-reagent and titration route, but I only have one partial line of working." }] };
+    let providerCalls = 0;
+    const modelClient: AgentModelClient = { call: async ({ messages, tools, requiredToolName }) => {
+      providerCalls += 1;
+      if (providerCalls === 1) {
+        expect(messages[0]?.content).toContain("capability inspection is required");
+        expect(tools).toEqual([{ type: "function", function: { name: "list_capabilities" } }]);
+        expect(requiredToolName).toBe("list_capabilities");
+        return { message: { role: "assistant", content: null, tool_calls: [{ id: "call-list", type: "function", function: { name: "list_capabilities", arguments: "{}" } }] } };
+      }
+      expect(tools).toEqual([]);
+      expect(requiredToolName).toBeUndefined();
+      return { message: { role: "assistant", content: JSON.stringify({ status: "NEEDS_MORE_EVIDENCE", learnerMessage: "The registry does not replace the missing original problem and complete learner working.", sourceRefs: [], evidenceRefs: ["cap-list"] }) } };
+    } };
+    const toolDefinitions = [
+      { type: "function", function: { name: "list_capabilities" } },
+      { type: "function", function: { name: "run_learner_diagnosis" } },
+    ];
+
+    const trace = await runAgent({ ...base, request: capabilityRequest, toolDefinitions, modelClient, tools: { execute: async () => ({ resultRef: "cap-list", data: [{ id: "stoichiometric-product-mass" }], evidenceRefs: ["cap-list"] }) } });
+
+    expect(trace.obligations).toEqual({ retrievalRequired: false, capabilityInspectionRequired: true, diagnosisRequired: false });
+    expect(trace.toolCalls.map((item) => item.name)).toEqual(["list_capabilities"]);
+    expect(trace.route).toBe("LEARNER_DIAGNOSIS_INCOMPLETE");
+  });
+
   it("retries malformed final JSON once and then fails without canned content", async () => {
     const modelClient = client([
       { message: { role: "assistant", content: "" } },

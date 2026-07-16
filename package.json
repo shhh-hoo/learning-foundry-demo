@@ -11,6 +11,7 @@
     "policy:audit": "tsx scripts/audit-policy.ts",
     "agenteval:live": "tsx scripts/agenteval-live.ts",
     "agenteval:checkpoint": "AGENT_EVAL_CHECKPOINT=1 tsx scripts/agenteval-live.ts",
+    "agenteval:reliability": "AGENT_EVAL_RELIABILITY=1 tsx scripts/agenteval-live.ts",
     "agenteval:report": "tsx scripts/agenteval-report.ts",
     "agenteval:compare": "tsx scripts/agenteval-compare.ts",
     "corpus:ingest": "tsx scripts/corpus-ingest.ts",

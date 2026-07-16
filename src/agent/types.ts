@@ -7,6 +7,17 @@ export type RunPurpose = z.infer<typeof runPurposeSchema>;
 export const agentRouteSchema = z.enum(["COURSE_EXPLANATION", "SOLVE_WITH_CHECKS", "LEARNER_DIAGNOSIS_COMPLETE", "LEARNER_DIAGNOSIS_INCOMPLETE", "CAPABILITY_GAP"]);
 export type AgentRoute = z.infer<typeof agentRouteSchema>;
 
+export interface AgentObligations {
+  readonly retrievalRequired: boolean;
+  readonly capabilityInspectionRequired: boolean;
+  readonly diagnosisRequired: boolean;
+}
+
+export interface AgentExecutionPlan {
+  readonly route: AgentRoute;
+  readonly obligations: AgentObligations;
+}
+
 export const agentResponseEnvelopeSchema = z.object({
   status: z.enum(["ANSWERED", "NEEDS_MORE_EVIDENCE", "CAPABILITY_GAP"]),
   learnerMessage: z.string().min(1),
@@ -41,6 +52,7 @@ export interface AgentTrace {
   readonly runPurpose: RunPurpose;
   readonly initialRoute?: AgentRoute;
   readonly route?: AgentRoute;
+  readonly obligations?: AgentObligations;
   readonly provider: "deepseek";
   readonly model: string;
   readonly thinkingMode: "enabled" | "disabled";

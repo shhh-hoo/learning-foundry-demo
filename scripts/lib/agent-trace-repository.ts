@@ -1,12 +1,12 @@
 import { mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
-import type { AgentResponseEnvelope, AgentRoute, AgentRunRequest, InputOrigin, RunPurpose, TokenUsage } from "../../src/agent/types";
+import type { AgentObligations, AgentResponseEnvelope, AgentRoute, AgentRunRequest, InputOrigin, RunPurpose, TokenUsage } from "../../src/agent/types";
 import type { ModelMessage } from "../../src/agent/deepseek-client";
 
 export type AgentRunStatus = "RUNNING" | "COMPLETED" | "FAILED";
 interface VersionedHash { readonly version: string; readonly contentHash: string }
 export interface AgentRunStart {
-  readonly traceId: string; readonly request: AgentRunRequest; readonly initialRoute?: AgentRoute; readonly provider: "deepseek"; readonly model: string; readonly thinkingMode: "enabled" | "disabled";
+  readonly traceId: string; readonly request: AgentRunRequest; readonly initialRoute?: AgentRoute; readonly obligations?: AgentObligations; readonly provider: "deepseek"; readonly model: string; readonly thinkingMode: "enabled" | "disabled";
   readonly prompt: VersionedHash; readonly capabilityRegistry: VersionedHash; readonly toolDefinitions: VersionedHash; readonly startedAt: string;
 }
 export interface PersistedToolExecution { readonly name: string; readonly arguments: unknown; readonly resultRef: string; readonly status: "SUCCEEDED" | "FAILED"; readonly result?: unknown; readonly error?: { readonly code: string; readonly message: string } }

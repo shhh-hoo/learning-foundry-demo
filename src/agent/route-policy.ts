@@ -1,4 +1,4 @@
-import type { AgentResponseEnvelope, AgentRoute, AgentRunRequest, AgentToolCallRecord } from "./types";
+import type { AgentExecutionPlan, AgentObligations, AgentResponseEnvelope, AgentRoute, AgentRunRequest, AgentToolCallRecord } from "./types";
 
 interface SuccessfulToolResult { readonly name: string; readonly data: unknown }
 
@@ -28,6 +28,13 @@ function explicitlyRequestsCapabilityGap(input: string): boolean {
   return /\b(?:capability gap|unsupported|no supported capability|arbitrary target|not supported)\b|(?:能力缺口|不支持的能力|当前能力无法处理)/iu.test(input);
 }
 
+function requiresCapabilityInspection(input: string): boolean {
+  return /\b(?:current|available|supported)\s+(?:tools?|capabilit(?:y|ies))\b/iu.test(input)
+    || /\b(?:run|use)\b.{0,60}\bdiagnosis\s+tool\b/iu.test(input)
+    || /\bdiagnos(?:e|is)\b.{0,80}\b(?:entire\s+multi-stage|across)\b/iu.test(input)
+    || /\b(?:capabilit(?:y|ies)|tool\s+trace)\b/iu.test(input);
+}
+
 export function classifyAgentRoute(request: AgentRunRequest, response?: AgentResponseEnvelope): AgentRoute {
   const input = currentUserMessage(request);
   if (looksLikeCompleteCalculationAttempt(input)) return "LEARNER_DIAGNOSIS_COMPLETE";
@@ -35,6 +42,19 @@ export function classifyAgentRoute(request: AgentRunRequest, response?: AgentRes
   if (looksLikeExplanation(input)) return "COURSE_EXPLANATION";
   if (explicitlyRequestsCapabilityGap(input) || response?.status === "CAPABILITY_GAP") return "CAPABILITY_GAP";
   return "SOLVE_WITH_CHECKS";
+}
+
+export function resolveAgentExecutionPlan(request: AgentRunRequest): AgentExecutionPlan {
+  const route = classifyAgentRoute(request);
+  const input = currentUserMessage(request);
+  return {
+    route,
+    obligations: {
+      retrievalRequired: route === "COURSE_EXPLANATION",
+      capabilityInspectionRequired: route === "LEARNER_DIAGNOSIS_COMPLETE" || route === "CAPABILITY_GAP" || requiresCapabilityInspection(input),
+      diagnosisRequired: route === "LEARNER_DIAGNOSIS_COMPLETE",
+    },
+  };
 }
 
 export function routeInstruction(route: AgentRoute): string {
@@ -67,6 +87,7 @@ export function enforceRoutePolicy(
   toolCalls: readonly AgentToolCallRecord[],
   successfulToolResults: readonly SuccessfulToolResult[],
   initialRoute: AgentRoute = classifyAgentRoute(request),
+  obligations: AgentObligations = resolveAgentExecutionPlan(request).obligations,
 ): AgentRoute {
   const route = initialRoute;
   const successfulCalls = toolCalls.filter((call) => call.status === "SUCCEEDED");
@@ -109,6 +130,9 @@ export function enforceRoutePolicy(
   const gapIndex = successfulCalls.findIndex((call) => call.name === "record_capability_gap");
   if (gapIndex >= 0 && (listIndex < 0 || listIndex > gapIndex)) {
     throw new RoutePolicyError("CAPABILITY_GAP", "A capability gap may be recorded only after successful Registry inspection.");
+  }
+  if (obligations.capabilityInspectionRequired && listIndex < 0) {
+    throw new RoutePolicyError(route, "Capability inspection requires successful Registry evidence before the final response.");
   }
 
   if (route === "CAPABILITY_GAP") {

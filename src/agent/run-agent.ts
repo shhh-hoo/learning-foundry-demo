@@ -1,7 +1,7 @@
-import { agentResponseEnvelopeSchema, type AgentRoute, type AgentRunRequest, type AgentTrace, type TokenUsage } from "./types";
+import { agentResponseEnvelopeSchema, type AgentObligations, type AgentRoute, type AgentRunRequest, type AgentTrace, type TokenUsage } from "./types";
 import type { AgentModelClient, ModelMessage } from "./deepseek-client";
 import { ZodError } from "zod";
-import { classifyAgentRoute, enforceRoutePolicy, routeInstruction, RoutePolicyError } from "./route-policy";
+import { enforceRoutePolicy, resolveAgentExecutionPlan, routeInstruction, RoutePolicyError } from "./route-policy";
 
 export interface AgentToolResult { readonly resultRef: string; readonly data: unknown; readonly evidenceData?: unknown; readonly executedArguments?: unknown; readonly sourceRefs?: readonly string[]; readonly evidenceRefs?: readonly string[]; readonly claimRefs?: readonly string[] }
 export interface AgentToolExecutor { execute(name: string, argumentsValue: unknown): Promise<AgentToolResult> }
@@ -9,6 +9,7 @@ export interface AgentToolExecutor { execute(name: string, argumentsValue: unkno
 interface RunAgentOptions {
   readonly request: AgentRunRequest;
   readonly initialRoute?: AgentRoute;
+  readonly initialObligations?: AgentObligations;
   readonly model: string;
   readonly thinkingMode: "enabled" | "disabled";
   readonly systemPrompt: string;
@@ -58,8 +59,11 @@ const finalResponseContract = [
   "Optional fields: diagnosisTraceId and capabilityGapId are evidence IDs returned by tools; proposedLibraryArtifact is {title:string,content:string}; proposedFollowUp is {title:string,reason:string,delayDays:integer}.",
 ].join(" ");
 
-export function buildAgentSystemPrompt(systemPrompt: string, route?: AgentRoute): string {
-  return `${systemPrompt}\n${route ? routeInstruction(route) : ""}\n${finalResponseContract}`;
+export function buildAgentSystemPrompt(systemPrompt: string, route?: AgentRoute, obligations?: AgentObligations): string {
+  const obligationInstruction = obligations?.capabilityInspectionRequired && !obligations.diagnosisRequired
+    ? "Application obligation: capability inspection is required. Call list_capabilities, ground capability-boundary claims in that result, and do not run Learner Diagnosis."
+    : "";
+  return `${systemPrompt}\n${route ? routeInstruction(route) : ""}\n${obligationInstruction}\n${finalResponseContract}`;
 }
 
 function validationDetail(error: unknown): string {
@@ -84,11 +88,15 @@ function matchingToolDefinitions(definitions: readonly unknown[], names: readonl
   return definitions.filter((definition) => names.includes(toolName(definition) ?? ""));
 }
 
-function providerToolsForRoute(route: AgentRoute, definitions: readonly unknown[], records: AgentTrace["toolCalls"]): readonly unknown[] {
+function providerToolsForRoute(route: AgentRoute, obligations: AgentObligations, definitions: readonly unknown[], records: AgentTrace["toolCalls"]): readonly unknown[] {
+  const listSucceeded = records.some((record) => record.name === "list_capabilities" && record.status === "SUCCEEDED");
+  if (obligations.capabilityInspectionRequired && !listSucceeded) return matchingToolDefinitions(definitions, ["list_capabilities"]);
   if (route === "COURSE_EXPLANATION") {
     const searchSucceeded = records.some((record) => record.name === "search_learning_resources" && record.status === "SUCCEEDED");
     return searchSucceeded ? [] : matchingToolDefinitions(definitions, ["search_learning_resources"]);
   }
+  if (obligations.capabilityInspectionRequired && !obligations.diagnosisRequired && (route === "LEARNER_DIAGNOSIS_INCOMPLETE" || route === "SOLVE_WITH_CHECKS")) return [];
+  if (route === "CAPABILITY_GAP") return matchingToolDefinitions(definitions, ["record_capability_gap"]);
   if (route !== "LEARNER_DIAGNOSIS_COMPLETE") return definitions;
   const succeeded = records.filter((record) => record.status === "SUCCEEDED").map((record) => record.name);
   if (!succeeded.includes("list_capabilities")) return matchingToolDefinitions(definitions, ["list_capabilities"]);
@@ -100,13 +108,18 @@ function providerToolsForRoute(route: AgentRoute, definitions: readonly unknown[
 function canonicalizeRouteOwnedReferences(
   response: ReturnType<typeof agentResponseEnvelopeSchema.parse>,
   route: AgentRoute,
+  currentUserMessage: string,
   successfulToolResults: readonly { readonly name: string; readonly data: unknown }[],
   availableEvidenceRefs: Set<string>,
 ): ReturnType<typeof agentResponseEnvelopeSchema.parse> {
   if (route === "COURSE_EXPLANATION") {
     const retrieval = [...successfulToolResults].reverse().find((item) => item.name === "search_learning_resources" && item.data && typeof item.data === "object" && "results" in item.data && Array.isArray(item.data.results));
-    const firstResult = retrieval?.data && typeof retrieval.data === "object" && "results" in retrieval.data && Array.isArray(retrieval.data.results) ? retrieval.data.results[0] : undefined;
-    const primarySourceId = firstResult && typeof firstResult === "object" && "sourceId" in firstResult && typeof firstResult.sourceId === "string" ? firstResult.sourceId : undefined;
+    const results = retrieval?.data && typeof retrieval.data === "object" && "results" in retrieval.data && Array.isArray(retrieval.data.results) ? retrieval.data.results : [];
+    const officialSourceRequested = /(?:course|official)\s+source|syllabus/iu.test(currentUserMessage);
+    const primaryResult = officialSourceRequested
+      ? results.find((item) => item && typeof item === "object" && "sourceType" in item && item.sourceType === "OFFICIAL_SYLLABUS") ?? results[0]
+      : results[0];
+    const primarySourceId = primaryResult && typeof primaryResult === "object" && "sourceId" in primaryResult && typeof primaryResult.sourceId === "string" ? primaryResult.sourceId : undefined;
     return { ...response, sourceRefs: [...new Set([...(primarySourceId ? [primarySourceId] : []), ...response.sourceRefs])] };
   }
   if (route !== "LEARNER_DIAGNOSIS_COMPLETE") return response;
@@ -125,9 +138,12 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentTrace> {
   if (!options.request.messages.length) throw new AgentRunError("INVALID_AGENT_REQUEST", "At least one conversation message is required.");
   const start = options.now?.() ?? new Date();
   const traceId = options.createId?.() ?? `agent-trace-${globalThis.crypto?.randomUUID?.() ?? Date.now().toString(36)}`;
-  const initialRoute = options.initialRoute ?? classifyAgentRoute(options.request);
+  const resolvedPlan = resolveAgentExecutionPlan(options.request);
+  const initialRoute = options.initialRoute ?? resolvedPlan.route;
+  const obligations = options.initialObligations ?? resolvedPlan.obligations;
+  const currentUserMessage = [...options.request.messages].reverse().find((message) => message.role === "user")?.content ?? "";
   const messages: ModelMessage[] = [
-    { role: "system", content: buildAgentSystemPrompt(options.systemPrompt, initialRoute) },
+    { role: "system", content: buildAgentSystemPrompt(options.systemPrompt, initialRoute, obligations) },
     ...options.request.messages,
   ];
   const records: AgentTrace["toolCalls"][number][] = [];
@@ -138,8 +154,8 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentTrace> {
   let malformedRetries = 0;
 
   for (let round = 0; round < 6; round += 1) {
-    const providerTools = providerToolsForRoute(initialRoute, options.toolDefinitions, records);
-    const requiredToolName = (initialRoute === "COURSE_EXPLANATION" || initialRoute === "LEARNER_DIAGNOSIS_COMPLETE") && providerTools.length === 1
+    const providerTools = providerToolsForRoute(initialRoute, obligations, options.toolDefinitions, records);
+    const requiredToolName = (initialRoute === "COURSE_EXPLANATION" || initialRoute === "LEARNER_DIAGNOSIS_COMPLETE" || obligations.capabilityInspectionRequired) && providerTools.length === 1
       ? toolName(providerTools[0]) ?? undefined
       : undefined;
     const result = await options.modelClient.call({ messages, tools: providerTools, ...(requiredToolName ? { requiredToolName } : {}) });
@@ -194,9 +210,9 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentTrace> {
     }
     try {
       const parsedResponse = agentResponseEnvelopeSchema.parse(JSON.parse(assistant.content ?? ""));
-      const response = canonicalizeRouteOwnedReferences(parsedResponse, initialRoute, successfulToolResults, availableEvidenceRefs);
+      const response = canonicalizeRouteOwnedReferences(parsedResponse, initialRoute, currentUserMessage, successfulToolResults, availableEvidenceRefs);
       validateClaims(response, availableSourceRefs, availableEvidenceRefs, successfulToolResults);
-      const route = enforceRoutePolicy(options.request, response, records, successfulToolResults, initialRoute);
+      const route = enforceRoutePolicy(options.request, response, records, successfulToolResults, initialRoute, obligations);
       const completed = options.now?.() ?? new Date();
       return {
         traceId,
@@ -205,6 +221,7 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentTrace> {
         runPurpose: options.request.runPurpose,
         initialRoute,
         route,
+        obligations,
         provider: "deepseek",
         model: options.model,
         thinkingMode: options.thinkingMode,

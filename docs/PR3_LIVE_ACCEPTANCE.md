@@ -20,7 +20,7 @@ The following commands completed against the real local system:
 
 ```text
 npm run check                         PASS
-npm test                              PASS — 113/113
+npm test                              PASS — 131/131
 npm run build                         PASS
 npm run policy:audit                  PASS
 npm run corpus:ingest                 PASS
@@ -28,8 +28,9 @@ npm run corpus:inspect                PASS — 934 chunks
 npm run corpus:export:public          PASS
 npm run demo:local                    PASS — ports 4173–4177
 npm run agenteval:checkpoint          PASS — 6/6
-npm run agenteval:live                COMPLETE — 7/18
-npm run agenteval:report              PASS — suite 1.1.0
+npm run agenteval:reliability         PASS — 11/11
+npm run agenteval:live                PASS — 18/18
+npm run agenteval:report              PASS — suite 1.2.0
 ```
 
 Corpus index `v0.1-6f7e2a2945ca` contains 373 official-syllabus chunks, 555 secondary-reference chunks, and six Teacher Note chunks. Both PDFs, the private index, and the generated public-safe export remain ignored and untracked. The public-safe export contains no private chunks.
@@ -61,7 +62,7 @@ Diagnosis: `trainer-trace-cf8e0c1c-2bbe-4e7e-a1e8-2f0d9d192948`
 
 The run used `runPurpose=PRODUCT`, route `LEARNER_DIAGNOSIS_COMPLETE`, and successful tool order `list_capabilities → get_capability → run_learner_diagnosis`. The persisted Diagnosis resolves by ID, appears in the PRODUCT list, and reports `WRONG_STOICHIOMETRIC_RATIO`. The same conversation ID returns no records from the AGENT_EVAL namespace. Source and evidence reference classes remain separated.
 
-## Full AgentEval baseline
+## Initial full AgentEval baseline
 
 Run: `agenteval-2026-07-16T10-55-34-288Z-4a3da608`
 
@@ -78,8 +79,31 @@ Result: 7/18 passed
 
 Remaining failures are retained as an honest baseline: `retrieval-03` route policy, `retrieval-04` provider response validation, `retrieval-05` source references, `diagnosis-01` problem-context grading, `diagnosis-05` and `diagnosis-06` Diagnosis fidelity, `gap-01` through `gap-04` required tools, and `adversarial-02` required tools. These cases were outside the six-case checkpoint repair boundary and were not hidden or converted to fixtures.
 
+## Reliability sprint and final suite
+
+The eleven classified failures are recorded in `docs/PR3_RELIABILITY_FAILURE_MATRIX.md`. The implementation repaired retrieval intent mapping and official-source selection, grounded optional MASS attempt fields only in explicit learner evidence, graded the final successful governed Diagnosis rather than failed recovery attempts, and added orthogonal capability-inspection obligations without adding routes.
+
+Targeted run: `agenteval-2026-07-16T11-26-29-414Z-9eb17c79`
+
+Targeted result: 11/11 passed on suite `1.2.0`.
+
+Final full run: `agenteval-2026-07-16T11-34-02-207Z-c48a6820`
+
+Final result: 18/18 passed on suite `1.2.0`.
+
+- Required-tool accuracy: 15/15 (1.0)
+- Forbidden-tool compliance: 14/14 (1.0)
+- Diagnosis fidelity: 5/5 (1.0)
+- Source grounding: 5/5 (1.0)
+- Known estimated cost: USD 0.0056401632
+- Pricing coverage: 18/18 (1.0)
+- No tool-loop terminal errors
+- No forbidden Diagnosis calls
+
+The suite version was raised from `1.1.0` to `1.2.0` because grader semantics changed: failed recovery calls no longer invalidate a final successful governed Diagnosis; an explicit refusal is not treated as asserting the forbidden claim it quotes; and “reaction context and conditions” is accepted as semantically equivalent missing-reaction evidence. The positive safety checks remain intact, including rejection of an affirmative fabricated Kp trace claim.
+
 ## Evidence locations and safety
 
-Sanitized local evidence is preserved under `.local-data/acceptance/2026-07-16-pr3/` and is intentionally gitignored. It contains checkpoint and full run/report files, the six checkpoint AgentTrace records, three checkpoint Diagnosis records, the checkpoint RetrievalTrace, the manual PRODUCT AgentTrace and Diagnosis, corpus inspection metadata, and the policy version/hash.
+Sanitized local evidence is preserved under `.local-data/acceptance/2026-07-16-pr3/` and is intentionally gitignored. It contains the original checkpoint and 7/18 baseline; the 11/11 targeted run; the final 18/18 run, report, and all eighteen final AgentTrace records; the manual PRODUCT AgentTrace and Diagnosis; corpus inspection metadata; and the policy version/hash.
 
-No API key, Authorization header, hidden reasoning, raw PDF, private generated chunk, or full school-internal source corpus is committed. PR #3 should remain draft pending owner audit of the full-suite limitations above.
+No API key, Authorization header, hidden reasoning, raw PDF, private generated chunk, or full school-internal source corpus is committed. The automated ready criteria are now satisfied; PR #3 remains draft for owner audit and the final ready-state decision.

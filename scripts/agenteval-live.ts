@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { gradeAgentCase, type AgentEvalCase, type AgentEvalToolResult } from "../src/agent/agenteval.ts";
+import { AGENT_EVAL_SUITE_VERSION, gradeAgentCase, type AgentEvalCase, type AgentEvalToolResult } from "../src/agent/agenteval.ts";
 import { buildAgentEvalCheckpoint } from "../src/agent/agenteval-checkpoint.ts";
+import { buildAgentEvalReliabilitySprint } from "../src/agent/agenteval-reliability.ts";
 import { AGENT_PROMPT_VERSION, buildAgentSystemPrompt } from "../src/agent/run-agent.ts";
 import type { AgentTrace, TokenUsage } from "../src/agent/types.ts";
 import { AgentEvalRepository, type AgentEvalEligibility, type PersistedAgentEvalCase, type PersistedAgentEvalRun } from "./lib/agent-eval-repository.ts";
@@ -40,7 +41,9 @@ try {
   const fullCases = caseFile.trim().split(/\r?\n/).map((line) => JSON.parse(line) as AgentEvalCase);
   const cases = process.env.AGENT_EVAL_CHECKPOINT === "1"
     ? buildAgentEvalCheckpoint(fullCases)
-    : fullCases;
+    : process.env.AGENT_EVAL_RELIABILITY === "1"
+      ? buildAgentEvalReliabilitySprint(fullCases)
+      : fullCases;
   const pricing = JSON.parse(await readFile(new URL("../agent-eval/pricing.json", import.meta.url), "utf8")) as { perMillionTokens: Readonly<Record<string, Price>> };
   const price = pricing.perMillionTokens[health.model];
   const instructions = await readFile(new URL("../config/agent/instructions.md", import.meta.url), "utf8");
@@ -50,7 +53,7 @@ try {
   const toolText = await readFile(new URL("../config/tools/tool-descriptions.json", import.meta.url), "utf8");
   const tools = JSON.parse(toolText) as { version: string };
   const running: PersistedAgentEvalRun = {
-    schemaVersion: "1.0.0", evalRunId, runPurpose: "AGENT_EVAL", status: "RUNNING", totalPlannedCases: cases.length, suiteVersion: "1.1.0", caseFileHash: hash(`${caseFile}\n${cases.map((item) => item.caseId).join(",")}`),
+    schemaVersion: "1.0.0", evalRunId, runPurpose: "AGENT_EVAL", status: "RUNNING", totalPlannedCases: cases.length, suiteVersion: AGENT_EVAL_SUITE_VERSION, caseFileHash: hash(`${caseFile}\n${cases.map((item) => item.caseId).join(",")}`),
     provider: health.provider ?? "deepseek", model: health.model, thinkingMode: health.thinkingMode ?? "unknown",
     prompt: { version: AGENT_PROMPT_VERSION, contentHash: hash(buildAgentSystemPrompt(`${instructions}\nResponse policy: ${responsePolicy}`)) }, capabilityRegistry: { version: capability.version, contentHash: hash(capabilityText) }, toolDefinitions: { version: tools.version, contentHash: hash(toolText) },
     startedAt, cases: [],

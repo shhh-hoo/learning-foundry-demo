@@ -65,6 +65,49 @@ describe("agent tools", () => {
     expect(receivedFilters).toMatchObject({ calculationFamilyId: "CORE-001" });
   });
 
+  it("maps an equation-to-mole-ratio explanation to the governed coefficient family", async () => {
+    let receivedFilters: Record<string, unknown> = {};
+    const recordingCorpus: CorpusSearchService = { search: async (query, filters) => {
+      receivedFilters = filters as Record<string, unknown>;
+      return corpus().search(query, filters);
+    } };
+    const tools = createAgentToolExecutor({ capabilities, corpus: recordingCorpus, corpusDeliveryPolicy, provider: "deepseek", runPurpose: "AGENT_EVAL", currentUserMessage: "Explain how 2Mg + O2 -> 2MgO becomes a 1:1 Mg to MgO mole ratio.", diagnosisUrl: "http://127.0.0.1:4177/diagnose" });
+
+    await tools.execute("search_learning_resources", { query: "mole ratio from balanced chemical equation coefficients", topic: "Stoichiometry", calculationFamilyId: "MOLE_RATIO", sourceType: "OFFICIAL_SYLLABUS" });
+
+    expect(receivedFilters).not.toHaveProperty("topic");
+    expect(receivedFilters).not.toHaveProperty("sourceType");
+    expect(receivedFilters).toMatchObject({ calculationFamilyId: "CORE-001" });
+  });
+
+  it("maps limiting-reagent teaching intent to the governed calculation family", async () => {
+    let receivedFilters: Record<string, unknown> = {};
+    const recordingCorpus: CorpusSearchService = { search: async (query, filters) => {
+      receivedFilters = filters as Record<string, unknown>;
+      return corpus().search(query, filters);
+    } };
+    const tools = createAgentToolExecutor({ capabilities, corpus: recordingCorpus, corpusDeliveryPolicy, provider: "deepseek", runPurpose: "AGENT_EVAL", currentUserMessage: "What evidence do I compare before choosing a limiting reagent?", diagnosisUrl: "http://127.0.0.1:4177/diagnose" });
+
+    await tools.execute("search_learning_resources", { query: "limiting reagent evidence", topic: "Stoichiometry", calculationFamilyId: "limiting-reagent" });
+
+    expect(receivedFilters).not.toHaveProperty("topic");
+    expect(receivedFilters).toMatchObject({ calculationFamilyId: "STOICH-005" });
+  });
+
+  it("maps titration teaching intent to the governed calculation family", async () => {
+    let receivedFilters: Record<string, unknown> = {};
+    const recordingCorpus: CorpusSearchService = { search: async (query, filters) => {
+      receivedFilters = filters as Record<string, unknown>;
+      return corpus().search(query, filters);
+    } };
+    const tools = createAgentToolExecutor({ capabilities, corpus: recordingCorpus, corpusDeliveryPolicy, provider: "deepseek", runPurpose: "AGENT_EVAL", currentUserMessage: "Why must a titration calculation include volume and concentration evidence?", diagnosisUrl: "http://127.0.0.1:4177/diagnose" });
+
+    await tools.execute("search_learning_resources", { query: "titration volume concentration evidence", topic: "Stoichiometry" });
+
+    expect(receivedFilters).not.toHaveProperty("topic");
+    expect(receivedFilters).toMatchObject({ calculationFamilyId: "TITR-001" });
+  });
+
   it("calls the Trainer endpoint and resolves the persisted diagnosis trace", async () => {
     const requests: string[] = [];
     let requestedBody: unknown;
@@ -129,6 +172,51 @@ describe("agent tools", () => {
     expect(requestedAttempt.stoichiometricRatio).toBe(0.5);
     expect(requestedAttempt.arithmeticWorkingValue).toBe(4);
     expect((requestedAttempt as { evidencedReasoningNodeIds?: string[] }).evidencedReasoningNodeIds).toEqual(["select-data", "identify-target", "amount-magnesium", "apply-mole-ratio", "amount-magnesium-oxide", "mass-magnesium-oxide", "report-unit", "report-precision"]);
+  });
+
+  it("removes a model-supplied ratio that the learner did not evidence", async () => {
+    let requestedAttempt: { stoichiometricRatio?: number } = {};
+    const currentUserMessage = "Problem: 2Mg + O2 -> 2MgO; 4.80 g Mg reacts with excess oxygen; find mass MgO using Ar(Mg)=24.0 and Mr(MgO)=40.0 to 3 significant figures. My full working is correct and gives 8.0 g. Diagnose it.";
+    const tools = createAgentToolExecutor({ capabilities, corpus: corpus(), corpusDeliveryPolicy, provider: "deepseek", diagnosisUrl: "http://127.0.0.1:4177/diagnose", runPurpose: "AGENT_EVAL", currentUserMessage, fetcher: async (_input, init) => {
+      if (init?.method === "POST") {
+        requestedAttempt = (JSON.parse(String(init.body)) as { attempt: typeof requestedAttempt }).attempt;
+        return Response.json({ ok: true, result: { traceId: "trainer-significant-figures", diagnosis: { failureCode: "SIGNIFICANT_FIGURES_ERROR" } } });
+      }
+      return Response.json({ ok: true, diagnosis: { traceId: "trainer-significant-figures" } });
+    } });
+
+    await tools.execute("run_learner_diagnosis", {
+      componentId: "stoichiometric-product-mass",
+      componentVersion: "1.0.0",
+      problemContext: { prompt: currentUserMessage, reactionEquation: "2Mg + O2 -> 2MgO", givenValues: [{ label: "mass Mg", value: 4.8, unit: "g" }, { label: "Ar(Mg)", value: 24, unit: "1" }, { label: "Mr(MgO)", value: 40, unit: "1" }], targetQuantity: "mass MgO", answerRequirement: "to 3 significant figures" },
+      problemContextEvidence: { promptQuote: currentUserMessage, reactionEquationQuote: "2Mg + O2 -> 2MgO", givenValueQuotes: ["4.80 g Mg", "Ar(Mg)=24.0", "Mr(MgO)=40.0"], targetQuantityQuote: "find mass MgO", answerRequirementQuote: "to 3 significant figures" },
+      attempt: { attemptId: "a", componentId: "stoichiometric-product-mass", componentVersion: "1.0.0", strategyId: "MOLES_RATIO_MASS", evidencedReasoningNodeIds: [], substitutedFacts: {}, stoichiometricRatio: 2, finalAnswer: { value: 8, unit: "g", significantFigures: 2 } },
+    });
+
+    expect(requestedAttempt).not.toHaveProperty("stoichiometricRatio");
+  });
+
+  it("maps an explicitly stated arithmetic-working value to Trainer input", async () => {
+    let requestedAttempt: { stoichiometricRatio?: number; arithmeticWorkingValue?: number } = {};
+    const currentUserMessage = "Problem: 2Mg + O2 -> 2MgO; 4.80 g Mg reacts with excess oxygen; find mass MgO using Ar(Mg)=24.0 and Mr(MgO)=40.0 to 3 significant figures. I used ratio 1, but my arithmetic working says 7.90 g before I report 8.00 g. Diagnose the first issue.";
+    const tools = createAgentToolExecutor({ capabilities, corpus: corpus(), corpusDeliveryPolicy, provider: "deepseek", diagnosisUrl: "http://127.0.0.1:4177/diagnose", runPurpose: "AGENT_EVAL", currentUserMessage, fetcher: async (_input, init) => {
+      if (init?.method === "POST") {
+        requestedAttempt = (JSON.parse(String(init.body)) as { attempt: typeof requestedAttempt }).attempt;
+        return Response.json({ ok: true, result: { traceId: "trainer-arithmetic", diagnosis: { failureCode: "ARITHMETIC_ERROR" } } });
+      }
+      return Response.json({ ok: true, diagnosis: { traceId: "trainer-arithmetic" } });
+    } });
+
+    await tools.execute("run_learner_diagnosis", {
+      componentId: "stoichiometric-product-mass",
+      componentVersion: "1.0.0",
+      problemContext: { prompt: currentUserMessage, reactionEquation: "2Mg + O2 -> 2MgO", givenValues: [{ label: "mass Mg", value: 4.8, unit: "g" }, { label: "Ar(Mg)", value: 24, unit: "1" }, { label: "Mr(MgO)", value: 40, unit: "1" }], targetQuantity: "mass MgO", answerRequirement: "to 3 significant figures" },
+      problemContextEvidence: { promptQuote: currentUserMessage, reactionEquationQuote: "2Mg + O2 -> 2MgO", givenValueQuotes: ["4.80 g Mg", "Ar(Mg)=24.0", "Mr(MgO)=40.0"], targetQuantityQuote: "find mass MgO", answerRequirementQuote: "to 3 significant figures" },
+      attempt: { attemptId: "a", componentId: "stoichiometric-product-mass", componentVersion: "1.0.0", strategyId: "MOLES_RATIO_MASS", evidencedReasoningNodeIds: [], substitutedFacts: {}, stoichiometricRatio: 2, arithmeticWorkingValue: 8, finalAnswer: { value: 8, unit: "g", significantFigures: 3 } },
+    });
+
+    expect(requestedAttempt.stoichiometricRatio).toBe(1);
+    expect(requestedAttempt.arithmeticWorkingValue).toBe(7.9);
   });
 
   it("rejects unknown tools and invalid local arguments before execution", async () => {

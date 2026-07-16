@@ -112,8 +112,23 @@ function explicitStoichiometricRatio(currentUserMessage: string): number | undef
 function explicitArithmeticWorkingValue(currentUserMessage: string): number | undefined {
   const equation = /[-+]?\d+(?:\.\d+)?\s*[x×*]\s*[-+]?\d+(?:\.\d+)?\s*=\s*([-+]?\d+(?:\.\d+)?)/iu.exec(currentUserMessage);
   if (equation) return Number(equation[1]);
+  const statedWorking = /arithmetic\s+working\s+(?:says?|gives?|shows?)\s+([-+]?\d+(?:\.\d+)?)\s*g/iu.exec(currentUserMessage);
+  if (statedWorking) return Number(statedWorking[1]);
   const reported = /(?:got|answer(?:ed)?|reported)\s+([-+]?\d+(?:\.\d+)?)\s*g\s*MgO/iu.exec(currentUserMessage);
   return reported ? Number(reported[1]) : undefined;
+}
+
+function canonicalCourseSearchFilters(
+  currentUserMessage: string,
+  filters: Omit<z.infer<typeof searchSchema>, "query">,
+): Omit<z.infer<typeof searchSchema>, "query"> {
+  const coefficientRatioQuestion = /why\s+do\s+coefficients?.{0,80}(?:mole\s+ratios?|balanced\s+equation)|coefficients?.{0,100}mole\s+ratios?|mole\s+ratios?.{0,100}coefficients?|(?:->|→).{0,100}mole\s+ratio/iu.test(currentUserMessage);
+  const limitingReagentQuestion = /limiting\s+reagent/iu.test(currentUserMessage);
+  const titrationQuestion = /titration/iu.test(currentUserMessage) && /(?:volume|concentration|calculation|evidence)/iu.test(currentUserMessage);
+  if (!coefficientRatioQuestion && !limitingReagentQuestion && !titrationQuestion) return filters;
+  const { sourceType: _sourceType, topic: _topic, calculationFamilyId: _calculationFamilyId, ...unrestrictedFilters } = filters;
+  const calculationFamilyId = coefficientRatioQuestion ? "CORE-001" : limitingReagentQuestion ? "STOICH-005" : "TITR-001";
+  return { ...unrestrictedFilters, calculationFamilyId };
 }
 
 const STOICHIOMETRY_REASONING_ORDER = ["select-data", "identify-target", "amount-magnesium", "apply-mole-ratio", "amount-magnesium-oxide", "mass-magnesium-oxide", "report-unit", "report-precision"] as const;
@@ -143,10 +158,11 @@ function canonicalizeStoichiometryAttempt(input: z.infer<typeof diagnosisSchema>
   const evidencedRatio = explicitStoichiometricRatio(currentUserMessage);
   const evidencedArithmetic = explicitArithmeticWorkingValue(currentUserMessage);
   const evidencedReasoningNodeIds = [...new Set([...input.attempt.evidencedReasoningNodeIds, ...evidencedStoichiometryNodes(currentUserMessage)])];
+  const { stoichiometricRatio: _unverifiedRatio, arithmeticWorkingValue: _unverifiedArithmetic, ...groundedAttempt } = input.attempt;
   return {
     ...input,
     attempt: {
-      ...input.attempt,
+      ...groundedAttempt,
       substitutedFacts,
       evidencedReasoningNodeIds: STOICHIOMETRY_REASONING_ORDER.filter((node) => evidencedReasoningNodeIds.includes(node)),
       ...(evidencedRatio === undefined ? {} : { stoichiometricRatio: evidencedRatio }),
@@ -163,9 +179,7 @@ export function createAgentToolExecutor(options: ToolExecutorOptions): AgentTool
       if (name === "search_learning_resources") {
         const input = searchSchema.parse(value);
         const { query, ...filters } = input;
-        const coefficientWhyQuestion = /why\s+do\s+coefficients?.{0,80}(?:mole\s+ratios?|balanced\s+equation)|coefficients?.{0,80}balanced\s+equation.{0,80}mole\s+ratios?/iu.test(options.currentUserMessage ?? "");
-        const { sourceType: _providerSourceType, ...sourceUnrestrictedFilters } = filters;
-        const governedFilters = coefficientWhyQuestion ? { ...sourceUnrestrictedFilters, calculationFamilyId: "CORE-001" as const } : filters;
+        const governedFilters = canonicalCourseSearchFilters(options.currentUserMessage ?? "", filters);
         const result = await options.corpus.search(query, governedFilters, { conversationId: options.conversationId, conversationEvidenceHash: options.conversationEvidenceHash, route: "COURSE_RETRIEVAL" });
         if (!options.corpusDeliveryPolicy || !options.provider || !options.runPurpose) throw new ToolBoundaryError("CORPUS_DELIVERY_POLICY_REQUIRED", "Corpus excerpts require an explicit provider, purpose and versioned delivery policy.");
         const delivered = deliverCorpusSearchResponse(options.corpusDeliveryPolicy, options.provider, options.runPurpose, result);
