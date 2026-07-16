@@ -60,6 +60,8 @@ npm run agenteval:compare -- --baseline <evalRunId> --candidate <evalRunId>
 npm run runtime:parity:fixture
 npm run runtime:parity:checkpoint -- --run <evalRunId>
 npm run runtime:parity:baseline -- --run <evalRunId>
+npm run runtime:parity:layer -- --run <evalRunId>
+npm run runtime:parity:dimension -- --run <evalRunId>
 npm run runtime:parity:self-check -- --run <evalRunId>
 ```
 

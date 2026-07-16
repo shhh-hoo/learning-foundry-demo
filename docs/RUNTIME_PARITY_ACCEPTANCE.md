@@ -6,7 +6,7 @@ Corrected boundary base: `codex/runtime-boundary-program@df0aaa062128a2657e28c86
 
 Shadow foundation base: `codex/runtime-shadow-foundation@e80d8e940a556719bed5c8efeb373ba3a445e2fb`
 
-Parity implementation checkpoint: `b31e6bcc9b00af4729f8574ccdb03ec40f741b14`
+Parity implementation checkpoint: `4bca6c29dd7d32359e13333938d3849f04ee62ac`
 
 ## Scope and responsibility
 
@@ -40,6 +40,8 @@ Candidate records are graded by `gradeAgentCase`; no parity-specific relaxed gra
 npm run runtime:parity:fixture
 npm run runtime:parity:checkpoint -- --run <evalRunId>
 npm run runtime:parity:baseline -- --run <evalRunId>
+RUNTIME_PARITY_LAYER=CORE_CONTRACT npm run runtime:parity:layer -- --run <evalRunId>
+RUNTIME_PARITY_DIMENSION=RETRIEVAL npm run runtime:parity:dimension -- --run <evalRunId>
 npm run runtime:parity:self-check -- --run <evalRunId>
 RUNTIME_PARITY_SELECTION=BASELINE npm run runtime:parity:self-check -- --run <evalRunId>
 ```

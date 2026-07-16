@@ -2,7 +2,7 @@
 
 Docs authority: `learning-foundry-docs@e6ec2408d18fc6850e92c996b36712dbd5be9df5`
 
-Assessment basis: parity implementation `b31e6bcc9b00af4729f8574ccdb03ec40f741b14` stacked on shadow foundation `e80d8e940a556719bed5c8efeb373ba3a445e2fb`.
+Assessment basis: parity implementation `4bca6c29dd7d32359e13333938d3849f04ee62ac` stacked on shadow foundation `e80d8e940a556719bed5c8efeb373ba3a445e2fb`.
 
 ## Decision
 
