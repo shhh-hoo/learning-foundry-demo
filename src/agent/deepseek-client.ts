@@ -23,7 +23,7 @@ export interface ModelCallResult {
   readonly usage?: TokenUsage;
 }
 
-export interface AgentModelClient { call(request: ModelCallRequest): Promise<ModelCallResult> }
+export interface AgentModelClient { call(request: ModelCallRequest, signal?: AbortSignal): Promise<ModelCallResult> }
 
 interface DeepSeekClientOptions {
   readonly apiKey: string;
@@ -36,7 +36,7 @@ interface DeepSeekClientOptions {
 export function createDeepSeekClient(options: DeepSeekClientOptions): AgentModelClient {
   const fetcher = options.fetcher ?? globalThis.fetch;
   return {
-    async call(request) {
+    async call(request, signal) {
       const response = await fetcher(`${options.baseUrl.replace(/\/$/, "")}/chat/completions`, {
         method: "POST",
         headers: { "authorization": `Bearer ${options.apiKey}`, "content-type": "application/json" },
@@ -54,6 +54,7 @@ export function createDeepSeekClient(options: DeepSeekClientOptions): AgentModel
           max_tokens: 1800,
           stream: false,
         }),
+        ...(signal ? { signal } : {}),
       });
       if (!response.ok) throw new Error(`DEEPSEEK_API_ERROR: HTTP ${response.status}: ${await response.text()}`);
       const body = await response.json() as {

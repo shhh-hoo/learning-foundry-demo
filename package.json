@@ -39,6 +39,8 @@
     "sync:trainer": "tsx scripts/sync-trainer.ts"
   },
   "dependencies": {
+    "@ai-sdk/deepseek": "3.0.12",
+    "ai": "7.0.31",
     "ajv": "^8.20.0",
     "katex": "^0.17.0",
     "pdfjs-dist": "^5.6.205",
