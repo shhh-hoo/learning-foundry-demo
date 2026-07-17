@@ -8,6 +8,7 @@ import {
   registeredPublishedDiagnosticComponents,
 } from "../src/reference-packs/registry";
 import capabilityRegistrySnapshot from "../config/capabilities/registry.json";
+import type { ReferencePackRegistration } from "../src/core/domain/reference-pack";
 
 describe("Reference Pack registration", () => {
   it("registers the truthful Chemistry Pack manifest without claiming physical extraction", () => {
@@ -55,5 +56,28 @@ describe("Reference Pack registration", () => {
         { id: "kp-from-equilibrium-moles", visibility: "ENGINEERING_ONLY" },
       ],
     });
+  });
+
+  it("fails closed when two Packs claim the same Capability or Component version", () => {
+    const anotherManifest = {
+      ...chemistryCaie9701ReferencePack.manifest,
+      id: "another-reference-pack",
+      title: "Another Reference Pack",
+    } as const;
+    const capabilityConflict: ReferencePackRegistration = {
+      manifest: anotherManifest,
+      capabilities: chemistryCaie9701ReferencePack.capabilities,
+      components: [],
+    };
+    const componentConflict: ReferencePackRegistration = {
+      manifest: anotherManifest,
+      capabilities: [],
+      components: chemistryCaie9701ReferencePack.components,
+    };
+
+    expect(() => createReferencePackRegistry([chemistryCaie9701ReferencePack, capabilityConflict]))
+      .toThrow("DUPLICATE_CAPABILITY_REGISTRATION");
+    expect(() => createReferencePackRegistry([chemistryCaie9701ReferencePack, componentConflict]))
+      .toThrow("DUPLICATE_COMPONENT_REGISTRATION");
   });
 });

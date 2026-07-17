@@ -127,7 +127,7 @@ Recorded result at this branch head:
 
 ```text
 npm run core:leakage  2/2 passed; zero Core violations; allowlist 0/0
-npm test              35 files, 232 tests passed
+npm test              35 files, 233 tests passed
 npm run check         passed
 npm run build         passed
 git diff --check      passed
