@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { buildBenchmarkExecutionPlan, validateBenchmarkCases, type BenchmarkCase } from "./index";
+import { createBenchmarkCaseComposition } from "./preparation";
 
 export interface FrozenAssetDescriptor {
   readonly path: string;
@@ -85,7 +86,7 @@ function parseJsonLines<T>(path: string, bytes: Uint8Array): readonly T[] {
   }
 }
 
-export async function loadAndVerifyValueBenchmarkExperiment(root: string, manifestPath: string): Promise<{
+export async function loadAndVerifyValueBenchmarkExperiment(root: string, manifestPath: string, options: { readonly verifyRepositoryPolicy?: boolean } = {}): Promise<{
   readonly manifest: ValueBenchmarkExperimentManifest;
   readonly manifestBytes: Uint8Array;
   readonly cases: readonly BenchmarkCase[];
@@ -105,10 +106,30 @@ export async function loadAndVerifyValueBenchmarkExperiment(root: string, manife
   validateBenchmarkCases(cases);
   const criteria = parseJsonLines<{ readonly caseId: string }>(manifest.assets.reviewerCriteria.path, criteriaBytes);
   if (criteria.length !== 24 || new Set(criteria.map((item) => item.caseId)).size !== 24 || cases.some((item) => !criteria.some((criterion) => criterion.caseId === item.caseId))) throw new Error("BENCHMARK_REVIEW_CRITERIA_SET_INVALID");
-  JSON.parse(new TextDecoder().decode(promptBytes));
+  const promptConfig = JSON.parse(new TextDecoder().decode(promptBytes)) as { readonly arms?: { readonly B_FOUNDRY_POLICY_NO_TOOLS?: { readonly systemPrompt?: string } } };
   const expectedPlan = buildBenchmarkExecutionPlan(manifest.runId, cases, manifest.execution.scheduleSeed).map(({ executionId, caseId, arm, order, conversationId }) => ({ executionId, caseId, arm, order, conversationId }));
   if (manifest.execution.firstAttemptCount !== 72 || JSON.stringify(expectedPlan) !== JSON.stringify(manifest.execution.plannedExecutions)) throw new Error("BENCHMARK_MANIFEST_EXECUTION_PLAN_MISMATCH");
   if (manifest.execution.caseCompositions.length !== 24 || new Set(manifest.execution.caseCompositions.map((item) => item.caseId)).size !== 24 || cases.some((item) => !manifest.execution.caseCompositions.some((composition) => composition.caseId === item.caseId))) throw new Error("BENCHMARK_MANIFEST_CASE_COMPOSITIONS_INVALID");
+  if (options.verifyRepositoryPolicy !== false) {
+    const policyOnlyPrompt = promptConfig.arms?.B_FOUNDRY_POLICY_NO_TOOLS?.systemPrompt;
+    if (!policyOnlyPrompt) throw new Error("BENCHMARK_POLICY_ONLY_PROMPT_MISSING");
+    const authoritativeBasePrompt = `${await readFile(resolve(root, "config/agent/instructions.md"), "utf8")}\nResponse policy: ${await readFile(resolve(root, "config/agent/response-policy.json"), "utf8")}`;
+    const expectedCompositions = cases.map((testCase) => {
+      const composition = createBenchmarkCaseComposition({ testCase, policyOnlyPrompt, directAnswerContract: "Return only one JSON object with exactly one non-empty string field named answer.", authoritativeBasePrompt });
+      return { caseId: testCase.caseId, executionPlanHash: composition.hashes.executionPlan, contextSelectionHash: composition.hashes.contextSelection, selectedProviderMessagesHash: composition.hashes.selectedProviderMessages, policyOnlySystemPromptHash: composition.hashes.policyOnlySystemPrompt, authoritativeSystemPromptHash: composition.hashes.authoritativeSystemPrompt };
+    });
+    if (JSON.stringify(expectedCompositions) !== JSON.stringify(manifest.execution.caseCompositions)) throw new Error("BENCHMARK_MANIFEST_CASE_COMPOSITION_HASH_MISMATCH");
+    const agentEvalBytes = await readFile(resolve(root, "agent-eval/cases.jsonl"));
+    const agentEvalCases = parseJsonLines<{ readonly input: string }>("agent-eval/cases.jsonl", agentEvalBytes);
+    if (agentEvalCases.length !== 73) throw new Error(`BENCHMARK_AGENT_EVAL_COUNT_CHANGED: ${agentEvalCases.length}`);
+    assertNoAgentEvalInputDuplicates(cases, agentEvalCases.map((item) => item.input));
+    for (const snapshot of Object.values(manifest.policySnapshots)) {
+      const match = snapshot.match(/^(.+)@sha256:([a-f0-9]{64})$/u);
+      if (!match) continue;
+      const current = await readFile(resolve(root, match[1]!));
+      if (sha256(current) !== match[2]) throw new Error(`BENCHMARK_POLICY_SNAPSHOT_MISMATCH: ${match[1]}`);
+    }
+  }
   return { manifest, manifestBytes, cases };
 }
 

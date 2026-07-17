@@ -22,6 +22,13 @@ const cases: readonly BenchmarkCase[] = BENCHMARK_SCENARIOS.flatMap((scenario, s
 })));
 
 describe("value benchmark experiment manifest", () => {
+  it("verifies the committed PR6 assets and preserves the 73-case AgentEval suite", async () => {
+    const root = join(import.meta.dirname, "..");
+    const loaded = await loadAndVerifyValueBenchmarkExperiment(root, "config/value-benchmark/run-manifests/pr6-value-benchmark.json");
+    expect(loaded.cases.map((item) => item.caseId)).toEqual(BENCHMARK_SCENARIOS.flatMap((_, scenarioIndex) => [1, 2, 3].map((variant) => `VB-S${String(scenarioIndex + 1).padStart(2, "0")}-V${variant}`)));
+    expect(loaded.manifest.execution.plannedExecutions).toHaveLength(72);
+  });
+
   it("freezes asset bytes, per-line hashes, authority, and all 72 planned executions", async () => {
     const root = await mkdtemp(join(tmpdir(), "value-benchmark-manifest-"));
     await mkdir(join(root, "config"), { recursive: true });
@@ -51,7 +58,7 @@ describe("value benchmark experiment manifest", () => {
     };
     const manifestPath = "config/manifest.json";
     await writeFile(join(root, manifestPath), `${JSON.stringify(manifest, null, 2)}\n`);
-    const loaded = await loadAndVerifyValueBenchmarkExperiment(root, manifestPath);
+    const loaded = await loadAndVerifyValueBenchmarkExperiment(root, manifestPath, { verifyRepositoryPolicy: false });
     expect(loaded.cases).toHaveLength(24);
     expect(loaded.manifest.execution.plannedExecutions).toHaveLength(72);
 
