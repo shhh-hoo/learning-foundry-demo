@@ -254,7 +254,6 @@ export function createRuntimeShadowCoordinator(options: RuntimeShadowCoordinator
       const authoritativeExecutionId = createId();
       const authoritativeInput = immutableExecutionSnapshot(input);
       const shadowInput = immutableExecutionSnapshot(input);
-      const shadowCompletion = executeShadow(shadowInput, authoritativeExecutionId);
       const authoritativeSignal = new AbortController().signal;
       let authoritativeResult: RuntimeExecutionResult;
       try {
@@ -264,6 +263,7 @@ export function createRuntimeShadowCoordinator(options: RuntimeShadowCoordinator
         throw error;
       }
       await recordSafely(completedRecord(authoritativeExecutionId, "AUTHORITATIVE", authoritativeInput, options.authoritativeExecutor, authoritativeResult, now()));
+      const shadowCompletion = executeShadow(shadowInput, authoritativeExecutionId);
       return { authoritativeResult, shadowCompletion };
     },
   };
