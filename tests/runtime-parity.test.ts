@@ -23,7 +23,7 @@ function record(role: RuntimeExecutionRole, overrides: Partial<RuntimeExecutionR
       { order: 2, name: "run_learner_diagnosis", arguments: { componentId: "capability-1" }, resultRef: "diagnosis-1", status: "SUCCEEDED" },
     ],
     sourceRefs: ["source-1"],
-    evidenceRefs: ["diagnosis-1"],
+    evidenceRefs: ["diagnosis-1", `${role.toLowerCase()}-diagnosis-trace`],
     diagnosisTraceId: `${role.toLowerCase()}-diagnosis-trace`,
     finalResponseStatus: "ANSWERED",
     latencyMs: 100,
@@ -72,12 +72,12 @@ describe("case-level runtime parity", () => {
   it("normalizes execution-local Evidence and Diagnosis identifiers before comparison", () => {
     const authoritativeRecord = record("AUTHORITATIVE", {
       toolCalls: record("AUTHORITATIVE").toolCalls.map((call) => ({ ...call, resultRef: `authoritative-${call.order}` })),
-      evidenceRefs: ["authoritative-2"],
+      evidenceRefs: ["authoritative-2", "trainer-trace-authoritative"],
       diagnosisTraceId: "trainer-trace-authoritative",
     });
     const candidateRecord = record("SHADOW", {
       toolCalls: record("SHADOW").toolCalls.map((call) => ({ ...call, resultRef: `candidate-${call.order}` })),
-      evidenceRefs: ["candidate-2"],
+      evidenceRefs: ["candidate-2", "trainer-trace-candidate"],
       diagnosisTraceId: "trainer-trace-candidate",
     });
     const governedDiagnosis = {
@@ -91,6 +91,56 @@ describe("case-level runtime parity", () => {
       parityCase,
       execution("AUTHORITATIVE", { record: authoritativeRecord, diagnosisResult: { ...governedDiagnosis, traceId: "trainer-trace-authoritative", executionId: "diagnosis-authoritative" } }),
       execution("SHADOW", { record: candidateRecord, diagnosisResult: { ...governedDiagnosis, traceId: "trainer-trace-candidate", executionId: "diagnosis-candidate" } }),
+    );
+
+    expect(result.classification).toBe("EXACT_MATCH");
+    expect(result.differences).toEqual([]);
+  });
+
+  it("rejects an unrelated evidence reference instead of treating it as a Diagnosis trace", () => {
+    const authoritativeRecord = record("AUTHORITATIVE", {
+      evidenceRefs: ["diagnosis-1", "authoritative-diagnosis-trace"],
+      diagnosisTraceId: "authoritative-diagnosis-trace",
+    });
+    const candidateRecord = record("SHADOW", {
+      evidenceRefs: ["diagnosis-1", "unrelated-candidate-reference"],
+      diagnosisTraceId: "candidate-diagnosis-trace",
+    });
+
+    const result = compareRuntimeParityCase(
+      parityCase,
+      execution("AUTHORITATIVE", { record: authoritativeRecord }),
+      execution("SHADOW", { record: candidateRecord }),
+    );
+
+    expect(result.classification).toBe("REGRESSION");
+    expect(result.differences).toContainEqual(expect.objectContaining({ field: "evidenceIntegrity", severity: "REGRESSION" }));
+  });
+
+  it("treats object key order and source-reference order as semantically irrelevant", () => {
+    const authoritativeDiagnosis = {
+      componentId: "component-1",
+      componentVersion: "1.0.0",
+      diagnosis: { decision: "DIAGNOSED", firstPedagogicalIssue: { stage: "RATIO", code: "WRONG_RATIO" }, failureCode: "WRONG_RATIO" },
+      recommendedSupport: { kind: "HINT", stage: "RATIO" },
+    };
+    const candidateDiagnosis = {
+      componentVersion: "1.0.0",
+      componentId: "component-1",
+      recommendedSupport: { stage: "RATIO", kind: "HINT" },
+      diagnosis: { failureCode: "WRONG_RATIO", firstPedagogicalIssue: { code: "WRONG_RATIO", stage: "RATIO" }, decision: "DIAGNOSED" },
+    };
+    const result = compareRuntimeParityCase(
+      parityCase,
+      execution("AUTHORITATIVE", { record: record("AUTHORITATIVE", { sourceRefs: ["source-a", "source-b"] }), diagnosisResult: authoritativeDiagnosis }),
+      execution("SHADOW", {
+        record: record("SHADOW", {
+          obligations: { diagnosisRequired: true, capabilityInspectionRequired: true, retrievalRequired: false },
+          sourceRefs: ["source-b", "source-a"],
+          tokenUsage: { totalTokens: 15, completionTokens: 5, promptTokens: 10 },
+        }),
+        diagnosisResult: candidateDiagnosis,
+      }),
     );
 
     expect(result.classification).toBe("EXACT_MATCH");
@@ -168,7 +218,7 @@ describe("case-level runtime parity", () => {
     const legacyToolCalls = record("AUTHORITATIVE").toolCalls.slice(0, 2);
     const result = compareRuntimeParityCase(
       parityCase,
-      execution("AUTHORITATIVE", { record: record("AUTHORITATIVE", { toolCalls: legacyToolCalls }), graderChecks: { requiredTools: false, diagnosisFidelity: true } }),
+      execution("AUTHORITATIVE", { record: record("AUTHORITATIVE", { toolCalls: legacyToolCalls, evidenceRefs: [], diagnosisTraceId: undefined }), graderChecks: { requiredTools: false, diagnosisFidelity: true } }),
       execution("SHADOW", { graderChecks: { requiredTools: true, diagnosisFidelity: true } }),
     );
 

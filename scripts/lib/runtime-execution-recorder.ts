@@ -2,6 +2,12 @@ import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import type { RuntimeExecutionRecord, RuntimeExecutionRecorder, RuntimeExecutionRole } from "../../src/runtime/runtime-shadow";
 
+export interface RuntimeShadowRecordWaitResult {
+  readonly records: readonly RuntimeExecutionRecord[];
+  readonly pendingAuthoritativeExecutionIds: readonly string[];
+  readonly absentAuthoritativeExecutionIds: readonly string[];
+}
+
 function safeExecutionId(value: string): string {
   if (!/^[a-zA-Z0-9._-]+$/u.test(value)) throw new Error("INVALID_RUNTIME_EXECUTION_ID: Execution id contains unsafe characters.");
   return value;
@@ -47,5 +53,24 @@ export class RoleSeparatedFileRuntimeExecutionRecorder implements RuntimeExecuti
       .filter((file) => file.endsWith(".json"))
       .map(async (file) => JSON.parse(await readFile(join(directory, file), "utf8")) as RuntimeExecutionRecord));
     return records.sort((left, right) => left.executionId.localeCompare(right.executionId));
+  }
+
+  async waitForTerminalShadows(
+    authoritativeExecutionIds: readonly string[],
+    options: { readonly timeoutMs: number; readonly pollIntervalMs?: number },
+  ): Promise<RuntimeShadowRecordWaitResult> {
+    const requested = [...new Set(authoritativeExecutionIds)].sort();
+    const deadline = Date.now() + options.timeoutMs;
+    const pollIntervalMs = options.pollIntervalMs ?? 50;
+    while (true) {
+      const records = (await this.list("SHADOW")).filter((record) => record.parentAuthoritativeExecutionId && requested.includes(record.parentAuthoritativeExecutionId));
+      const byParent = new Map(records.map((record) => [record.parentAuthoritativeExecutionId!, record]));
+      const pendingAuthoritativeExecutionIds = requested.filter((executionId) => byParent.get(executionId)?.status === "RUNNING");
+      const absentAuthoritativeExecutionIds = requested.filter((executionId) => !byParent.has(executionId));
+      if (pendingAuthoritativeExecutionIds.length === 0 && absentAuthoritativeExecutionIds.length === 0 || Date.now() >= deadline) {
+        return { records, pendingAuthoritativeExecutionIds, absentAuthoritativeExecutionIds };
+      }
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, Math.min(pollIntervalMs, Math.max(1, deadline - Date.now()))));
+    }
   }
 }

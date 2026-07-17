@@ -54,4 +54,42 @@ describe("role-separated runtime execution recording", () => {
     const serialized = await readFile(join(root, "shadow", "shadow-execution.json"), "utf8");
     expect(serialized).not.toMatch(/secret-token|private-sources|hidden_reasoning|never persist|\/Users\//u);
   });
+
+  it("waits for a delayed terminal shadow record within the bounded window", async () => {
+    const root = await mkdtemp(join(tmpdir(), "runtime-executions-"));
+    roots.push(root);
+    const recorder = new RoleSeparatedFileRuntimeExecutionRecorder(root);
+    const shadow = { ...record("SHADOW"), parentAuthoritativeExecutionId: "authoritative-execution" };
+
+    const waiting = recorder.waitForTerminalShadows(["authoritative-execution"], { timeoutMs: 500, pollIntervalMs: 10 });
+    const delayedWrite = new Promise<void>((resolve) => setTimeout(() => { void recorder.record(shadow).then(resolve); }, 25));
+    const result = await waiting;
+    await delayedWrite;
+
+    expect(result.records).toEqual([expect.objectContaining({ parentAuthoritativeExecutionId: "authoritative-execution", status: "COMPLETED" })]);
+    expect(result.pendingAuthoritativeExecutionIds).toEqual([]);
+    expect(result.absentAuthoritativeExecutionIds).toEqual([]);
+  });
+
+  it("distinguishes a still-pending shadow from genuinely absent evidence", async () => {
+    const root = await mkdtemp(join(tmpdir(), "runtime-executions-"));
+    roots.push(root);
+    const recorder = new RoleSeparatedFileRuntimeExecutionRecorder(root);
+    await recorder.record({
+      ...record("SHADOW"),
+      parentAuthoritativeExecutionId: "authoritative-pending",
+      status: "RUNNING",
+      completedAt: undefined,
+      completeness: { trace: false, finalResponse: false, toolEvidence: false },
+    });
+
+    const result = await recorder.waitForTerminalShadows(
+      ["authoritative-pending", "authoritative-absent"],
+      { timeoutMs: 25, pollIntervalMs: 5 },
+    );
+
+    expect(result.pendingAuthoritativeExecutionIds).toEqual(["authoritative-pending"]);
+    expect(result.absentAuthoritativeExecutionIds).toEqual(["authoritative-absent"]);
+    expect(result.records).toEqual([expect.objectContaining({ status: "RUNNING" })]);
+  });
 });

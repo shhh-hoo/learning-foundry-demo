@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import { requireNonEmptyAgentEvalSelection, type AgentEvalSelection } from "../agent/agenteval-suite";
 import type { AgentEvalCase } from "../agent/agenteval";
 import type { RuntimeExecutionRecord } from "./runtime-shadow";
@@ -128,7 +129,11 @@ export function createRuntimeParityPlan(
 }
 
 function equal(left: unknown, right: unknown): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
+  return isDeepStrictEqual(left, right);
+}
+
+function referenceSet(references: readonly string[]): readonly string[] {
+  return [...new Set(references)].sort();
 }
 
 function operationalDifference(field: string, authoritative: unknown, candidate: unknown, message: string): RuntimeParityDifference | null {
@@ -156,14 +161,26 @@ function evidenceClass(toolName: string): string {
 
 function evidenceLineage(record: RuntimeExecutionRecord) {
   const callsByResult = new Map(record.toolCalls.map((call) => [call.resultRef, call]));
-  return record.evidenceRefs.map((reference) => {
+  const diagnosisCall = [...record.toolCalls].reverse().find((call) => call.name === "run_learner_diagnosis");
+  const unresolvedReferences: string[] = [];
+  const lineage = record.evidenceRefs.map((reference) => {
     const call = callsByResult.get(reference);
-    return call
-      ? { evidenceClass: evidenceClass(call.name), producingTool: call.name, toolOrder: call.order, toolStatus: call.status }
-      : { evidenceClass: "UNRESOLVED", producingTool: null, toolOrder: null, toolStatus: null };
+    if (call) return { evidenceClass: evidenceClass(call.name), producingTool: call.name, toolOrder: call.order, toolStatus: call.status };
+    if (reference === record.diagnosisTraceId && diagnosisCall) {
+      return { evidenceClass: "DIAGNOSIS_TRACE", producingTool: diagnosisCall.name, toolOrder: diagnosisCall.order, toolStatus: diagnosisCall.status };
+    }
+    unresolvedReferences.push(reference);
+    return { evidenceClass: "UNRESOLVED", producingTool: null, toolOrder: null, toolStatus: null };
   }).sort((left, right) => (left.toolOrder ?? Number.MAX_SAFE_INTEGER) - (right.toolOrder ?? Number.MAX_SAFE_INTEGER)
     || left.evidenceClass.localeCompare(right.evidenceClass)
     || (left.producingTool ?? "").localeCompare(right.producingTool ?? ""));
+  return {
+    lineage,
+    integrity: {
+      diagnosisTraceLinked: record.diagnosisTraceId === undefined || record.evidenceRefs.includes(record.diagnosisTraceId),
+      unresolvedReferenceCount: unresolvedReferences.length,
+    },
+  };
 }
 
 function objectValue(value: unknown): Readonly<Record<string, unknown>> | undefined {
@@ -255,6 +272,20 @@ export function compareRuntimeParityCase(
 
   const quality = governedQuality(testCase, authoritative, candidate);
   const outcomeDifference = quality.classification === "CANDIDATE_IMPROVEMENT" ? behavioralDifference : regression;
+  const authoritativeEvidence = evidenceLineage(authoritative.record);
+  const candidateEvidence = evidenceLineage(candidate.record);
+  const evidenceIntegrityDifference: RuntimeParityDifference | null = authoritativeEvidence.integrity.diagnosisTraceLinked
+    && candidateEvidence.integrity.diagnosisTraceLinked
+    && authoritativeEvidence.integrity.unresolvedReferenceCount === 0
+    && candidateEvidence.integrity.unresolvedReferenceCount === 0
+    ? null
+    : {
+        field: "evidenceIntegrity",
+        severity: "REGRESSION",
+        authoritative: authoritativeEvidence.integrity,
+        candidate: candidateEvidence.integrity,
+        message: "Every evidence reference must resolve to an observed tool result or the declared Diagnosis trace.",
+      };
   const differences = [
     regression("caseId", authoritative.record.caseId, candidate.record.caseId, "Both records must belong to the same case."),
     regression("suiteVersion", authoritative.suiteVersion, candidate.suiteVersion, "Suite versions must match."),
@@ -262,8 +293,9 @@ export function compareRuntimeParityCase(
     regression("route", authoritative.record.route, candidate.record.route, "The candidate must preserve route behavior."),
     regression("obligations", authoritative.record.obligations, candidate.record.obligations, "The candidate must preserve policy obligations."),
     outcomeDifference("toolCalls", toolShape(authoritative.record), toolShape(candidate.record), "Tool order, names, and statuses differ; governed quality records whether the direction is improvement or regression."),
-    regression("sourceRefs", authoritative.record.sourceRefs, candidate.record.sourceRefs, "Source references must match."),
-    outcomeDifference("evidenceLineage", evidenceLineage(authoritative.record), evidenceLineage(candidate.record), "Evidence classes and producing tool lineage must match; execution-local result references are ignored."),
+    regression("sourceRefs", referenceSet(authoritative.record.sourceRefs), referenceSet(candidate.record.sourceRefs), "Source-reference sets must match; order is not meaningful."),
+    outcomeDifference("evidenceLineage", authoritativeEvidence.lineage, candidateEvidence.lineage, "Evidence classes and producing tool lineage must match; execution-local result references are ignored."),
+    evidenceIntegrityDifference,
     outcomeDifference("diagnosisTracePresent", Boolean(authoritative.record.diagnosisTraceId), Boolean(candidate.record.diagnosisTraceId), "Diagnosis trace presence must match; trace identifiers are execution-local."),
     outcomeDifference("diagnosisResult", governedDiagnosis(authoritative.diagnosisResult ?? authoritative.record.diagnosisResult), governedDiagnosis(candidate.diagnosisResult ?? candidate.record.diagnosisResult), "Governed Diagnosis identity, decision, failure and pedagogical outcome must match; execution-local identifiers are ignored."),
     outcomeDifference("diagnosisFailureCode", authoritative.diagnosisFailureCode ?? authoritative.record.diagnosisFailureCode, candidate.diagnosisFailureCode ?? candidate.record.diagnosisFailureCode, "Diagnosis failure outcomes must match."),
