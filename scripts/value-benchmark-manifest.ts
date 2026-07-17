@@ -32,7 +32,7 @@ const snapshotPaths = {
 const policySnapshots = Object.fromEntries(await Promise.all(Object.entries(snapshotPaths).map(async ([name, path]) => [name, `${path}@${hash(await bytes(path))}`])));
 const executableSnapshot = await createValueBenchmarkExecutableSourceSnapshot(root);
 const manifest: ValueBenchmarkExperimentManifest = {
-  schemaVersion: "1.0.0", experimentId: "learning-foundry-value-benchmark", experimentVersion: "1.0.0",
+  schemaVersion: "1.1.0", experimentId: "learning-foundry-value-benchmark", experimentVersion: "1.0.0",
   docsAuthority: "learning-foundry-docs@260747722e8040972deceed3290bce237676f225", implementationCommit, runId,
   encoding: { charset: "UTF-8", lineEnding: "LF", bom: false, finalNewline: true },
   assets: { cases: fingerprintFrozenAsset(casePath, await bytes(casePath)), reviewerCriteria: fingerprintFrozenAsset(criteriaPath, await bytes(criteriaPath)), prompts: fingerprintFrozenAsset(promptPath, await bytes(promptPath)) },

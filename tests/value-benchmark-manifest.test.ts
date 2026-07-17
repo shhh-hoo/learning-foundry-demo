@@ -26,6 +26,7 @@ describe("value benchmark experiment manifest", () => {
   it("verifies the committed PR6 assets and preserves the 73-case AgentEval suite", async () => {
     const root = join(import.meta.dirname, "..");
     const loaded = await loadAndVerifyValueBenchmarkExperiment(root, "config/value-benchmark/run-manifests/pr6-value-benchmark.json");
+    expect(loaded.manifest.schemaVersion).toBe("1.1.0");
     expect(loaded.cases.map((item) => item.caseId)).toEqual(BENCHMARK_SCENARIOS.flatMap((_, scenarioIndex) => [1, 2, 3].map((variant) => `VB-S${String(scenarioIndex + 1).padStart(2, "0")}-V${variant}`)));
     expect(loaded.manifest.execution.plannedExecutions).toHaveLength(72);
     expect(loaded.manifest.executableSnapshot.files.map((item) => item.path)).toEqual(expect.arrayContaining([
@@ -69,7 +70,7 @@ describe("value benchmark experiment manifest", () => {
     await writeFile(join(root, "package.json"), '{"type":"module"}\n');
     const executableSnapshot = await createExecutableSourceSnapshot(root, ["entry.ts"], ["package.json"]);
     const manifest: ValueBenchmarkExperimentManifest = {
-      schemaVersion: "1.0.0", experimentId: "foundry-value", experimentVersion: "1.0.0",
+      schemaVersion: "1.1.0", experimentId: "foundry-value", experimentVersion: "1.0.0",
       docsAuthority: "learning-foundry-docs@260747722e8040972deceed3290bce237676f225", implementationCommit: "abc123", runId,
       encoding: { charset: "UTF-8", lineEnding: "LF", bom: false, finalNewline: true },
       assets: { cases: await descriptor(casePath), reviewerCriteria: await descriptor(criteriaPath), prompts: await descriptor(promptPath) },

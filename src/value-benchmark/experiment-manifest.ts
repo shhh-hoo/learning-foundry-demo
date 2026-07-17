@@ -35,7 +35,7 @@ export const VALUE_BENCHMARK_EXECUTABLE_ENTRYPOINTS = [
 ] as const;
 
 export interface ValueBenchmarkExperimentManifest {
-  readonly schemaVersion: "1.0.0";
+  readonly schemaVersion: "1.1.0";
   readonly experimentId: string;
   readonly experimentVersion: string;
   readonly docsAuthority: "learning-foundry-docs@260747722e8040972deceed3290bce237676f225";
@@ -206,7 +206,7 @@ export async function loadAndVerifyValueBenchmarkExperiment(root: string, manife
   const manifestBytes = await readFile(resolve(root, manifestPath));
   fingerprintFrozenAsset(manifestPath, manifestBytes);
   const manifest = JSON.parse(new TextDecoder().decode(manifestBytes)) as ValueBenchmarkExperimentManifest;
-  if (manifest.schemaVersion !== "1.0.0" || manifest.docsAuthority !== "learning-foundry-docs@260747722e8040972deceed3290bce237676f225") throw new Error("BENCHMARK_MANIFEST_AUTHORITY_INVALID");
+  if (manifest.schemaVersion !== "1.1.0" || manifest.docsAuthority !== "learning-foundry-docs@260747722e8040972deceed3290bce237676f225") throw new Error("BENCHMARK_MANIFEST_AUTHORITY_INVALID");
   if (manifest.encoding.charset !== "UTF-8" || manifest.encoding.lineEnding !== "LF" || manifest.encoding.bom !== false || manifest.encoding.finalNewline !== true) throw new Error("BENCHMARK_MANIFEST_ENCODING_INVALID");
   if (manifest.executableSnapshot?.schemaVersion !== "1.0.0" || !Array.isArray(manifest.executableSnapshot.entrypoints)
     || !Array.isArray(manifest.executableSnapshot.supportFiles) || !Array.isArray(manifest.executableSnapshot.files)) {

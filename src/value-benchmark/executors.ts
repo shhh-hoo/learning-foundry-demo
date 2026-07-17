@@ -98,17 +98,17 @@ function dataShape(value: unknown): unknown {
 const AUDIT_METADATA_KEYS = new Set([
   "retrievalTraceId", "sourceId", "sourceType", "sourceVersion", "distributionScope", "section", "page", "score",
   "contentHash", "provenanceId", "indexVersion", "deliveryPolicyVersion", "policyVersion", "capabilityId", "capabilityVersion", "traceId",
-  "chunkId", "syllabusCode", "syllabusVersion", "resultCount", "version",
+  "chunkId", "syllabusCode", "syllabusVersion", "resultCount",
 ]);
 
-function excerptFreeAuditMetadata(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(excerptFreeAuditMetadata);
+function excerptFreeAuditMetadata(value: unknown, allowVersion = false): unknown {
+  if (Array.isArray(value)) return value.map((item) => excerptFreeAuditMetadata(item, allowVersion));
   if (!value || typeof value !== "object") return undefined;
   const result: Record<string, unknown> = {};
   for (const [key, child] of Object.entries(value)) {
-    if (AUDIT_METADATA_KEYS.has(key) && (typeof child === "string" || typeof child === "number" || typeof child === "boolean" || child === null)) result[key] = child;
-    else if (key === "results" && Array.isArray(child)) result.results = child.map(excerptFreeAuditMetadata);
-    else if (/^(?:source|provenance|deliveryPolicy|capability|diagnosis)$/u.test(key) && child && typeof child === "object") result[key] = excerptFreeAuditMetadata(child);
+    if ((AUDIT_METADATA_KEYS.has(key) || (allowVersion && key === "version")) && (typeof child === "string" || typeof child === "number" || typeof child === "boolean" || child === null)) result[key] = child;
+    else if (key === "results" && Array.isArray(child)) result.results = child.map((item) => excerptFreeAuditMetadata(item));
+    else if (/^(?:source|provenance|deliveryPolicy|capability|diagnosis)$/u.test(key) && child && typeof child === "object") result[key] = excerptFreeAuditMetadata(child, key === "deliveryPolicy");
   }
   return result;
 }

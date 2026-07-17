@@ -40,7 +40,8 @@ line and end with one LF. For every case, `input` is byte-for-byte equal to the
 content of the final user message. The committed run manifest must record the
 whole-file SHA-256, byte length and each JSONL line SHA-256 including its final
 LF. A live runner must fail closed if any byte differs from the committed
-manifest.
+manifest. The required executable source snapshot is part of outer manifest
+schema `1.1.0`; pre-snapshot `1.0.0` manifests are not live-compatible.
 
 Reviewer criteria are deliberately physical assets separate from cases and
 prompts. They must not be joined into a provider request, prompt, retrieval
