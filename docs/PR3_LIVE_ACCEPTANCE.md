@@ -8,13 +8,13 @@ Product contract: `learning-foundry-docs@1e08d035b13fd3a51e5ef48710e93fed6e9833a
 
 Trainer integration: `standard-trainer-demo@8f6e96159dcef484e5a1796c8d6f2ae282ab5849`
 
-## Interpretation boundary added by Eval Contract Hardening
+## Interpretation boundary added by AgentEval Contract Hardening
 
 This file is historical evidence for suite `1.2.0`. Its `18/18` result covers eighteen fixed cases only; it does not establish generalisation across paraphrases, Chinese or bilingual retrieval, different reactions, changed numbers or units, or near-neighbour distractors.
 
 The historical six-execution checkpoint also used only five unique source cases: `diagnosis-01` was executed twice, while the synthetic D case overwrote its source `requiredTools` and therefore failed to preserve the capability-inspection obligation. The final 18-case run did independently include `gap-01`, so its recorded result remains valid within the old bounded suite; only the checkpoint-independence claim was overstated.
 
-Suite `2.0.0` supersedes this evaluation contract with six independent checkpoint sources and 73 cases classified by formal suite layers and orthogonal evaluation dimensions. It does not retroactively claim a live pass; new live results must be recorded separately. The eighteen behavioral expectation records are preserved in `agent-eval/baselines/1.2.0-contract.jsonl`.
+Suite `2.0.0` supersedes this assessment contract with six independent checkpoint sources and 73 cases classified by formal suite layers and orthogonal assessment dimensions. It does not retroactively claim a live pass; new live results must be recorded separately. The eighteen behavioral expectation records are preserved in `agent-eval/baselines/1.2.0-contract.jsonl`.
 
 ## Delivery boundary
 
