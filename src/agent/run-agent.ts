@@ -9,7 +9,7 @@ import type { EvidenceSufficiencyAssessment } from "./control-plane/observabilit
 import type { AgentRunObservability } from "./trace-store";
 
 export interface AgentToolResult { readonly resultRef: string; readonly data: unknown; readonly evidenceData?: unknown; readonly executedArguments?: unknown; readonly sourceRefs?: readonly string[]; readonly evidenceRefs?: readonly string[]; readonly claimRefs?: readonly string[] }
-export interface AgentToolExecutor { execute(name: string, argumentsValue: unknown): Promise<AgentToolResult> }
+export interface AgentToolExecutor { execute(name: string, argumentsValue: unknown, signal?: AbortSignal): Promise<AgentToolResult> }
 
 interface RunAgentOptions {
   readonly request: AgentRunRequest;
@@ -24,6 +24,7 @@ interface RunAgentOptions {
   readonly toolDefinitions: readonly unknown[];
   readonly modelClient: AgentModelClient;
   readonly tools: AgentToolExecutor;
+  readonly signal?: AbortSignal;
   readonly now?: () => Date;
   readonly createId?: () => string;
   readonly onToolResult?: (result: { readonly name: string; readonly resultRef: string; readonly data: unknown }) => void;
@@ -179,10 +180,11 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentTrace> {
   await options.onControlPlaneUpdate?.(controlPlaneSnapshot());
 
   for (let round = 0; round < resolvedPlan.toolPolicy.maximumModelSteps; round += 1) {
+    options.signal?.throwIfAborted();
     const providerTools = providerToolsForPlan(resolvedPlan, options.toolDefinitions, records, evidenceAssessments, governor, diagnosisWorkflow);
     const onlyToolName = providerTools.length === 1 ? toolName(providerTools[0]) ?? undefined : undefined;
     const requiredToolName = onlyToolName && resolvedPlan.toolPolicy.required.includes(onlyToolName as ToolId) ? onlyToolName : undefined;
-    const result = await options.modelClient.call({ messages, tools: providerTools, ...(requiredToolName ? { requiredToolName } : {}) });
+    const result = await options.modelClient.call({ messages, tools: providerTools, ...(requiredToolName ? { requiredToolName } : {}) }, options.signal);
     await options.onModelResponse?.(result.message, result.usage);
     tokenUsage = addUsage(tokenUsage, result.usage);
     const assistant = result.message;
@@ -219,7 +221,9 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentTrace> {
           continue;
         }
         try {
-          const toolResult = await options.tools.execute(call.function.name, parsed);
+          options.signal?.throwIfAborted();
+          const toolResult = await options.tools.execute(call.function.name, parsed, options.signal);
+          options.signal?.throwIfAborted();
           const evidenceData = toolResult.evidenceData ?? toolResult.data;
           const executedArguments = toolResult.executedArguments ?? parsed;
           options.onToolResult?.({ name: call.function.name, resultRef: toolResult.resultRef, data: evidenceData });

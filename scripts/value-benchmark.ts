@@ -49,8 +49,6 @@ if (command === "preflight") {
 
 const requiredGates = {
   VALUE_BENCHMARK_LIVE: "1",
-  VALUE_BENCHMARK_GOVERNED_CORPUS_READY: "1",
-  VALUE_BENCHMARK_DELIVERY_AUTHORIZED: "1",
   VALUE_BENCHMARK_PROVIDER_SEED_DISPOSITION: "UNSUPPORTED_ACCEPTED",
 } as const;
 for (const [name, expected] of Object.entries(requiredGates)) if (process.env[name] !== expected) throw new Error(`BENCHMARK_LIVE_GATE_UNSATISFIED: ${name} must equal ${expected}.`);
@@ -62,6 +60,24 @@ if (new URL(baseUrl).origin !== loaded.manifest.execution.baseUrlOrigin) throw n
 const target = new LegacyGatewayAgentEvalTarget(gatewayUrl);
 const health = await target.health();
 if (health.provider !== loaded.manifest.execution.provider || health.model !== loaded.manifest.execution.model || health.thinkingMode !== loaded.manifest.execution.thinkingMode) throw new Error("BENCHMARK_GATEWAY_MODEL_CONFIGURATION_MISMATCH");
+const snapshotHash = (name: string): string | undefined => loaded.manifest.policySnapshots[name]?.match(/sha256:([a-f0-9]{64})$/u)?.[1];
+if (health.baseUrlOrigin !== loaded.manifest.execution.baseUrlOrigin
+  || health.maxTokens !== loaded.manifest.execution.sampling.maxTokens
+  || health.responseFormat !== loaded.manifest.execution.sampling.responseFormat
+  || health.agentPromptHash !== snapshotHash("agentInstructions")
+  || health.responsePolicyHash !== snapshotHash("responsePolicy")
+  || `sha256:${health.toolDefinitionsHash}` !== loaded.manifest.policySnapshots.runtimeToolDefinitionsSemantic
+  || `sha256:${health.capabilityRegistryHash}` !== loaded.manifest.policySnapshots.runtimeCapabilityRegistrySemantic
+  || health.corpusDeliveryPolicyHash !== snapshotHash("corpusDeliveryPolicy")
+  || health.authoritativeAdapterId !== "legacy-deepseek-agent"
+  || health.runtimeAuthority !== "LEGACY_AUTHORITATIVE") throw new Error("BENCHMARK_GATEWAY_POLICY_SNAPSHOT_MISMATCH");
+if (!health.corpusReady || !health.corpusIndexVersion || !health.corpusChunkCount) throw new Error("BENCHMARK_GOVERNED_CORPUS_NOT_READY");
+if (loaded.manifest.policySnapshots.governedCorpusIndex !== health.corpusIndexVersion) throw new Error("BENCHMARK_CORPUS_SNAPSHOT_NOT_FROZEN");
+if (!health.agentEvalDeliveryAuthorized) throw new Error("BENCHMARK_AGENT_EVAL_DELIVERY_NOT_AUTHORIZED");
+const trainerUrl = process.env.TRAINER_DIAGNOSIS_URL?.trim();
+if (!trainerUrl) throw new Error("BENCHMARK_TRAINER_READINESS_URL_REQUIRED");
+const trainerHealth = await fetch(`${trainerUrl.replace(/\/diagnose\/?$/u, "")}/health`, { signal: AbortSignal.timeout(5_000) });
+if (!trainerHealth.ok) throw new Error("BENCHMARK_TRAINER_NOT_READY");
 const executors = createValueBenchmarkExecutors({
   prompts,
   model: {

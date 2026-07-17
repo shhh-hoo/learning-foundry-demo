@@ -37,7 +37,7 @@ export interface CorpusSearchResponse {
 }
 
 export interface CorpusSearchService {
-  search(query: string, filters: CorpusSearchFilters, context?: { readonly conversationId?: string; readonly conversationEvidenceHash?: string; readonly route?: string }): Promise<CorpusSearchResponse>;
+  search(query: string, filters: CorpusSearchFilters, context?: { readonly conversationId?: string; readonly conversationEvidenceHash?: string; readonly route?: string }, signal?: AbortSignal): Promise<CorpusSearchResponse>;
 }
 
 export interface CorpusChunk {

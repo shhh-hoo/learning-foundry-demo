@@ -93,6 +93,11 @@ export function validateBenchmarkCases(cases: readonly BenchmarkCase[]): void {
   for (const scenario of BENCHMARK_SCENARIOS) {
     const variants = cases.filter((item) => item.scenario === scenario);
     if (variants.length !== 3) throw new Error(`BENCHMARK_SCENARIO_COUNT_INVALID: ${scenario} must have three variants.`);
+    const scenarioNumber = BENCHMARK_SCENARIOS.indexOf(scenario) + 1;
+    const expectedIds = [1, 2, 3].map((variant) => `VB-S${String(scenarioNumber).padStart(2, "0")}-V${variant}`);
+    if (variants.some((item) => !Number.isInteger(item.variant) || item.variant < 1 || item.variant > 3)
+      || [...variants.map((item) => item.caseId)].sort().join("\u0000") !== expectedIds.sort().join("\u0000")) throw new Error(`BENCHMARK_CASE_ID_OR_VARIANT_INVALID: ${scenario}`);
+    if (variants.filter((item) => item.exposureClass === "KNOWN_FIT").length > 1) throw new Error(`BENCHMARK_KNOWN_FIT_LIMIT_EXCEEDED: ${scenario}`);
   }
   if (cases.some((item) => !item.input || item.input.includes("\r"))) throw new Error("BENCHMARK_INPUT_BYTES_INVALID");
   for (const item of cases) {
@@ -531,7 +536,10 @@ function validateReviewSet(expectedBlindIds: readonly string[], reviews: readonl
   const ids = reviews.map((item) => item.blindId);
   if (new Set(ids).size !== ids.length || [...ids].sort().join("\u0000") !== [...expectedBlindIds].sort().join("\u0000")) throw new Error("BENCHMARK_REVIEW_SET_INCOMPLETE");
   for (const review of reviews) {
-    if (!review.reviewerId.trim() || !review.reason.trim() || Object.values(review.scores).some((score) => !Number.isInteger(score) || score < 1 || score > 5)) {
+    const expectedScoreKeys = phase === "BLIND_PEDAGOGY" ? ["clarity", "contextFidelity", "correctness", "pedagogy"] : ["authority", "grounding", "integrity", "provenance"];
+    if (!review.reviewerId.trim() || !review.reviewedAt.trim() || !review.reason.trim()
+      || Object.keys(review.scores).sort().join("\u0000") !== expectedScoreKeys.sort().join("\u0000")
+      || Object.values(review.scores).some((score) => !Number.isInteger(score) || score < 1 || score > 5)) {
       throw new Error("BENCHMARK_REVIEW_INVALID");
     }
   }
@@ -569,12 +577,14 @@ export function createEvidenceAuditPacket(options: {
   verifyPedagogyLock(options.preparation, options.pedagogyReviews, options.pedagogyLock);
   const effective = new Map(effectiveRecords(options.records).map((item) => [item.executionId, item]));
   const byCase = new Map(options.cases.map((item) => [item.caseId, item]));
+  const blindItems = new Map(options.preparation.packet.map((item) => [item.blindId, item]));
   return options.preparation.sealedMapping.entries.map(({ blindId, executionId }) => {
     const record = effective.get(executionId);
     if (!record) throw new Error(`BENCHMARK_EXECUTION_MISSING: ${executionId}`);
     const testCase = byCase.get(record.caseId);
     if (!testCase) throw new Error(`BENCHMARK_CASE_NOT_FOUND: ${record.caseId}`);
     const answer = record.answer ?? `[${record.status}: ${record.terminalError?.code ?? "NO_ANSWER"}]`;
+    if (blindItems.get(blindId)?.originalAnswerHash !== sha256(answer)) throw new Error("BENCHMARK_ANSWER_HASH_MISMATCH");
     return sanitizeBenchmarkAuditArtifact({ blindId, caseId: testCase.caseId, scenario: testCase.scenario, exposureClass: testCase.exposureClass, input: testCase.input, messages: structuredClone(testCase.messages), answer, originalAnswerHash: sha256(answer), sourceRefs: record.sourceRefs, evidenceRefs: record.evidenceRefs, toolTrajectory: record.toolTrajectory, ...(record.runtimeEvidence ? { runtimeEvidence: record.runtimeEvidence } : {}) });
   });
 }
@@ -616,9 +626,16 @@ export function createValueBenchmarkReport(options: {
   validateReviewSet(options.preparation.packet.map((item) => item.blindId), options.pedagogyReviews, "BLIND_PEDAGOGY");
   validateReviewSet(options.evidencePacket.map((item) => item.blindId), options.evidenceReviews, "EVIDENCE_AUDIT");
   const mapping = new Map(options.preparation.sealedMapping.entries.map((item) => [item.executionId, item.blindId]));
+  const blindItems = new Map(options.preparation.packet.map((item) => [item.blindId, item]));
+  const evidenceItems = new Map(options.evidencePacket.map((item) => [item.blindId, item]));
   const pedagogy = new Map(options.pedagogyReviews.map((item) => [item.blindId, item]));
   const evidence = new Map(options.evidenceReviews.map((item) => [item.blindId, item]));
   const effective = effectiveRecords(options.records);
+  for (const record of effective) {
+    const blindId = mapping.get(record.executionId);
+    const answer = record.answer ?? `[${record.status}: ${record.terminalError?.code ?? "NO_ANSWER"}]`;
+    if (!blindId || blindItems.get(blindId)?.originalAnswerHash !== sha256(answer) || evidenceItems.get(blindId)?.originalAnswerHash !== sha256(answer)) throw new Error("BENCHMARK_ANSWER_HASH_MISMATCH");
+  }
   const reportCases = options.cases.map((testCase) => {
     const arms = BENCHMARK_ARMS.map((arm) => {
       const record = effective.find((item) => item.caseId === testCase.caseId && item.arm === arm);
@@ -627,6 +644,7 @@ export function createValueBenchmarkReport(options: {
       const pedagogyReview = blindId ? pedagogy.get(blindId) : undefined;
       const evidenceReview = blindId ? evidence.get(blindId) : undefined;
       if (!blindId || !pedagogyReview || !evidenceReview) throw new Error("BENCHMARK_REVIEW_SET_INCOMPLETE");
+      if (pedagogyReview.phase !== "BLIND_PEDAGOGY" || evidenceReview.phase !== "EVIDENCE_AUDIT") throw new Error("BENCHMARK_REVIEW_PHASE_INVALID");
       const attempts = options.records.filter((item) => item.executionId === record.executionId || item.executionId === record.replacementFor || item.replacementFor === record.executionId || item.replacementFor === record.replacementFor);
       return {
         arm, executionId: record.executionId, blindId, status: record.status, answer: record.answer,
@@ -634,16 +652,23 @@ export function createValueBenchmarkReport(options: {
         cacheHitTokens: record.tokenUsage ? record.tokenUsage.promptCacheHitTokens ?? null : null,
         cacheMissTokens: record.tokenUsage ? record.tokenUsage.promptCacheMissTokens ?? null : null,
         tokenUsage: record.tokenUsage, providerUsage: record.providerUsage, rawClientLatencyMs: record.rawClientLatencyMs,
-        estimatedCostUsd: record.estimatedCostUsd, pedagogyScore: score(pedagogyReview), evidenceScore: score(evidenceReview),
+        estimatedCostUsd: record.estimatedCostUsd, pedagogyScores: structuredClone(pedagogyReview.scores), evidenceScores: structuredClone(evidenceReview.scores), pedagogyScore: score(pedagogyReview), evidenceScore: score(evidenceReview),
         combinedScore: score(pedagogyReview) + score(evidenceReview), reviewerReasons: [pedagogyReview.reason, evidenceReview.reason], attempts,
       };
     });
-    const best = Math.max(...arms.map((item) => item.combinedScore));
-    const winners = arms.filter((item) => item.combinedScore === best);
+    const winnersFor = (field: "pedagogyScore" | "evidenceScore" | "combinedScore") => {
+      const best = Math.max(...arms.map((item) => item[field]));
+      const winners = arms.filter((item) => item[field] === best);
+      return winners.length === 1 ? winners[0]!.arm : "TIE" as const;
+    };
+    const answerQualityWinner = winnersFor("pedagogyScore");
+    const evidenceWinner = winnersFor("evidenceScore");
+    const productValueWinner = winnersFor("combinedScore");
+    const productWinners = arms.filter((item) => item.arm === productValueWinner || productValueWinner === "TIE");
     return {
       caseId: testCase.caseId, scenario: testCase.scenario, variant: testCase.variant, exposureClass: testCase.exposureClass, input: testCase.input, arms,
-      winner: winners.length === 1 ? winners[0]!.arm : "TIE",
-      winnerReason: winners.map((item) => `${item.arm}: ${item.reviewerReasons.join(" ")}`).join(" | "),
+      answerQualityWinner, evidenceWinner, productValueWinner, winner: productValueWinner,
+      winnerReason: productWinners.map((item) => `${item.arm}: ${item.reviewerReasons.join(" ")}`).join(" | "),
       demonstratedLearningEffectiveness: "NOT_MEASURED" as const,
     };
   });
@@ -651,6 +676,8 @@ export function createValueBenchmarkReport(options: {
     const values = reportCases.flatMap((item) => item.arms.filter((candidate) => candidate.arm === arm));
     const average = (items: readonly number[]) => items.reduce((total, item) => total + item, 0) / items.length;
     return [arm, {
+      averagePedagogyDimensions: Object.fromEntries((["correctness", "clarity", "pedagogy", "contextFidelity"] as const).map((dimension) => [dimension, average(values.map((item) => item.pedagogyScores[dimension]))])),
+      averageEvidenceDimensions: Object.fromEntries((["grounding", "authority", "provenance", "integrity"] as const).map((dimension) => [dimension, average(values.map((item) => item.evidenceScores[dimension]))])),
       averagePedagogyScore: average(values.map((item) => item.pedagogyScore)),
       averageEvidenceScore: average(values.map((item) => item.evidenceScore)),
       averageLatencyMs: average(values.map((item) => item.rawClientLatencyMs)),
@@ -661,7 +688,7 @@ export function createValueBenchmarkReport(options: {
       costCoverage: values.filter((item) => item.estimatedCostUsd !== null).length,
       wins: reportCases.filter((item) => item.winner === arm).length,
     }];
-  })) as Readonly<Record<BenchmarkArm, { readonly averagePedagogyScore: number; readonly averageEvidenceScore: number; readonly averageLatencyMs: number; readonly knownTokenSubtotal: number; readonly tokenCoverage: number; readonly knownCostSubtotalUsd: number; readonly totalEstimatedCostUsd: number | null; readonly costCoverage: number; readonly wins: number }>>;
+  })) as Readonly<Record<BenchmarkArm, { readonly averagePedagogyDimensions: Readonly<Record<keyof PedagogyScores, number>>; readonly averageEvidenceDimensions: Readonly<Record<keyof EvidenceScores, number>>; readonly averagePedagogyScore: number; readonly averageEvidenceScore: number; readonly averageLatencyMs: number; readonly knownTokenSubtotal: number; readonly tokenCoverage: number; readonly knownCostSubtotalUsd: number; readonly totalEstimatedCostUsd: number | null; readonly costCoverage: number; readonly wins: number }>>;
   const exposureStrata = Object.fromEntries((["KNOWN_FIT", "NOVEL_GENERALIZATION", "CAPABILITY_BOUNDARY"] as const).map((exposureClass) => [exposureClass, {
     cases: reportCases.filter((item) => item.exposureClass === exposureClass).length,
     wins: Object.fromEntries(BENCHMARK_ARMS.map((arm) => [arm, reportCases.filter((item) => item.exposureClass === exposureClass && item.winner === arm).length])),
@@ -689,7 +716,7 @@ export function createValueBenchmarkPublicationSummary(report: ReturnType<typeof
     armSummary: report.armSummary,
     exposureStrata: report.exposureStrata,
     summary: report.summary,
-    cases: report.cases.map(({ caseId, scenario, variant, exposureClass, winner, demonstratedLearningEffectiveness }) => ({ caseId, scenario, variant, exposureClass, winner, demonstratedLearningEffectiveness })),
+    cases: report.cases.map(({ caseId, scenario, variant, exposureClass, answerQualityWinner, evidenceWinner, productValueWinner, winner, demonstratedLearningEffectiveness }) => ({ caseId, scenario, variant, exposureClass, answerQualityWinner, evidenceWinner, productValueWinner, winner, demonstratedLearningEffectiveness })),
     demonstratedLearningEffectiveness: "NOT_MEASURED" as const,
   };
 }

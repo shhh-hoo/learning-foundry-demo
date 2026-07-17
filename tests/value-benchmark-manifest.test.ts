@@ -78,4 +78,9 @@ describe("value benchmark experiment manifest", () => {
     expect(() => fingerprintFrozenAsset("bad.jsonl", new TextEncoder().encode("{}"))).toThrow("BENCHMARK_ASSET_FINAL_NEWLINE_REQUIRED");
     expect(() => assertNoAgentEvalInputDuplicates(cases, [cases[5]!.input])).toThrow(`BENCHMARK_AGENT_EVAL_INPUT_DUPLICATE: ${cases[5]!.caseId}`);
   });
+
+  it("rejects drift from exact case IDs, variants, and known-fit exposure limits", () => {
+    expect(() => buildBenchmarkExecutionPlan("run", cases.map((item, index) => index === 0 ? { ...item, caseId: "renamed-case" } : item), "seed")).toThrow("BENCHMARK_CASE_ID_OR_VARIANT_INVALID");
+    expect(() => buildBenchmarkExecutionPlan("run", cases.map((item) => item.scenario === "OPEN_EXPLANATION" && item.variant === 2 ? { ...item, exposureClass: "KNOWN_FIT" as const } : item), "seed")).toThrow("BENCHMARK_KNOWN_FIT_LIMIT_EXCEEDED");
+  });
 });

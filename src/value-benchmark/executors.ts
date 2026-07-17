@@ -95,6 +95,23 @@ function dataShape(value: unknown): unknown {
   return { type: value === null ? "null" : typeof value };
 }
 
+const AUDIT_METADATA_KEYS = new Set([
+  "retrievalTraceId", "sourceId", "sourceType", "sourceVersion", "distributionScope", "section", "page", "score",
+  "contentHash", "provenanceId", "indexVersion", "deliveryPolicyVersion", "policyVersion", "capabilityId", "capabilityVersion", "traceId",
+]);
+
+function excerptFreeAuditMetadata(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(excerptFreeAuditMetadata);
+  if (!value || typeof value !== "object") return undefined;
+  const result: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(value)) {
+    if (AUDIT_METADATA_KEYS.has(key) && (typeof child === "string" || typeof child === "number" || typeof child === "boolean" || child === null)) result[key] = child;
+    else if (key === "results" && Array.isArray(child)) result.results = child.map(excerptFreeAuditMetadata);
+    else if (/^(?:source|provenance|deliveryPolicy|capability|diagnosis)$/u.test(key) && child && typeof child === "object") result[key] = excerptFreeAuditMetadata(child);
+  }
+  return result;
+}
+
 export class FullFoundryBenchmarkExecutor implements BenchmarkArmExecutor {
   constructor(
     private readonly target: AgentEvalTarget,
@@ -108,7 +125,7 @@ export class FullFoundryBenchmarkExecutor implements BenchmarkArmExecutor {
       ...(testCase.activeTaskId ? { activeTaskId: testCase.activeTaskId } : {}), ...(testCase.activeEpisodeId ? { activeEpisodeId: testCase.activeEpisodeId } : {}),
       messages: testCase.messages.map((message) => ({ role: message.role, content: message.content, ...(message.context ? { context: message.context } : {}) })),
     }, { signal });
-    if (!result.ok) throw Object.assign(new Error(result.error.message), { code: result.error.code });
+    if (!result.ok) throw Object.assign(new Error(result.error.message), { code: result.error.code, ...(result.error.httpStatus ? { httpStatus: result.error.httpStatus } : {}) });
     const trace = result.trace;
     return {
       answer: trace.finalResponse.learnerMessage, sourceRefs: [...trace.finalResponse.sourceRefs], evidenceRefs: [...(trace.finalResponse.evidenceRefs ?? [])],
@@ -119,7 +136,7 @@ export class FullFoundryBenchmarkExecutor implements BenchmarkArmExecutor {
         traceId: trace.traceId, route: trace.route, obligations: trace.obligations, executionPlan: trace.executionPlan,
         contextSelection: trace.contextSelection, budgetConsumption: trace.budgetConsumption, evidenceAssessments: trace.evidenceAssessments,
         stopReason: trace.stopReason, governedWorkflow: trace.governedWorkflow,
-        toolResults: result.toolResults.map(({ name, resultRef, data }) => ({ name, resultRef, dataShape: dataShape(data) })),
+        toolResults: result.toolResults.map(({ name, resultRef, data }) => ({ name, resultRef, dataShape: dataShape(data), metadata: excerptFreeAuditMetadata(data) })),
       },
     };
   }

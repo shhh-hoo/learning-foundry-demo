@@ -47,7 +47,7 @@ describe("value benchmark arm executors", () => {
       promptVersion: "1", capabilityRegistryVersion: "1", startedAt: "2026-07-17T00:00:00Z", completedAt: "2026-07-17T00:00:01Z", latencyMs: 100,
       toolCalls: [{ name: "search_learning_resources", arguments: { query: "secret excerpt" }, resultRef: "evidence-1", status: "SUCCEEDED" as const }],
       finalResponse: { status: "ANSWERED" as const, learnerMessage: "Grounded answer", sourceRefs: ["source-1"], evidenceRefs: ["evidence-1"] },
-    }, toolResults: [{ name: "search_learning_resources", resultRef: "evidence-1", data: { privateExcerpt: "do not copy", results: [1, 2] } }] }));
+    }, toolResults: [{ name: "search_learning_resources", resultRef: "evidence-1", data: { privateExcerpt: "do not copy", retrievalTraceId: "evidence-1", results: [{ sourceId: "source-1", sourceType: "OFFICIAL_SYLLABUS", section: "2.1", privateExcerpt: "secret" }] } }] }));
     const target: AgentEvalTarget = { health: async () => ({ provider: "deepseek", model: "same-model", thinkingMode: "disabled" }), execute };
     const executors = createValueBenchmarkExecutors({
       prompts: { schemaVersion: "1.0.0", directAnswerContract: "Return JSON.", arms: { A_BARE_LLM: { systemPrompt: "A", tools: [] }, B_FOUNDRY_POLICY_NO_TOOLS: { systemPrompt: "B", tools: [] } } },
@@ -60,6 +60,19 @@ describe("value benchmark arm executors", () => {
     expect(request).not.toHaveProperty("evalCaseId");
     expect(output).toMatchObject({ answer: "Grounded answer", sourceRefs: ["source-1"], evidenceRefs: ["evidence-1"], systemPrompt: "exact full prompt" });
     expect(JSON.stringify(output.runtimeEvidence)).not.toContain("do not copy");
-    expect(output.runtimeEvidence?.toolResults).toEqual([{ name: "search_learning_resources", resultRef: "evidence-1", dataShape: { type: "object", keys: ["privateExcerpt", "results"] } }]);
+    expect(output.runtimeEvidence?.toolResults).toEqual([{ name: "search_learning_resources", resultRef: "evidence-1", dataShape: { type: "object", keys: ["privateExcerpt", "results", "retrievalTraceId"] }, metadata: { retrievalTraceId: "evidence-1", results: [{ sourceId: "source-1", sourceType: "OFFICIAL_SYLLABUS", section: "2.1" }] } }]);
+  });
+
+  it("preserves the original provider status for C-arm infrastructure classification", async () => {
+    const target: AgentEvalTarget = {
+      health: async () => ({ provider: "deepseek", model: "same-model", thinkingMode: "disabled" }),
+      execute: async () => ({ ok: false, error: { code: "DEEPSEEK_API_ERROR", message: "DEEPSEEK_API_ERROR: HTTP 503: unavailable", httpStatus: 503 } }),
+    };
+    const executors = createValueBenchmarkExecutors({
+      prompts: { schemaVersion: "1.0.0", directAnswerContract: "Return JSON.", arms: { A_BARE_LLM: { systemPrompt: "A", tools: [] }, B_FOUNDRY_POLICY_NO_TOOLS: { systemPrompt: "B", tools: [] } } },
+      model: { apiKey: "unused", baseUrl: "https://api.example.test", model: "same-model", thinkingMode: "disabled", temperature: null, topP: null, maxTokens: 1800 },
+      target, fullFoundrySystemPromptForCase: () => "full prompt",
+    });
+    await expect(executors.C_FULL_FOUNDRY.execute({ testCase, execution: { ...execution, arm: "C_FULL_FOUNDRY" }, signal: new AbortController().signal })).rejects.toMatchObject({ code: "DEEPSEEK_API_ERROR", httpStatus: 503 });
   });
 });

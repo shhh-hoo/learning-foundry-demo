@@ -39,6 +39,21 @@ describe("DeepSeek Agent Gateway", () => {
     expect(called).toBe(false);
   });
 
+  it("propagates client cancellation into the configured execution", async () => {
+    let receivedSignal: AbortSignal | undefined;
+    const gateway = createAgentGateway({ configured: true, model: "configured", thinkingMode: "disabled", execution: { execute: async (_request, signal) => {
+      receivedSignal = signal;
+      if (!signal?.aborted) await new Promise<void>((resolve) => signal?.addEventListener("abort", () => resolve(), { once: true }));
+      signal?.throwIfAborted();
+      throw new Error("unreachable");
+    } } });
+    const controller = new AbortController();
+    const response = gateway.handle(new Request("http://127.0.0.1:4176/agent/runs", { method: "POST", headers: { "content-type": "application/json" }, signal: controller.signal, body: JSON.stringify({ conversationId: "c", inputOrigin: "USER_INPUT", runPurpose: "AGENT_EVAL", messages: [{ role: "user", content: "hello" }] }) }));
+    controller.abort(new Error("benchmark timeout"));
+    expect((await response).status).toBe(400);
+    expect(receivedSignal?.aborted).toBe(true);
+  });
+
   it("passes evalCaseId only for AgentEval transport metadata", async () => {
     const requests: unknown[] = [];
     const trace = { traceId: "agent-eval-trace", conversationId: "agent-eval", inputOrigin: "USER_INPUT", runPurpose: "AGENT_EVAL", provider: "deepseek", model: "configured", thinkingMode: "disabled", promptVersion: "1", capabilityRegistryVersion: "1", startedAt: "2026-07-16T10:00:00.000Z", completedAt: "2026-07-16T10:00:01.000Z", toolCalls: [], finalResponse: { status: "ANSWERED", learnerMessage: "Hello", sourceRefs: [] }, latencyMs: 1000 } satisfies AgentTrace;

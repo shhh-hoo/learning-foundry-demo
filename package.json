@@ -31,6 +31,7 @@
     "benchmark:manifest": "node --import tsx scripts/value-benchmark-manifest.ts",
     "benchmark:preflight": "node --import tsx scripts/value-benchmark.ts preflight",
     "benchmark:live": "node --import tsx scripts/value-benchmark.ts run",
+    "benchmark:review": "node --import tsx scripts/value-benchmark-review.ts",
     "corpus:ingest": "tsx scripts/corpus-ingest.ts",
     "corpus:inspect": "tsx scripts/corpus-inspect.ts",
     "corpus:export:public": "tsx scripts/corpus-export-public.ts",

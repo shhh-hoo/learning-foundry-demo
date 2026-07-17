@@ -5,6 +5,7 @@ import { dirname, resolve } from "node:path";
 import { buildBenchmarkExecutionPlan, type BenchmarkCase } from "../src/value-benchmark/index.ts";
 import { fingerprintFrozenAsset, type ValueBenchmarkExperimentManifest } from "../src/value-benchmark/experiment-manifest.ts";
 import { createBenchmarkCaseComposition } from "../src/value-benchmark/preparation.ts";
+import { registeredAgentCapabilities } from "../src/reference-packs/registry.ts";
 
 const root = resolve(new URL("..", import.meta.url).pathname);
 const casePath = "config/value-benchmark/cases.jsonl";
@@ -27,6 +28,11 @@ const snapshotPaths = {
   agentInstructions: "config/agent/instructions.md", responsePolicy: "config/agent/response-policy.json", toolDefinitions: "config/tools/tool-descriptions.json",
   corpusDeliveryPolicy: "config/corpus/delivery-policy.json", capabilityRegistry: "src/reference-packs/registry.ts", routePolicy: "src/agent/route-policy.ts",
   pricing: "agent-eval/pricing.json", agentEvalCases: "agent-eval/cases.jsonl",
+  benchmarkRunner: "scripts/value-benchmark.ts", benchmarkReviewRunner: "scripts/value-benchmark-review.ts", benchmarkManifestGenerator: "scripts/value-benchmark-manifest.ts",
+  benchmarkCore: "src/value-benchmark/index.ts", benchmarkExecutors: "src/value-benchmark/executors.ts", benchmarkRepository: "src/value-benchmark/file-repository.ts",
+  benchmarkManifestVerifier: "src/value-benchmark/experiment-manifest.ts", benchmarkPreparation: "src/value-benchmark/preparation.ts",
+  gatewayServer: "scripts/agent-gateway-server.ts", gateway: "src/agent/gateway.ts", agentLoop: "src/agent/run-agent.ts", deepSeekClient: "src/agent/deepseek-client.ts",
+  runtimeCoordinator: "src/runtime/runtime-shadow.ts", toolExecutor: "src/agent/tool-executor.ts", corpusRepository: "scripts/lib/corpus-repository.ts",
 } as const;
 const policySnapshots = Object.fromEntries(await Promise.all(Object.entries(snapshotPaths).map(async ([name, path]) => [name, `${path}@${hash(await bytes(path))}`])));
 const manifest: ValueBenchmarkExperimentManifest = {
@@ -44,7 +50,12 @@ const manifest: ValueBenchmarkExperimentManifest = {
       return { caseId: testCase.caseId, executionPlanHash: composition.hashes.executionPlan, contextSelectionHash: composition.hashes.contextSelection, selectedProviderMessagesHash: composition.hashes.selectedProviderMessages, policyOnlySystemPromptHash: composition.hashes.policyOnlySystemPrompt, authoritativeSystemPromptHash: composition.hashes.authoritativeSystemPrompt };
     }),
   },
-  policySnapshots: { ...policySnapshots, governedCorpusIndex: "REQUIRED_LIVE_PREFLIGHT", externalReviewerAuthorization: "REQUIRED_BEFORE_PACKET_DELIVERY", rawArtifacts: ".value-benchmark-results/ (mode 0600, ignored)" },
+  policySnapshots: {
+    ...policySnapshots,
+    runtimeToolDefinitionsSemantic: hash(JSON.stringify(JSON.parse(await text("config/tools/tool-descriptions.json")))),
+    runtimeCapabilityRegistrySemantic: hash(JSON.stringify(registeredAgentCapabilities)),
+    governedCorpusIndex: process.env.VALUE_BENCHMARK_CORPUS_INDEX_VERSION?.trim() || "NOT_AVAILABLE_NO_LIVE_RUN", externalReviewerAuthorization: "REQUIRED_BEFORE_PACKET_DELIVERY", rawArtifacts: ".value-benchmark-results/ (mode 0600, ignored)",
+  },
   livePolicy: {
     automaticRetry: false, infrastructureReplacementRequiresExplicitCommand: true, modelQualityResampling: false,
     permittedInfrastructureReplacements: ["NETWORK_TRANSPORT", "TIMEOUT", "HTTP_408", "HTTP_429", "HTTP_5XX", "REQUIRED_LOCAL_SERVICE_UNAVAILABLE"],
@@ -54,4 +65,3 @@ const manifest: ValueBenchmarkExperimentManifest = {
 await mkdir(dirname(resolve(root, outputPath)), { recursive: true });
 await writeFile(resolve(root, outputPath), `${JSON.stringify(manifest, null, 2)}\n`, { encoding: "utf8", mode: 0o644 });
 console.log(`${outputPath}\nimplementation=${implementationCommit}\nfirstAttempts=${manifest.execution.plannedExecutions.length}`);
-

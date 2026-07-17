@@ -308,19 +308,20 @@ export function createRuntimeShadowCoordinator(options: RuntimeShadowCoordinator
     }
   };
   return {
-    async execute(input: NormalizedRuntimeExecutionRequest): Promise<{ readonly authoritativeResult: RuntimeExecutionResult; readonly shadowCompletion: Promise<void> }> {
+    async execute(input: NormalizedRuntimeExecutionRequest, signal: AbortSignal = new AbortController().signal): Promise<{ readonly authoritativeResult: RuntimeExecutionResult; readonly shadowCompletion: Promise<void> }> {
       const authoritativeExecutionId = createId();
       const authoritativeInput = immutableExecutionSnapshot(input);
       const shadowInput = immutableExecutionSnapshot(input);
-      const authoritativeSignal = new AbortController().signal;
       let authoritativeResult: RuntimeExecutionResult;
       try {
-        authoritativeResult = await options.authoritativeExecutor.execute(authoritativeInput, authoritativeSignal);
+        signal.throwIfAborted();
+        authoritativeResult = await options.authoritativeExecutor.execute(authoritativeInput, signal);
       } catch (error) {
         await recordSafely(failedRecord(authoritativeExecutionId, "AUTHORITATIVE", authoritativeInput, options.authoritativeExecutor, "FAILED", terminalError(error, "AUTHORITATIVE_EXECUTION_FAILED"), "EXECUTION", now()));
         throw error;
       }
       await recordSafely(completedRecord(authoritativeExecutionId, "AUTHORITATIVE", authoritativeInput, options.authoritativeExecutor, authoritativeResult, now()));
+      signal.throwIfAborted();
       const shadowCompletion = executeShadow(shadowInput, authoritativeExecutionId);
       return { authoritativeResult, shadowCompletion };
     },

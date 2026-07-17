@@ -20,7 +20,8 @@ export class LegacyTrainerCapabilityRuntime implements LearningCapabilityRuntime
     private readonly fetcher: typeof fetch = globalThis.fetch,
   ) {}
 
-  async execute(execution: LearningCapabilityExecution): Promise<LearningCapabilityExecutionResult> {
+  async execute(execution: LearningCapabilityExecution, signal?: AbortSignal): Promise<LearningCapabilityExecutionResult> {
+    signal?.throwIfAborted();
     const inputCapabilityId = execution.input.componentId;
     const inputCapabilityVersion = execution.input.componentVersion;
     if ((inputCapabilityId !== undefined && inputCapabilityId !== execution.capabilityId)
@@ -40,13 +41,16 @@ export class LegacyTrainerCapabilityRuntime implements LearningCapabilityRuntime
         ...(execution.capabilityVersion === undefined ? {} : { componentVersion: execution.capabilityVersion }),
         runPurpose: execution.runPurpose,
       }),
+      ...(signal ? { signal } : {}),
     });
     const body = await response.json() as { readonly ok?: boolean; readonly result?: Record<string, unknown> & { readonly traceId?: string }; readonly error?: { readonly code?: string; readonly message?: string } };
     if (!response.ok || !body.ok || !body.result?.traceId) throw new Error(`${body.error?.code ?? "TRAINER_DIAGNOSIS_FAILED"}: ${body.error?.message ?? `HTTP ${response.status}`}`);
 
-    const resolution = await this.fetcher(`${this.diagnosisUrl.replace(/\/diagnose\/?$/u, "")}/diagnoses/${encodeURIComponent(body.result.traceId)}`);
+    signal?.throwIfAborted();
+    const resolution = await this.fetcher(`${this.diagnosisUrl.replace(/\/diagnose\/?$/u, "")}/diagnoses/${encodeURIComponent(body.result.traceId)}`, signal ? { signal } : undefined);
     const resolved = await resolution.json() as { readonly ok?: boolean; readonly diagnosis?: { readonly traceId?: string } };
     if (!resolution.ok || !resolved.ok || resolved.diagnosis?.traceId !== body.result.traceId) throw new LearningCapabilityRuntimeError("UNRESOLVABLE_DIAGNOSIS_TRACE", `Diagnosis trace ${body.result.traceId} did not resolve after persistence.`);
+    signal?.throwIfAborted();
     return { traceId: body.result.traceId, result: body.result };
   }
 }

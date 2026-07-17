@@ -182,12 +182,14 @@ export function createAgentToolExecutor(options: ToolExecutorOptions): AgentTool
   const capabilityRuntime = options.capabilityRuntime ?? (options.diagnosisUrl ? new LegacyTrainerCapabilityRuntime(options.diagnosisUrl, options.fetcher) : null);
   const id = () => options.createId?.() ?? globalThis.crypto?.randomUUID?.() ?? Date.now().toString(36);
   return {
-    async execute(name, value): Promise<AgentToolResult> {
+    async execute(name, value, signal): Promise<AgentToolResult> {
+      signal?.throwIfAborted();
       if (name === "search_learning_resources") {
         const input = searchSchema.parse(value);
         const { query, retrievalJustification: _retrievalJustification, ...filters } = input;
         const governedFilters = canonicalCourseSearchFilters(options.currentUserMessage ?? "", filters);
-        const result = await options.corpus.search(query, governedFilters, { conversationId: options.conversationId, conversationEvidenceHash: options.conversationEvidenceHash, route: "COURSE_RETRIEVAL" });
+        const result = await options.corpus.search(query, governedFilters, { conversationId: options.conversationId, conversationEvidenceHash: options.conversationEvidenceHash, route: "COURSE_RETRIEVAL" }, signal);
+        signal?.throwIfAborted();
         if (!options.corpusDeliveryPolicy || !options.provider || !options.runPurpose) throw new ToolBoundaryError("CORPUS_DELIVERY_POLICY_REQUIRED", "Corpus excerpts require an explicit provider, purpose and versioned delivery policy.");
         const delivered = deliverCorpusSearchResponse(options.corpusDeliveryPolicy, options.provider, options.runPurpose, result);
         return { resultRef: result.retrievalTraceId, data: delivered.providerData, evidenceData: delivered.evidenceData, sourceRefs: [...new Set(delivered.providerData.results.map((item) => item.sourceId))], evidenceRefs: [result.retrievalTraceId] };
@@ -214,7 +216,8 @@ export function createAgentToolExecutor(options: ToolExecutorOptions): AgentTool
         if (!provenance.ok) throw new ToolBoundaryError("UNVERIFIED_PROBLEM_CONTEXT", provenance.reasons.join("; "));
         verifyLearnerWorkingProvenance(input.attempt, options.currentUserMessage);
         if (!capabilityRuntime) throw new ToolBoundaryError("CAPABILITY_RUNTIME_REQUIRED", "Learner Diagnosis requires a configured Learning Capability Runtime.");
-        const execution = await capabilityRuntime.execute({ capabilityId: input.componentId, capabilityVersion: input.componentVersion, input: { ...input }, runPurpose: options.runPurpose });
+        const execution = await capabilityRuntime.execute({ capabilityId: input.componentId, capabilityVersion: input.componentVersion, input: { ...input }, runPurpose: options.runPurpose }, signal);
+        signal?.throwIfAborted();
         const resultRef = `diagnosis-${id()}`;
         return { resultRef, data: execution.result, executedArguments: input, evidenceRefs: [resultRef, execution.traceId] };
       }
