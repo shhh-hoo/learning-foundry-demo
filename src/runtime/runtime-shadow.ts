@@ -33,7 +33,7 @@ export interface RuntimeExecutionResult {
 
 export interface RuntimeExecutor {
   readonly identity: RuntimeAdapterIdentity;
-  execute(input: NormalizedRuntimeExecutionRequest): Promise<RuntimeExecutionResult>;
+  execute(input: NormalizedRuntimeExecutionRequest, signal: AbortSignal): Promise<RuntimeExecutionResult>;
 }
 
 export interface NormalizedRuntimeToolCall extends AgentToolCallRecord {
@@ -200,6 +200,15 @@ class ShadowExecutionTimeoutError extends Error {
   constructor(readonly timeoutMs: number) { super(`Shadow execution exceeded ${timeoutMs}ms.`); }
 }
 
+function immutableExecutionSnapshot(input: NormalizedRuntimeExecutionRequest): NormalizedRuntimeExecutionRequest {
+  const freeze = (value: unknown): unknown => {
+    if (!value || typeof value !== "object" || Object.isFrozen(value)) return value;
+    for (const nested of Object.values(value)) freeze(nested);
+    return Object.freeze(value);
+  };
+  return freeze(structuredClone(input)) as NormalizedRuntimeExecutionRequest;
+}
+
 export function createRuntimeShadowCoordinator(options: RuntimeShadowCoordinatorOptions) {
   const createId = options.createId ?? (() => crypto.randomUUID());
   const now = options.now ?? (() => new Date().toISOString());
@@ -231,10 +240,17 @@ export function createRuntimeShadowCoordinator(options: RuntimeShadowCoordinator
       ));
     }
     const timeoutMs = options.shadowTimeoutMs ?? 5000;
+    const controller = new AbortController();
     let timeout: ReturnType<typeof setTimeout> | undefined;
     const timedExecution = Promise.race([
-      options.shadowExecutor.execute(input),
-      new Promise<never>((_resolve, reject) => { timeout = setTimeout(() => reject(new ShadowExecutionTimeoutError(timeoutMs)), timeoutMs); }),
+      options.shadowExecutor.execute(input, controller.signal),
+      new Promise<never>((_resolve, reject) => {
+        timeout = setTimeout(() => {
+          const error = new ShadowExecutionTimeoutError(timeoutMs);
+          controller.abort(error);
+          reject(error);
+        }, timeoutMs);
+      }),
     ]);
     return timedExecution
       .then(async (shadowResult) => {
@@ -249,15 +265,18 @@ export function createRuntimeShadowCoordinator(options: RuntimeShadowCoordinator
   return {
     async execute(input: NormalizedRuntimeExecutionRequest): Promise<{ readonly authoritativeResult: RuntimeExecutionResult; readonly shadowCompletion: Promise<void> }> {
       const authoritativeExecutionId = createId();
-      const shadowCompletion = executeShadow(input, authoritativeExecutionId);
+      const authoritativeInput = immutableExecutionSnapshot(input);
+      const shadowInput = immutableExecutionSnapshot(input);
+      const shadowCompletion = executeShadow(shadowInput, authoritativeExecutionId);
+      const authoritativeSignal = new AbortController().signal;
       let authoritativeResult: RuntimeExecutionResult;
       try {
-        authoritativeResult = await options.authoritativeExecutor.execute(input);
+        authoritativeResult = await options.authoritativeExecutor.execute(authoritativeInput, authoritativeSignal);
       } catch (error) {
-        await recordSafely(failedRecord(authoritativeExecutionId, "AUTHORITATIVE", input, options.authoritativeExecutor, "FAILED", terminalError(error, "AUTHORITATIVE_EXECUTION_FAILED"), "EXECUTION", now()));
+        await recordSafely(failedRecord(authoritativeExecutionId, "AUTHORITATIVE", authoritativeInput, options.authoritativeExecutor, "FAILED", terminalError(error, "AUTHORITATIVE_EXECUTION_FAILED"), "EXECUTION", now()));
         throw error;
       }
-      await recordSafely(completedRecord(authoritativeExecutionId, "AUTHORITATIVE", input, options.authoritativeExecutor, authoritativeResult, now()));
+      await recordSafely(completedRecord(authoritativeExecutionId, "AUTHORITATIVE", authoritativeInput, options.authoritativeExecutor, authoritativeResult, now()));
       return { authoritativeResult, shadowCompletion };
     },
   };
