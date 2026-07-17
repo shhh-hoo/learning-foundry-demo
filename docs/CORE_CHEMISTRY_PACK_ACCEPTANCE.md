@@ -2,9 +2,9 @@
 
 Docs authority: `learning-foundry-docs@260747722e8040972deceed3290bce237676f225`
 
-Doc 17: §§1, 3, 4.1, 6–7, 13, 16A, 17–18 and 20. Accepted ADR
-interpretation: ADR-002 and ADR-004 as clarified by
-`docs/WAVE_IMPLEMENTATION_CONTRACT.md`.
+Doc 17: §§1, 3, 4.1, 6–7, 13, 16A, 17–18 and 20. The contracts
+preserve accepted ADR-002 and ADR-004: append-only Conversation Events,
+canonical source/human records and derived representations remain distinct.
 
 Implementation lane: product-critical Core / Reference Pack.
 
@@ -127,19 +127,19 @@ Recorded result at this branch head:
 
 ```text
 npm run core:leakage  2/2 passed; zero Core violations; allowlist 0/0
-npm test              35 files, 233 tests passed
+npm test              38 files, 249 tests passed after PR 1 integration
 npm run check         passed
 npm run build         passed
 npm run export:components  passed; immutable export files unchanged
+npm run runtime:parity:fixture  EXACT_MATCH after PR 1 integration
 git diff --check      passed
 ```
 
 `npm run policy:audit` reports no new finding in this PR's production or
-documentation files. It remains non-green because the authority-sync base
-already contains twelve forbidden-terminology findings in historical
+documentation files and exits successfully. The authority-sync base
+already contains twelve reported terminology findings in historical
 acceptance prose, the Wave contract and one existing AgentEval test. This
-PR does not weaken the audit or rewrite unrelated historical records; the
-inherited gate failure must be resolved in shared authority-sync work.
+PR does not weaken the audit or rewrite unrelated historical records.
 
 No live model run is required: this PR changes ownership and type/runtime
 entrypoint wiring without changing Agent behavior. Fixture evidence is not
