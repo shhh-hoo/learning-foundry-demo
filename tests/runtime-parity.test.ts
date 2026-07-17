@@ -4,7 +4,7 @@ import type { RuntimeExecutionRecord, RuntimeExecutionRole } from "../src/runtim
 
 function record(role: RuntimeExecutionRole, overrides: Partial<RuntimeExecutionRecord> = {}): RuntimeExecutionRecord {
   return {
-    schemaVersion: "1.0.0",
+    schemaVersion: "1.1.0",
     executionId: `${role.toLowerCase()}-execution`,
     role,
     runPurpose: "AGENT_EVAL",
@@ -114,7 +114,45 @@ describe("case-level runtime parity", () => {
     );
 
     expect(result.classification).toBe("REGRESSION");
-    expect(result.differences).toContainEqual(expect.objectContaining({ field: "evidenceIntegrity", severity: "REGRESSION" }));
+    expect(result.governedQuality).toMatchObject({
+      classification: "CANDIDATE_REGRESSION",
+      checks: { evidenceIntegrity: { classification: "CANDIDATE_REGRESSION", authoritativePassed: true, candidatePassed: false } },
+    });
+    expect(result.differences.map((difference) => difference.field)).not.toContain("evidenceIntegrity");
+  });
+
+  it("treats a candidate repair of Legacy evidence integrity as a reviewable improvement", () => {
+    const result = compareRuntimeParityCase(
+      parityCase,
+      execution("AUTHORITATIVE", { record: record("AUTHORITATIVE", { evidenceRefs: ["unrelated-legacy-reference"] }) }),
+      execution("SHADOW"),
+    );
+
+    expect(result).toMatchObject({
+      classification: "REVIEW_REQUIRED",
+      governedQuality: {
+        classification: "CANDIDATE_IMPROVEMENT",
+        checks: { evidenceIntegrity: { classification: "CANDIDATE_IMPROVEMENT", authoritativePassed: false, candidatePassed: true } },
+      },
+      reviewRequired: true,
+    });
+  });
+
+  it("reports invalid evidence on both runtimes as a shared quality failure", () => {
+    const result = compareRuntimeParityCase(
+      parityCase,
+      execution("AUTHORITATIVE", { record: record("AUTHORITATIVE", { evidenceRefs: ["unresolved-reference"] }) }),
+      execution("SHADOW", { record: record("SHADOW", { evidenceRefs: ["unresolved-reference"] }) }),
+    );
+
+    expect(result).toMatchObject({
+      classification: "REVIEW_REQUIRED",
+      governedQuality: {
+        classification: "SHARED_QUALITY_FAILURE",
+        checks: { evidenceIntegrity: { classification: "SHARED_QUALITY_FAILURE", authoritativePassed: false, candidatePassed: false } },
+      },
+      reviewRequired: true,
+    });
   });
 
   it("treats object key order and source-reference order as semantically irrelevant", () => {

@@ -226,16 +226,23 @@ function forbiddenToolFailures(testCase: RuntimeParityCase, record: RuntimeExecu
   return testCase.forbiddenTools.filter((name) => actual.has(name));
 }
 
+function evidenceIntegrity(record: RuntimeExecutionRecord): boolean {
+  const integrity = evidenceLineage(record).integrity;
+  return integrity.diagnosisTraceLinked && integrity.unresolvedReferenceCount === 0;
+}
+
 function governedQuality(testCase: RuntimeParityCase, authoritative: RuntimeParityExecution, candidate: RuntimeParityExecution): RuntimeGovernedQualityResult {
   const authoritativeChecks: Readonly<Record<string, boolean>> = {
     ...authoritative.graderChecks,
     requiredTools: requiredToolFailures(testCase, authoritative.record).length === 0,
     forbiddenTools: forbiddenToolFailures(testCase, authoritative.record).length === 0,
+    evidenceIntegrity: evidenceIntegrity(authoritative.record),
   };
   const candidateChecks: Readonly<Record<string, boolean>> = {
     ...candidate.graderChecks,
     requiredTools: requiredToolFailures(testCase, candidate.record).length === 0,
     forbiddenTools: forbiddenToolFailures(testCase, candidate.record).length === 0,
+    evidenceIntegrity: evidenceIntegrity(candidate.record),
   };
   const names = [...new Set([...Object.keys(authoritativeChecks), ...Object.keys(candidateChecks)])].sort();
   const checks = Object.fromEntries(names.map((name) => {
@@ -286,18 +293,6 @@ export function compareRuntimeParityCase(
   const outcomeDifference = quality.classification === "CANDIDATE_IMPROVEMENT" ? behavioralDifference : regression;
   const authoritativeEvidence = evidenceLineage(authoritative.record);
   const candidateEvidence = evidenceLineage(candidate.record);
-  const evidenceIntegrityDifference: RuntimeParityDifference | null = authoritativeEvidence.integrity.diagnosisTraceLinked
-    && candidateEvidence.integrity.diagnosisTraceLinked
-    && authoritativeEvidence.integrity.unresolvedReferenceCount === 0
-    && candidateEvidence.integrity.unresolvedReferenceCount === 0
-    ? null
-    : {
-        field: "evidenceIntegrity",
-        severity: "REGRESSION",
-        authoritative: authoritativeEvidence.integrity,
-        candidate: candidateEvidence.integrity,
-        message: "Every evidence reference must resolve to an observed tool result or the declared Diagnosis trace.",
-      };
   const differences = [
     regression("caseId", authoritative.record.caseId, candidate.record.caseId, "Both records must belong to the same case."),
     regression("suiteVersion", authoritative.suiteVersion, candidate.suiteVersion, "Suite versions must match."),
@@ -307,7 +302,6 @@ export function compareRuntimeParityCase(
     outcomeDifference("toolCalls", toolShape(authoritative.record), toolShape(candidate.record), "Tool order, names, and statuses differ; governed quality records whether the direction is improvement or regression."),
     regression("sourceRefs", referenceSet(authoritative.record.sourceRefs), referenceSet(candidate.record.sourceRefs), "Source-reference sets must match; order is not meaningful."),
     outcomeDifference("evidenceLineage", authoritativeEvidence.lineage, candidateEvidence.lineage, "Evidence classes and producing tool lineage must match; execution-local result references are ignored."),
-    evidenceIntegrityDifference,
     outcomeDifference("diagnosisTracePresent", Boolean(authoritative.record.diagnosisTraceId), Boolean(candidate.record.diagnosisTraceId), "Diagnosis trace presence must match; trace identifiers are execution-local."),
     outcomeDifference("diagnosisResult", governedDiagnosis(authoritative.diagnosisResult ?? authoritative.record.diagnosisResult), governedDiagnosis(candidate.diagnosisResult ?? candidate.record.diagnosisResult), "Governed Diagnosis identity, decision, failure and pedagogical outcome must match; execution-local identifiers are ignored."),
     outcomeDifference("diagnosisFailureCode", authoritative.diagnosisFailureCode ?? authoritative.record.diagnosisFailureCode, candidate.diagnosisFailureCode ?? candidate.record.diagnosisFailureCode, "Diagnosis failure outcomes must match."),
