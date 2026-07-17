@@ -81,7 +81,7 @@ describe("candidate-neutral runtime shadow coordination", () => {
     expect(execution.authoritativeResult.trace.finalResponse.learnerMessage).toBe("legacy answer");
     expect(authoritativeCalls).toBe(1);
     expect(shadowCalls).toBe(0);
-    expect(records).toEqual([expect.objectContaining({ executionId: "authoritative-execution", role: "AUTHORITATIVE", runtimeAdapterId: "legacy", status: "COMPLETED" })]);
+    expect(records).toEqual([expect.objectContaining({ schemaVersion: "1.1.0", executionId: "authoritative-execution", role: "AUTHORITATIVE", runtimeAdapterId: "legacy", status: "COMPLETED" })]);
   });
 
   it("runs an explicit shadow with the same plan while keeping the authoritative product result", async () => {
@@ -103,8 +103,8 @@ describe("candidate-neutral runtime shadow coordination", () => {
     expect(execution.authoritativeResult.trace.finalResponse.learnerMessage).toBe("legacy answer");
     expect(receivedPlans).toEqual([normalizedRequest.executionPlan, normalizedRequest.executionPlan]);
     expect(records).toEqual(expect.arrayContaining([
-      expect.objectContaining({ executionId: "authoritative-execution", role: "AUTHORITATIVE", runtimeAdapterId: "legacy" }),
-      expect.objectContaining({ executionId: "shadow-execution", parentAuthoritativeExecutionId: "authoritative-execution", role: "SHADOW", runtimeAdapterId: "candidate" }),
+      expect.objectContaining({ schemaVersion: "1.1.0", executionId: "authoritative-execution", role: "AUTHORITATIVE", runtimeAdapterId: "legacy" }),
+      expect.objectContaining({ schemaVersion: "1.1.0", executionId: "shadow-execution", parentAuthoritativeExecutionId: "authoritative-execution", role: "SHADOW", runtimeAdapterId: "candidate" }),
     ]));
   });
 

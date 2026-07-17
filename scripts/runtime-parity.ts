@@ -9,7 +9,7 @@ import type { AgentTrace } from "../src/agent/types.ts";
 import { compareRuntimeParityCase, createRuntimeParityPlan, createRuntimeParityReport, decideRuntimeParityCommand, findRuntimeExecutionForEvalCase, type RuntimeParityExecution } from "../src/runtime/runtime-parity.ts";
 import type { RuntimeExecutionRecord } from "../src/runtime/runtime-shadow.ts";
 import { AgentEvalRepository } from "./lib/agent-eval-repository.ts";
-import { RoleSeparatedFileRuntimeExecutionRecorder } from "./lib/runtime-execution-recorder.ts";
+import { PurposeAndRoleSeparatedFileRuntimeExecutionRecorder } from "./lib/runtime-execution-recorder.ts";
 import { RuntimeParityArtifactRepository } from "./lib/runtime-parity-artifacts.ts";
 
 const args = process.argv.slice(2);
@@ -100,8 +100,8 @@ async function main(): Promise<void> {
   const timestamp = new Date().toISOString();
   const reportId = `runtime-parity-${timestamp.replace(/[:.]/gu, "-")}-${randomUUID().slice(0, 8)}`;
   const plan = createRuntimeParityPlan(`${reportId}-plan`, run.suiteVersion, selected.selection, selected.cases, timestamp);
-  const records = new RoleSeparatedFileRuntimeExecutionRecorder(executionRoot);
-  const authoritativeRecords = await records.list("AUTHORITATIVE");
+  const records = new PurposeAndRoleSeparatedFileRuntimeExecutionRecorder(executionRoot);
+  const authoritativeRecords = await records.list("AGENT_EVAL", "AUTHORITATIVE");
   const evalCaseById = new Map(run.cases.map((item) => [item.caseId, item]));
   const contractCaseById = new Map(selected.cases.map((item) => [item.caseId, item]));
   const authoritativeByCaseId = new Map(plan.cases.map((testCase) => {
@@ -112,6 +112,7 @@ async function main(): Promise<void> {
   const shadowWait = selfComparison
     ? { records: [], pendingAuthoritativeExecutionIds: [], absentAuthoritativeExecutionIds: [] }
     : await records.waitForTerminalShadows(
+        "AGENT_EVAL",
         [...authoritativeByCaseId.values()].filter((record): record is RuntimeExecutionRecord => record !== null).map((record) => record.executionId),
         { timeoutMs: shadowWaitMs },
       );

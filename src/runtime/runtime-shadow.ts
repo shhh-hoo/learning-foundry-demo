@@ -4,6 +4,8 @@ import type { VersionedHash } from "../agent/trace-store";
 export type RuntimeExecutionRole = "AUTHORITATIVE" | "SHADOW";
 export type RuntimeExecutionStatus = "RUNNING" | "COMPLETED" | "FAILED" | "TIMED_OUT" | "NOT_CONFIGURED";
 export type RuntimeFailureStage = "CONFIGURATION" | "EXECUTION" | "TIMEOUT";
+export const RUNTIME_EXECUTION_SCHEMA_VERSION = "1.1.0" as const;
+export type RuntimeExecutionSchemaVersion = "1.0.0" | typeof RUNTIME_EXECUTION_SCHEMA_VERSION;
 
 export interface RuntimePolicySnapshot {
   readonly prompt: VersionedHash;
@@ -41,7 +43,7 @@ export interface NormalizedRuntimeToolCall extends AgentToolCallRecord {
 }
 
 export interface RuntimeExecutionRecord {
-  readonly schemaVersion: "1.0.0";
+  readonly schemaVersion: RuntimeExecutionSchemaVersion;
   readonly executionId: string;
   readonly parentAuthoritativeExecutionId?: string;
   readonly role: RuntimeExecutionRole;
@@ -121,7 +123,7 @@ function completedRecord(
     && diagnosisResult.diagnosis && typeof diagnosisResult.diagnosis === "object" && "failureCode" in diagnosisResult.diagnosis
     && typeof diagnosisResult.diagnosis.failureCode === "string" ? diagnosisResult.diagnosis.failureCode : undefined;
   return {
-    schemaVersion: "1.0.0",
+    schemaVersion: RUNTIME_EXECUTION_SCHEMA_VERSION,
     executionId,
     ...(parentAuthoritativeExecutionId ? { parentAuthoritativeExecutionId } : {}),
     role,
@@ -165,7 +167,7 @@ function failedRecord(
   parentAuthoritativeExecutionId?: string,
 ): RuntimeExecutionRecord {
   return {
-    schemaVersion: "1.0.0",
+    schemaVersion: RUNTIME_EXECUTION_SCHEMA_VERSION,
     executionId,
     ...(parentAuthoritativeExecutionId ? { parentAuthoritativeExecutionId } : {}),
     role,
@@ -198,7 +200,7 @@ function runningRecord(
   parentAuthoritativeExecutionId: string,
 ): RuntimeExecutionRecord {
   return {
-    schemaVersion: "1.0.0",
+    schemaVersion: RUNTIME_EXECUTION_SCHEMA_VERSION,
     executionId,
     parentAuthoritativeExecutionId,
     role: "SHADOW",

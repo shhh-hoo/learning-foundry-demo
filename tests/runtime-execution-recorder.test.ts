@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -11,7 +11,7 @@ afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root,
 
 function record(runPurpose: RunPurpose, role: RuntimeExecutionRole): RuntimeExecutionRecord {
   return {
-    schemaVersion: "1.0.0",
+    schemaVersion: "1.1.0",
     executionId: `${runPurpose.toLowerCase()}-${role.toLowerCase()}-execution`,
     role,
     runPurpose,
@@ -67,16 +67,30 @@ describe("purpose-and-role-separated runtime execution recording", () => {
     expect((await readdir(join(root, "product"))).sort()).toEqual(["authoritative", "shadow"]);
     expect((await readdir(join(root, "agent-eval"))).sort()).toEqual(["authoritative", "shadow"]);
     const serialized = await readFile(join(root, "agent-eval", "shadow", "agent_eval-shadow-execution.json"), "utf8");
+    expect(JSON.parse(serialized)).toMatchObject({ schemaVersion: "1.1.0", runPurpose: "AGENT_EVAL", role: "SHADOW" });
     expect(serialized).not.toMatch(/secret-token|private-sources|hidden_reasoning|never persist|\/Users\//u);
+  });
+
+  it("reads a terminal 1.0.0 record from the former flat namespace but never writes that schema", async () => {
+    const root = await mkdtemp(join(tmpdir(), "runtime-executions-"));
+    roots.push(root);
+    const recorder = new PurposeAndRoleSeparatedFileRuntimeExecutionRecorder(root);
+    const legacyRecord = { ...record("AGENT_EVAL", "AUTHORITATIVE"), schemaVersion: "1.0.0" as const };
+    const legacyDirectory = join(root, "authoritative");
+    await mkdir(legacyDirectory, { recursive: true });
+    await writeFile(join(legacyDirectory, "legacy.json"), JSON.stringify(legacyRecord), "utf8");
+
+    await expect(recorder.list("AGENT_EVAL", "AUTHORITATIVE")).resolves.toEqual([legacyRecord]);
+    await expect(recorder.record(legacyRecord)).rejects.toThrow("RUNTIME_EXECUTION_SCHEMA_WRITE_UNSUPPORTED");
   });
 
   it("waits for a delayed terminal shadow record within the bounded window", async () => {
     const root = await mkdtemp(join(tmpdir(), "runtime-executions-"));
     roots.push(root);
-    const recorder = new RoleSeparatedFileRuntimeExecutionRecorder(root);
-    const shadow = { ...record("SHADOW"), parentAuthoritativeExecutionId: "authoritative-execution" };
+    const recorder = new PurposeAndRoleSeparatedFileRuntimeExecutionRecorder(root);
+    const shadow = { ...record("AGENT_EVAL", "SHADOW"), parentAuthoritativeExecutionId: "authoritative-execution" };
 
-    const waiting = recorder.waitForTerminalShadows(["authoritative-execution"], { timeoutMs: 500, pollIntervalMs: 10 });
+    const waiting = recorder.waitForTerminalShadows("AGENT_EVAL", ["authoritative-execution"], { timeoutMs: 500, pollIntervalMs: 10 });
     const delayedWrite = new Promise<void>((resolve) => setTimeout(() => { void recorder.record(shadow).then(resolve); }, 25));
     const result = await waiting;
     await delayedWrite;
@@ -89,9 +103,9 @@ describe("purpose-and-role-separated runtime execution recording", () => {
   it("distinguishes a still-pending shadow from genuinely absent evidence", async () => {
     const root = await mkdtemp(join(tmpdir(), "runtime-executions-"));
     roots.push(root);
-    const recorder = new RoleSeparatedFileRuntimeExecutionRecorder(root);
+    const recorder = new PurposeAndRoleSeparatedFileRuntimeExecutionRecorder(root);
     await recorder.record({
-      ...record("SHADOW"),
+      ...record("AGENT_EVAL", "SHADOW"),
       parentAuthoritativeExecutionId: "authoritative-pending",
       status: "RUNNING",
       completedAt: undefined,
@@ -99,6 +113,7 @@ describe("purpose-and-role-separated runtime execution recording", () => {
     });
 
     const result = await recorder.waitForTerminalShadows(
+      "AGENT_EVAL",
       ["authoritative-pending", "authoritative-absent"],
       { timeoutMs: 25, pollIntervalMs: 5 },
     );
