@@ -18,7 +18,7 @@ const caseFor = (caseId: string, suiteLayers: AgentEvalCase["suiteLayers"]): Age
 });
 
 describe("AgentEval suite layers", () => {
-  it("separates the official suite layers from evaluation dimensions", () => {
+  it("separates the official suite layers from assessment dimensions", () => {
     const cases = [
       { ...caseFor("smoke-retrieval", ["SMOKE", "CORE_CONTRACT"] as AgentEvalCase["suiteLayers"]), evaluationDimensions: ["RETRIEVAL"] as const },
       { ...caseFor("generalization-retrieval", ["GENERALIZATION"]), evaluationDimensions: ["RETRIEVAL"] as const },
