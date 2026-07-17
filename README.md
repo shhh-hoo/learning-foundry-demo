@@ -3,6 +3,7 @@
 Learning Foundry is a governed learning system where a real DeepSeek Agent uses explicit tools, deterministic diagnosis and human publication gates.
 
 - **Learner Workspace** — real learner input, source-grounded Agent responses, Learner Diagnosis evidence, and user-confirmed Library or Schedule writes.
+- **External Component Catalog** — reviewed public learning resources, license-gated candidates and launch-only Evidence that cannot become a Learning Outcome.
 - **Foundry Studio** — a configurable repeated-diagnosis signal from PRODUCT runs, a teacher-operated governed Hint Editor, Component Contract Checks, Expert Review and publication.
 - **Engineering Inspector** — real Agent Traces, AgentEval reports, Learner Diagnosis, Runtime Validation, Component Registry and system boundaries.
 - **Demo Shell** — an event-driven observer around the product surfaces; it is not the product and cannot create evidence.
@@ -26,7 +27,13 @@ npm install
 npm run demo:local
 ```
 
-Open `http://127.0.0.1:4173/`. Standard Trainer must exist at `../standard-trainer-demo` unless `TRAINER_REPO` points elsewhere.
+Open `http://127.0.0.1:4173/`. The governed external catalog is available at `http://127.0.0.1:4173/?view=components`. Standard Trainer must exist at `../standard-trainer-demo` unless `TRAINER_REPO` points elsewhere.
+
+## Governed external learning components
+
+`config/external-learning-components/registry.json` records provider identity, integration mode, curriculum alignment, license, commercial-use status, privacy decision, Evidence behavior and launch status. The first launchable entries are three ChemCollective activities approved only for the current non-commercial public-showcase scope. PhET, Desmos, GeoGebra and unreviewed H5P packages remain visible but unavailable until the specific deployment and integration rights are approved.
+
+Opening an external resource creates only a local `SHOWCASE_EXTERNAL_LAUNCH` record with `outcomeEligible: false`. It does not prove completion or learning.
 
 ## Governed 9701 corpus
 
@@ -84,6 +91,7 @@ The case-level runtime parity harness consumes those role-separated records, reu
 - [Runtime shadow foundation acceptance](docs/RUNTIME_SHADOW_FOUNDATION_ACCEPTANCE.md)
 - [Runtime parity acceptance](docs/RUNTIME_PARITY_ACCEPTANCE.md)
 - [Runtime candidate readiness](docs/RUNTIME_CANDIDATE_READINESS.md)
+- [External learning components](docs/EXTERNAL_LEARNING_COMPONENTS.md)
 - [Data-origin policy](docs/DATA_ORIGIN_POLICY.md)
 - [Terminology](docs/TERMINOLOGY.md)
 - [Capability Registry](docs/CAPABILITY_REGISTRY.md)
