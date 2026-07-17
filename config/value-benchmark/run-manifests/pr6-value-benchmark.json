@@ -1,9 +1,9 @@
 {
-  "schemaVersion": "1.0.0",
+  "schemaVersion": "1.1.0",
   "experimentId": "learning-foundry-value-benchmark",
   "experimentVersion": "1.0.0",
   "docsAuthority": "learning-foundry-docs@260747722e8040972deceed3290bce237676f225",
-  "implementationCommit": "78305759666cec99c26a1f9d759b2260af07a4d3",
+  "implementationCommit": "d78a6da37075de747370453d0e13ec4e08e4fbde",
   "runId": "foundry-value-benchmark-1.0.0-live-01",
   "encoding": {
     "charset": "UTF-8",
@@ -1001,6 +1001,320 @@
       }
     ]
   },
+  "executableSnapshot": {
+    "schemaVersion": "1.0.0",
+    "entrypoints": [
+      "scripts/agent-gateway-server.ts",
+      "scripts/value-benchmark-manifest.ts",
+      "scripts/value-benchmark-review.ts",
+      "scripts/value-benchmark.ts"
+    ],
+    "supportFiles": [
+      "package-lock.json",
+      "package.json",
+      "tsconfig.app.json",
+      "tsconfig.json",
+      "tsconfig.node.json"
+    ],
+    "files": [
+      {
+        "path": "config/capabilities/registry.json",
+        "bytes": 1471,
+        "sha256": "baab6326120bd5719db256737822840dffadb2e126d5bf802ea8915e6eb21b4c"
+      },
+      {
+        "path": "package-lock.json",
+        "bytes": 174495,
+        "sha256": "6601275327663e4b7a5c17ac59f951f3b2837e0b04b7fa1f3fa50f45d294b287"
+      },
+      {
+        "path": "package.json",
+        "bytes": 3451,
+        "sha256": "acbf0c6183e3d0a0bc3d04e42f324d16d21c4952e5d36a2a4c5320ab5ab546d7"
+      },
+      {
+        "path": "scripts/agent-gateway-server.ts",
+        "bytes": 11050,
+        "sha256": "9c632b6f636e75def4e9deda6a5b6f0271300da224a7b1f4963ee7130cb622a5"
+      },
+      {
+        "path": "scripts/lib/agent-trace-repository.ts",
+        "bytes": 7478,
+        "sha256": "e19fa1d381cde8b6d4e8c238be2a41e565452571f6b58ee475fb561d0a3b6cbc"
+      },
+      {
+        "path": "scripts/lib/corpus-repository.ts",
+        "bytes": 10874,
+        "sha256": "1f5e21a6f22f5551276c97ef2f3269b540260a231c9ada06031535b07693216b"
+      },
+      {
+        "path": "scripts/lib/runtime-execution-recorder.ts",
+        "bytes": 6980,
+        "sha256": "03dfe971fdea1888c1c11ae0e99737776344ae9f0d01ed3b822ced14422281b7"
+      },
+      {
+        "path": "scripts/value-benchmark-manifest.ts",
+        "bytes": 6076,
+        "sha256": "1e0d97e5fd105bdc55bf0d40c5a59a8a5a974d5fd95f75cc95cc9d0708ce1f64"
+      },
+      {
+        "path": "scripts/value-benchmark-review.ts",
+        "bytes": 3547,
+        "sha256": "3370c1d010044b2e66753c8e7dcb9090e616905df785a49d771cfe963c495d80"
+      },
+      {
+        "path": "scripts/value-benchmark.ts",
+        "bytes": 9848,
+        "sha256": "6b2f4278a298296f5f1789bf062f269a0fef61bf0c47bbca662af3f34254986f"
+      },
+      {
+        "path": "src/agent/agenteval-suite.ts",
+        "bytes": 10394,
+        "sha256": "d128ec27e18ebd59d85aa7b51028800f07767b92c97f64e2a1fdcb6342fbcb5d"
+      },
+      {
+        "path": "src/agent/agenteval-target.ts",
+        "bytes": 3619,
+        "sha256": "f605e4dd9aff5c771df8808484165bfa0425f30d2ebc5c09eea0db8735d89c35"
+      },
+      {
+        "path": "src/agent/agenteval.ts",
+        "bytes": 8789,
+        "sha256": "df9b20e09be8adeaa15a37827619ce18cd2ce2ce4a3248367653eadf1b4226f4"
+      },
+      {
+        "path": "src/agent/control-plane/context-compiler.ts",
+        "bytes": 2085,
+        "sha256": "4289a198a0f5e68525e40abdea9d93a848e72272d0e9dcde8dc488642df5af27"
+      },
+      {
+        "path": "src/agent/control-plane/diagnosis-workflow.ts",
+        "bytes": 3397,
+        "sha256": "dd16fcc0da9e906e6d7e82d54ae3fe6a3a8adbcf7ff99d7d04e41e742a9fce8e"
+      },
+      {
+        "path": "src/agent/control-plane/evidence-sufficiency.ts",
+        "bytes": 4984,
+        "sha256": "8beb3084a4afb9d72c34c8fb371ce050886a6e64afc0eb00a35783ffef074dd3"
+      },
+      {
+        "path": "src/agent/control-plane/execution-plan.ts",
+        "bytes": 3094,
+        "sha256": "e3cd83f586817f7ea30330408b0fbedf8c0afafbaac546874f5ead3a27409239"
+      },
+      {
+        "path": "src/agent/control-plane/execution-planner.ts",
+        "bytes": 5414,
+        "sha256": "2b69be18f6f88bf46856ab5fc23b1c4b4f67cf768d5ddd7f171e0c7a51de5022"
+      },
+      {
+        "path": "src/agent/control-plane/observability.ts",
+        "bytes": 1319,
+        "sha256": "0c4a6d5efe9426a3a59c9b01e2db96c29e25e5e7cf49d6120f7b7f38fdb7633b"
+      },
+      {
+        "path": "src/agent/control-plane/tool-execution-governor.ts",
+        "bytes": 4964,
+        "sha256": "5bea4ef0486728046bd7bc4f29564e84aa7a748e6fe416e662e94e70b8a46258"
+      },
+      {
+        "path": "src/agent/deepseek-client.ts",
+        "bytes": 3154,
+        "sha256": "460f15c68ca4ef7b931f5099f8198a7c6c4d3c7ca4898737da165f59e073f6da"
+      },
+      {
+        "path": "src/agent/gateway.ts",
+        "bytes": 7029,
+        "sha256": "550c25d8d8ba5b8d5d9fff6d700bd525dff24f137dc104a20f841f6448157fd0"
+      },
+      {
+        "path": "src/agent/problem-context-provenance.ts",
+        "bytes": 3651,
+        "sha256": "2ec6027fc5c8c42ff133679ba72ee9c6d29463137dbc5521cae3f1fc305d828b"
+      },
+      {
+        "path": "src/agent/route-policy.ts",
+        "bytes": 11375,
+        "sha256": "a8d69be3610682396bce677c7e18ad558603b77de772b2a4db171d4bff51f351"
+      },
+      {
+        "path": "src/agent/run-agent.ts",
+        "bytes": 23409,
+        "sha256": "27cb7260c5248ba35eb521efb7d23e7b70b4ab428739dcb49751fbbb8fd3bf44"
+      },
+      {
+        "path": "src/agent/tool-executor.ts",
+        "bytes": 16013,
+        "sha256": "13eab8acc7329b5fc95004bd447bdcbf4883ac7c3640b1b81b45cb6e1ab5d371"
+      },
+      {
+        "path": "src/agent/trace-store.ts",
+        "bytes": 3837,
+        "sha256": "261a3bc3d55ea3379cf9b872815cbfe332224bf85a39a641dd1beca8ee2f07b2"
+      },
+      {
+        "path": "src/agent/types.ts",
+        "bytes": 3883,
+        "sha256": "f14cde3765b494842aa30c08e6ce54c863479a4fdef927d548a0533f43445a67"
+      },
+      {
+        "path": "src/components/kp-from-equilibrium-moles.ts",
+        "bytes": 5956,
+        "sha256": "ab06878ae4b28e7e05d0ddc902a96ad70087bb13afd5d1cdfd2ad098a11e96f1"
+      },
+      {
+        "path": "src/components/shared.ts",
+        "bytes": 930,
+        "sha256": "9ec021a8e9860051b26cae9f4242bbe1e015952bb65cdfb92043a14f1bcaa15e"
+      },
+      {
+        "path": "src/components/stoichiometric-product-mass.ts",
+        "bytes": 5330,
+        "sha256": "ec48fec3952cc1dbff4b03637b1eb4d37069c1261f10c96d98bf0b612ee74ac0"
+      },
+      {
+        "path": "src/contracts/diagnostic-component.ts",
+        "bytes": 5350,
+        "sha256": "6d772b46de9cffdd61f3cf05e87c64095e404349c62875230a535ee9f546f01a"
+      },
+      {
+        "path": "src/contracts/expression-ast.ts",
+        "bytes": 1403,
+        "sha256": "611ee106f2fb19fbe929eece0cc824f4cd5afaf731b298ca7a05cb1e2900775c"
+      },
+      {
+        "path": "src/contracts/published-component.ts",
+        "bytes": 6480,
+        "sha256": "0dbcbc2725d9f0638422091a0771b809f9cb9593b80126919c2920171f2c8c5c"
+      },
+      {
+        "path": "src/contracts/schema-version.ts",
+        "bytes": 59,
+        "sha256": "8330e76071b812d0b7f4dd03808f4351ea3be0f871a75ee8d4226eb65317336d"
+      },
+      {
+        "path": "src/core/application/reference-pack-registry.ts",
+        "bytes": 3348,
+        "sha256": "02ef01f83bbc530f1f46dc188a5dbd74e08085e5a475ee719243dd3d620bf0f6"
+      },
+      {
+        "path": "src/core/domain/capability.ts",
+        "bytes": 550,
+        "sha256": "0205bbe83614af88bc105c2331a3a1f6d39ec279375f2d6b79585a1aad0204e6"
+      },
+      {
+        "path": "src/core/domain/component.ts",
+        "bytes": 379,
+        "sha256": "7d4f4dbfda579bc6e47c879c554a6b46d11c440f55ccd1bc3a09fb87fb30c167"
+      },
+      {
+        "path": "src/core/domain/reference-pack.ts",
+        "bytes": 1307,
+        "sha256": "6a53e2a932ae60bdd90b0fc885605df60c0d435aec201bfa446b8fada14a9359"
+      },
+      {
+        "path": "src/core/ports/learning-capability-runtime.ts",
+        "bytes": 564,
+        "sha256": "984d9a3efa315b01e6f4383bfa77fdfe01c4ba99f5d0ed5ec72a88bd21142bad"
+      },
+      {
+        "path": "src/corpus/delivery-policy.ts",
+        "bytes": 6302,
+        "sha256": "16037e3301eb83ac473ad34efa69696c53afabbe764b589b6ffde5de0ece1463"
+      },
+      {
+        "path": "src/corpus/types.ts",
+        "bytes": 3049,
+        "sha256": "f7fcf282b9bdb2755a956d3cb35bcb4c5eb7dbbdcd9908e0d8a3b3abd439482f"
+      },
+      {
+        "path": "src/governance/content-hash.ts",
+        "bytes": 1332,
+        "sha256": "8b341715975e8b6f921ba422835368fabcef8a8ae57a2feb44dcce78ee12fe6c"
+      },
+      {
+        "path": "src/governance/publishing.ts",
+        "bytes": 1531,
+        "sha256": "209cd510e8335dc5a923c897f61c2a4fc9a7e52c0b514e648a7bba80c1f5e590"
+      },
+      {
+        "path": "src/reference-packs/chemistry-caie-9701/adapters/diagnostic-component-adapter.ts",
+        "bytes": 847,
+        "sha256": "8f9e2aa9efdb64c217be20278a7ba9eea411006ae99c570d7e0c5479ae0493a6"
+      },
+      {
+        "path": "src/reference-packs/chemistry-caie-9701/adapters/legacy-capability-adapter.ts",
+        "bytes": 1026,
+        "sha256": "a2daa6e96cc8ea73871015f6d9b8e5e28e6ba39147f3399da27a11624c6caab2"
+      },
+      {
+        "path": "src/reference-packs/chemistry-caie-9701/components.ts",
+        "bytes": 504,
+        "sha256": "c92fdc565df3892db2119a110554a964efd4cab88c1e48541648a2feb9be41f3"
+      },
+      {
+        "path": "src/reference-packs/chemistry-caie-9701/index.ts",
+        "bytes": 3762,
+        "sha256": "91e4806d0273485df2c0ca3f8a5dfd747f00fcf2ffbee2979f6413988bf7bd4e"
+      },
+      {
+        "path": "src/reference-packs/registry.ts",
+        "bytes": 1484,
+        "sha256": "ca09a6001093ee3f5b3cb2b9a112d47f15cecc87c4b585f3668d55a88a1401b5"
+      },
+      {
+        "path": "src/runtime/learning-capability-runtime.ts",
+        "bytes": 4946,
+        "sha256": "5929b2a97822023e884c980f8bc3366d383d1d1c46468ebf12c2dff8b637576f"
+      },
+      {
+        "path": "src/runtime/runtime-shadow.ts",
+        "bytes": 14685,
+        "sha256": "1dc679df7c27a4e3dae5012fb445343f10b4ffe3679c6d6187c9338c78f3c50d"
+      },
+      {
+        "path": "src/value-benchmark/executors.ts",
+        "bytes": 10009,
+        "sha256": "e0545362182d93a0af1432e876cfc65a13ad2762bca0eadba8fbe0f5e557bcae"
+      },
+      {
+        "path": "src/value-benchmark/experiment-manifest.ts",
+        "bytes": 17213,
+        "sha256": "f39ed3506d51333810a24b655f2fe57cc78d079126d55122a4d30042135cb92c"
+      },
+      {
+        "path": "src/value-benchmark/file-repository.ts",
+        "bytes": 11884,
+        "sha256": "517362530abc94f2487658385e1696f70dd1f0e90f28034a594d00aa8fa0c9f3"
+      },
+      {
+        "path": "src/value-benchmark/index.ts",
+        "bytes": 41137,
+        "sha256": "be2813a9de5aa31cf499cd4b92875c27f95ca68afeaaf9a3e8040cd2af134c43"
+      },
+      {
+        "path": "src/value-benchmark/preparation.ts",
+        "bytes": 2536,
+        "sha256": "abdc333e9ed1d91362fab5061a55693e81083d9a2724032acd529b3c3b8828b2"
+      },
+      {
+        "path": "tsconfig.app.json",
+        "bytes": 586,
+        "sha256": "b3f74e6abb2193a4e716fa6c7254e20b38bc52bffcd72cd2c7987b87539daebc"
+      },
+      {
+        "path": "tsconfig.json",
+        "bytes": 120,
+        "sha256": "c3c1a5af0c9ed5727b295bd39076550c6a48a7a7d8a79eb29adc4e6c370830f0"
+      },
+      {
+        "path": "tsconfig.node.json",
+        "bytes": 346,
+        "sha256": "f21c00f9a7b7665ec7ba6e34bc2a432067b8bafdbc8a916db59666dade515ae1"
+      }
+    ],
+    "closureSha256": "5a1556a6423cbbf242200186720a390e791aa928a07ecebf28bb21bb92831a0d"
+  },
   "policySnapshots": {
     "agentInstructions": "config/agent/instructions.md@sha256:b074582b43912167c666922a885f3b1e7665da51da9d6d98f8ff8f922f3dbc2b",
     "responsePolicy": "config/agent/response-policy.json@sha256:a890bcde7615042bc73cd128264916a5781678b48d512e7ef9ad1ef932adee9b",
@@ -1010,21 +1324,6 @@
     "routePolicy": "src/agent/route-policy.ts@sha256:a8d69be3610682396bce677c7e18ad558603b77de772b2a4db171d4bff51f351",
     "pricing": "agent-eval/pricing.json@sha256:d575ad5abcbee3726abdc8c95e5b8c4e20771ca882fe066ee623b446a3b58837",
     "agentEvalCases": "agent-eval/cases.jsonl@sha256:0c421e183ee35a968931c2e4ff6ef291005d9000dcc821b26d0a8e422bc157fb",
-    "benchmarkRunner": "scripts/value-benchmark.ts@sha256:8bbcd3d13c3b00682412842cee7812ece042104f714bdc630e1a6eb282915290",
-    "benchmarkReviewRunner": "scripts/value-benchmark-review.ts@sha256:e6fff2becfcbda6abc0be406dd74288968c40d990555bdae4c7912427fe8917e",
-    "benchmarkManifestGenerator": "scripts/value-benchmark-manifest.ts@sha256:466ac88bd893751f40390c55896b0a298f1a3c76f9f7787e5f36bc5dbff000f0",
-    "benchmarkCore": "src/value-benchmark/index.ts@sha256:782c2401caf37b4e88f4c19ba16fab51a820dbc81bc23b21e22da5745d0f6b18",
-    "benchmarkExecutors": "src/value-benchmark/executors.ts@sha256:211ddf00bc6cb0fe9a85d2ee528acc962c3d2c75ca508e55503bb7090da9da66",
-    "benchmarkRepository": "src/value-benchmark/file-repository.ts@sha256:7d83c1effdd73261fd2de3f6ed2e472c6ad21c4fe318ec6bcbdd11a0dbd3ab77",
-    "benchmarkManifestVerifier": "src/value-benchmark/experiment-manifest.ts@sha256:b63e9d3100b0146b86e08157f32e31e361bec98ee60e17d199a92b4e8d35b820",
-    "benchmarkPreparation": "src/value-benchmark/preparation.ts@sha256:53079677cc891fbea6f87a575e98e5bb47f7686ef0c6c9db1501909ffdcd99f6",
-    "gatewayServer": "scripts/agent-gateway-server.ts@sha256:40f3986d37965aec95e045ffc69cb68366a3aaa13ccda7b76fe6fdc4ece54d9b",
-    "gateway": "src/agent/gateway.ts@sha256:5984f759d286562b0446111f15717e1cd289d1361e9c85dbfc7dbed7600240b0",
-    "agentLoop": "src/agent/run-agent.ts@sha256:27cb7260c5248ba35eb521efb7d23e7b70b4ab428739dcb49751fbbb8fd3bf44",
-    "deepSeekClient": "src/agent/deepseek-client.ts@sha256:460f15c68ca4ef7b931f5099f8198a7c6c4d3c7ca4898737da165f59e073f6da",
-    "runtimeCoordinator": "src/runtime/runtime-shadow.ts@sha256:1dc679df7c27a4e3dae5012fb445343f10b4ffe3679c6d6187c9338c78f3c50d",
-    "toolExecutor": "src/agent/tool-executor.ts@sha256:13eab8acc7329b5fc95004bd447bdcbf4883ac7c3640b1b81b45cb6e1ab5d371",
-    "corpusRepository": "scripts/lib/corpus-repository.ts@sha256:1f5e21a6f22f5551276c97ef2f3269b540260a231c9ada06031535b07693216b",
     "runtimeToolDefinitionsSemantic": "sha256:f8dfe73a2d97edcb3e6b7973f6979e7d61200a0e43966c5f82e9d8301e48a548",
     "runtimeCapabilityRegistrySemantic": "sha256:55bb4f02560d032a5301093ffca4c1872a9a547d38a0571e6507484883b5e08d",
     "governedCorpusIndex": "NOT_AVAILABLE_NO_LIVE_RUN",
@@ -1045,6 +1344,7 @@
     ],
     "requiredEnvironmentGates": [
       "DEEPSEEK_API_KEY",
+      "TRAINER_DIAGNOSIS_URL",
       "AGENT_GATEWAY_HEALTH_MATCH",
       "GOVERNED_CORPUS_READY",
       "AGENT_EVAL_DELIVERY_AUTHORIZED",
