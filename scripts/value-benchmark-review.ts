@@ -47,4 +47,3 @@ if (command === "prepare-blind") {
 } else {
   throw new Error("BENCHMARK_REVIEW_COMMAND_REQUIRED: prepare-blind | append-reviews | lock-pedagogy | prepare-evidence | lock-evidence | report | reveal-mapping");
 }
-

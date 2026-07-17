@@ -84,12 +84,14 @@ function snapshot(runId = "benchmark-run-1"): BenchmarkRunSnapshot {
   };
 }
 
-function executors(options: { infrastructureFailure?: string; modelFailure?: string } = {}): Readonly<Record<(typeof BENCHMARK_ARMS)[number], BenchmarkArmExecutor>> {
+function executors(options: { infrastructureFailure?: string; modelFailure?: string; nestedTransportFailure?: string; localServiceFailure?: string } = {}): Readonly<Record<(typeof BENCHMARK_ARMS)[number], BenchmarkArmExecutor>> {
   const result = {} as Record<(typeof BENCHMARK_ARMS)[number], BenchmarkArmExecutor>;
   for (const arm of BENCHMARK_ARMS) result[arm] = {
     execute: async ({ execution }) => {
       if (execution.executionId === options.infrastructureFailure) throw Object.assign(new Error("provider unavailable"), { code: "DEEPSEEK_API_ERROR", httpStatus: 503 });
       if (execution.executionId === options.modelFailure) throw Object.assign(new Error("invalid structured answer"), { code: "MODEL_RESPONSE_INVALID" });
+      if (execution.executionId === options.nestedTransportFailure) throw new TypeError("fetch failed", { cause: Object.assign(new Error("connection refused"), { code: "ECONNREFUSED" }) });
+      if (execution.executionId === options.localServiceFailure) throw Object.assign(new Error("required Trainer unavailable"), { code: "REQUIRED_LOCAL_SERVICE_UNAVAILABLE" });
       return {
         answer: `Answer for ${execution.caseId}`,
         sourceRefs: arm === "C_FULL_FOUNDRY" ? ["source-1"] : [],
@@ -151,6 +153,20 @@ describe("Foundry Value Benchmark", () => {
     expect(replacement).toMatchObject({ attemptKind: "INFRASTRUCTURE_REPLACEMENT", replacementFor: failedExecutionId, status: "COMPLETED" });
     expect(new Set((await repository.listExecutions(run.runId)).map((item) => item.conversationId)).size).toBe(73);
     await expect(executeBenchmarkInfrastructureReplacement({ runId: run.runId, failedExecutionId, cases, repository, executors: executors() })).rejects.toThrow("BENCHMARK_REPLACEMENT_ALREADY_EXISTS");
+  });
+
+  it("classifies nested transport causes and the exact required-local-service code as infrastructure failures", async () => {
+    const repository = new MemoryRepository();
+    const run = snapshot("infrastructure-code-run");
+    const plan = buildBenchmarkExecutionPlan(run.runId, cases, run.scheduleSeed);
+    const nestedTransportFailure = plan[0]!.executionId;
+    const localServiceFailure = plan[1]!.executionId;
+
+    await executeBenchmarkFirstAttempts({ run, cases, repository, executors: executors({ nestedTransportFailure, localServiceFailure }) });
+
+    const records = await repository.listExecutions(run.runId);
+    expect(records.find((item) => item.executionId === nestedTransportFailure)).toMatchObject({ status: "INFRASTRUCTURE_FAILURE", terminalError: { code: "ECONNREFUSED" } });
+    expect(records.find((item) => item.executionId === localServiceFailure)).toMatchObject({ status: "INFRASTRUCTURE_FAILURE", terminalError: { code: "REQUIRED_LOCAL_SERVICE_UNAVAILABLE" } });
   });
 
   it("never retries a persisted start whose terminal outcome is unknown", async () => {
@@ -247,6 +263,26 @@ describe("Foundry Value Benchmark", () => {
     expect(report.summary).toHaveProperty("answerQuality");
     expect(report.summary).toHaveProperty("productValue");
 
+    const armByBlindId = new Map(preparation.sealedMapping.entries.map(({ blindId, executionId }) => [blindId, records.find((record) => record.executionId === executionId)!.arm]));
+    const tiedPedagogyReviews: BenchmarkReview[] = preparation.packet.map((item) => {
+      const arm = armByBlindId.get(item.blindId)!;
+      const value = arm === "C_FULL_FOUNDRY" ? 1 : 5;
+      return { schemaVersion: "1.0.0", phase: "BLIND_PEDAGOGY", blindId: item.blindId, reviewerId: "tie-reviewer", reviewedAt: "2026-07-17T04:10:00.000Z", scores: { correctness: value, clarity: value, pedagogy: value, contextFidelity: value }, reason: `${arm} pedagogy reason.` };
+    });
+    const tiedPedagogyLock = createBlindPedagogyReviewLock(preparation, tiedPedagogyReviews, "2026-07-17T04:20:00.000Z");
+    const tiedEvidencePacket = createEvidenceAuditPacket({ cases, records, preparation, pedagogyReviews: tiedPedagogyReviews, pedagogyLock: tiedPedagogyLock });
+    const tiedEvidenceReviews: BenchmarkReview[] = tiedEvidencePacket.map((item) => {
+      const arm = armByBlindId.get(item.blindId)!;
+      const value = arm === "C_FULL_FOUNDRY" ? 1 : 5;
+      return { schemaVersion: "1.0.0", phase: "EVIDENCE_AUDIT", blindId: item.blindId, reviewerId: "tie-reviewer", reviewedAt: "2026-07-17T04:30:00.000Z", scores: { grounding: value, authority: value, provenance: value, integrity: value }, reason: `${arm} evidence reason.` };
+    });
+    const tiedEvidenceLock = createEvidenceAuditReviewLock({ evidencePacket: tiedEvidencePacket, evidenceReviews: tiedEvidenceReviews, preparation, pedagogyLock: tiedPedagogyLock, lockedAt: "2026-07-17T04:40:00.000Z" });
+    const tiedReport = createValueBenchmarkReport({ run, cases, records, preparation, evidencePacket: tiedEvidencePacket, pedagogyReviews: tiedPedagogyReviews, evidenceReviews: tiedEvidenceReviews, pedagogyLock: tiedPedagogyLock, evidenceLock: tiedEvidenceLock, generatedAt: "2026-07-17T04:50:00.000Z" });
+    expect(tiedReport.cases[0]).toMatchObject({ productValueWinner: "TIE", winner: "TIE" });
+    expect(tiedReport.cases[0]!.winnerReason).toContain("A_BARE_LLM");
+    expect(tiedReport.cases[0]!.winnerReason).toContain("B_FOUNDRY_POLICY_NO_TOOLS");
+    expect(tiedReport.cases[0]!.winnerReason).not.toContain("C_FULL_FOUNDRY");
+
     const changedReviews = [...pedagogyReviews.slice(0, -1), { ...pedagogyReviews.at(-1)!, reason: "Changed after lock." }];
     expect(() => createValueBenchmarkReport({ run, cases, records, preparation, evidencePacket, pedagogyReviews: changedReviews, evidenceReviews, pedagogyLock, evidenceLock, generatedAt: "2026-07-17T04:00:00.000Z" })).toThrow("BENCHMARK_REVIEW_LOCK_MISMATCH");
   });
@@ -263,9 +299,12 @@ describe("Foundry Value Benchmark", () => {
     expect(reviewerPacket).toEqual(preparation.packet);
     expect(JSON.stringify(reviewerPacket)).not.toContain("executionId");
     await expect(custody.revealArmMapping()).rejects.toThrow();
+    const prematureEvidenceReview: BenchmarkReview = { schemaVersion: "1.0.0", phase: "EVIDENCE_AUDIT", blindId: reviewerPacket[0]!.blindId, reviewerId: "reviewer-e", reviewedAt: "2026-07-17T00:30:00.000Z", scores: { grounding: 4, authority: 4, provenance: 4, integrity: 4 }, reason: "Must not precede the pedagogy lock and Evidence packet." };
+    await expect(custody.appendReview(prematureEvidenceReview)).rejects.toThrow("BENCHMARK_EVIDENCE_PHASE_NOT_READY");
     for (const item of reviewerPacket) await custody.appendReview({ schemaVersion: "1.0.0", phase: "BLIND_PEDAGOGY", blindId: item.blindId, reviewerId: "reviewer-p", reviewedAt: "2026-07-17T01:00:00.000Z", scores: { correctness: 4, clarity: 4, pedagogy: 4, contextFidelity: 4 }, reason: "Locked pedagogy decision." });
     await custody.lockPedagogy("2026-07-17T02:00:00.000Z");
     await expect(custody.appendReview({ schemaVersion: "1.0.0", phase: "BLIND_PEDAGOGY", blindId: reviewerPacket[0]!.blindId, reviewerId: "late", reviewedAt: "2026-07-17T02:01:00.000Z", scores: { correctness: 5, clarity: 5, pedagogy: 5, contextFidelity: 5 }, reason: "Late rewrite." })).rejects.toThrow("BENCHMARK_REVIEW_PHASE_LOCKED");
+    await expect(custody.appendReview(prematureEvidenceReview)).rejects.toThrow("BENCHMARK_EVIDENCE_PHASE_NOT_READY");
     const evidencePacket = await custody.createAndStoreEvidencePacket(cases, records);
     for (const item of evidencePacket) await custody.appendReview({ schemaVersion: "1.0.0", phase: "EVIDENCE_AUDIT", blindId: item.blindId, reviewerId: "reviewer-e", reviewedAt: "2026-07-17T03:00:00.000Z", scores: { grounding: 4, authority: 4, provenance: 4, integrity: 4 }, reason: "Locked evidence decision." });
     await custody.lockEvidence("2026-07-17T04:00:00.000Z");

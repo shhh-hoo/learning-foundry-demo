@@ -106,10 +106,15 @@ provider seed. A live benchmark cannot claim full fixed-seed conformance until
 that contract disposition is explicitly accepted.
 
 The live preflight also binds Arm C to the committed prompt, response policy,
-tool, capability, delivery-policy, gateway and runtime hashes. Gateway health
-must prove the configured origin, JSON mode, token limit, Legacy authority,
-governed corpus version and delivery authorization. The Trainer health check
-must pass. Environment booleans alone are not readiness Evidence.
+tool, capability and delivery-policy hashes plus a deterministic transitive
+source closure rooted at the benchmark, review, manifest and gateway
+entrypoints. The closure also binds the dependency lock and TypeScript runtime
+configuration. Gateway health must prove the configured origin, JSON mode,
+token limit, Legacy authority, governed corpus version and delivery
+authorization. The gateway itself probes the configured Trainer and reports
+its exact diagnosis-endpoint hash and service identity; the runner requires
+those values to match its frozen live configuration. Environment booleans
+alone are not readiness Evidence.
 
 ## Scheduling and attempt integrity
 
@@ -149,9 +154,10 @@ the original and transformed answer hashes are retained.
 Review custody is persisted under the ignored, restricted local result store.
 The blind packet and sealed arm mapping are separate files. Reviewer decisions
 are append-only, phase locks are exclusive-create artifacts, late decisions are
-rejected, and the mapping reveal command remains unavailable until both locks
-exist. The full report is local; its publication projection contains metrics,
-hashes and case IDs only.
+rejected, Evidence decisions are rejected until the pedagogy lock and Evidence
+packet both exist, and the mapping reveal command remains unavailable until
+both locks exist. The full report is local; its publication projection contains
+metrics, hashes and case IDs only.
 
 Each dimension uses the frozen 1–5 anchors in
 `config/value-benchmark/experiment.json`. Reports preserve all eight raw scores

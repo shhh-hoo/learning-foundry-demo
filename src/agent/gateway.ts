@@ -27,6 +27,7 @@ interface GatewayOptions {
   readonly thinkingMode: "enabled" | "disabled";
   readonly execution?: AgentExecution;
   readonly healthDetails?: Readonly<Record<string, unknown>>;
+  readonly healthDetailsProvider?: () => Promise<Readonly<Record<string, unknown>>>;
   readonly repository?: { get(traceId: string): Promise<unknown | null>; query(query: { readonly conversationId?: string; readonly status?: "RUNNING" | "COMPLETED" | "FAILED"; readonly inputOrigin?: "USER_INPUT" | "PRESET_INPUT"; readonly runPurpose?: "PRODUCT" | "AGENT_EVAL"; readonly startedFrom?: string; readonly startedTo?: string }): Promise<readonly unknown[]>; clear?(runPurpose?: "PRODUCT" | "AGENT_EVAL"): Promise<void> };
 }
 
@@ -59,7 +60,10 @@ export function createAgentGateway(options: GatewayOptions) {
     async handle(request: Request): Promise<Response> {
       const url = new URL(request.url);
       if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders });
-      if (request.method === "GET" && url.pathname === "/health") return json(200, { configured: options.configured, provider: "deepseek", model: options.model, thinkingMode: options.thinkingMode, ...options.healthDetails });
+      if (request.method === "GET" && url.pathname === "/health") {
+        const liveHealthDetails = await options.healthDetailsProvider?.();
+        return json(200, { configured: options.configured, provider: "deepseek", model: options.model, thinkingMode: options.thinkingMode, ...options.healthDetails, ...liveHealthDetails });
+      }
       if (request.method === "GET" && url.pathname.startsWith("/agent/runs/")) {
         const traceId = decodeURIComponent(url.pathname.slice("/agent/runs/".length));
         const trace = options.repository ? await options.repository.get(traceId) : traces.get(traceId);

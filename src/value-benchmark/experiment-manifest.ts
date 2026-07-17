@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { readFile, readdir, stat } from "node:fs/promises";
+import { dirname, extname, isAbsolute, relative, resolve, sep } from "node:path";
+import { init, parse } from "es-module-lexer";
 import { buildBenchmarkExecutionPlan, validateBenchmarkCases, type BenchmarkCase } from "./index";
 import { createBenchmarkCaseComposition } from "./preparation";
 
@@ -11,6 +12,27 @@ export interface FrozenAssetDescriptor {
   readonly lines?: number;
   readonly lineSha256?: readonly string[];
 }
+
+export interface ExecutableSourceFileDescriptor {
+  readonly path: string;
+  readonly bytes: number;
+  readonly sha256: string;
+}
+
+export interface ExecutableSourceSnapshot {
+  readonly schemaVersion: "1.0.0";
+  readonly entrypoints: readonly string[];
+  readonly supportFiles: readonly string[];
+  readonly files: readonly ExecutableSourceFileDescriptor[];
+  readonly closureSha256: string;
+}
+
+export const VALUE_BENCHMARK_EXECUTABLE_ENTRYPOINTS = [
+  "scripts/agent-gateway-server.ts",
+  "scripts/value-benchmark-manifest.ts",
+  "scripts/value-benchmark-review.ts",
+  "scripts/value-benchmark.ts",
+] as const;
 
 export interface ValueBenchmarkExperimentManifest {
   readonly schemaVersion: "1.0.0";
@@ -46,6 +68,7 @@ export interface ValueBenchmarkExperimentManifest {
       readonly authoritativeSystemPromptHash: string;
     }[];
   };
+  readonly executableSnapshot: ExecutableSourceSnapshot;
   readonly policySnapshots: Readonly<Record<string, string>>;
   readonly livePolicy: {
     readonly automaticRetry: false;
@@ -58,6 +81,95 @@ export interface ValueBenchmarkExperimentManifest {
 
 function sha256(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
+}
+
+function normalizedRepositoryPath(root: string, path: string): string {
+  const absoluteRoot = resolve(root);
+  const absolutePath = resolve(absoluteRoot, path);
+  const repositoryRelative = relative(absoluteRoot, absolutePath);
+  if (!repositoryRelative || repositoryRelative === ".." || repositoryRelative.startsWith(`..${sep}`) || isAbsolute(repositoryRelative)) {
+    throw new Error(`BENCHMARK_EXECUTABLE_PATH_OUTSIDE_ROOT: ${path}`);
+  }
+  return repositoryRelative.split(sep).join("/");
+}
+
+async function isFile(path: string): Promise<boolean> {
+  try {
+    return (await stat(path)).isFile();
+  } catch {
+    return false;
+  }
+}
+
+const SOURCE_EXTENSIONS = [".ts", ".tsx", ".mts", ".cts", ".js", ".jsx", ".mjs", ".cjs", ".json"] as const;
+
+async function resolveLocalModule(root: string, importer: string, specifier: string): Promise<string> {
+  const base = resolve(root, dirname(importer), specifier);
+  const extension = extname(base);
+  const candidates = extension
+    ? [
+      base,
+      ...extension === ".js" ? [base.slice(0, -3) + ".ts", base.slice(0, -3) + ".tsx"] : [],
+      ...extension === ".mjs" ? [base.slice(0, -4) + ".mts"] : [],
+      ...extension === ".cjs" ? [base.slice(0, -4) + ".cts"] : [],
+    ]
+    : [base, ...SOURCE_EXTENSIONS.map((candidateExtension) => `${base}${candidateExtension}`), ...SOURCE_EXTENSIONS.map((candidateExtension) => resolve(base, `index${candidateExtension}`))];
+  for (const candidate of candidates) {
+    const path = normalizedRepositoryPath(root, candidate);
+    if (await isFile(resolve(root, path))) return path;
+  }
+  throw new Error(`BENCHMARK_EXECUTABLE_IMPORT_UNRESOLVED: ${importer} -> ${specifier}`);
+}
+
+async function localModuleSpecifiers(path: string, source: string): Promise<readonly string[]> {
+  await init;
+  const [imports] = parse(source, path);
+  if (imports.some(({ d, n }) => d >= 0 && n === undefined)) throw new Error(`BENCHMARK_EXECUTABLE_DYNAMIC_IMPORT_NON_LITERAL: ${path}`);
+  return [...new Set(imports.flatMap(({ n }) => n?.startsWith(".") ? [n] : []))].sort();
+}
+
+function canonicalExecutableSnapshotHash(snapshot: Omit<ExecutableSourceSnapshot, "closureSha256">): string {
+  return sha256(new TextEncoder().encode(JSON.stringify(snapshot)));
+}
+
+/** Creates the exact deterministic local source closure for executable benchmark entrypoints. */
+export async function createExecutableSourceSnapshot(root: string, entrypoints: readonly string[], supportFiles: readonly string[]): Promise<ExecutableSourceSnapshot> {
+  const normalizedEntrypoints = [...new Set(entrypoints.map((path) => normalizedRepositoryPath(root, path)))].sort();
+  const normalizedSupportFiles = [...new Set(supportFiles.map((path) => normalizedRepositoryPath(root, path)))].sort();
+  const pending = [...normalizedEntrypoints];
+  const closure = new Set<string>();
+  while (pending.length > 0) {
+    const path = pending.shift()!;
+    if (closure.has(path)) continue;
+    const absolutePath = resolve(root, path);
+    if (!(await isFile(absolutePath))) throw new Error(`BENCHMARK_EXECUTABLE_FILE_MISSING: ${path}`);
+    closure.add(path);
+    if (extname(path) === ".json") continue;
+    const source = await readFile(absolutePath, "utf8");
+    const dependencies = await Promise.all((await localModuleSpecifiers(path, source)).map((specifier) => resolveLocalModule(root, path, specifier)));
+    for (const dependency of dependencies.sort()) if (!closure.has(dependency)) pending.push(dependency);
+    pending.sort();
+  }
+  for (const path of normalizedSupportFiles) {
+    if (!(await isFile(resolve(root, path)))) throw new Error(`BENCHMARK_EXECUTABLE_FILE_MISSING: ${path}`);
+    closure.add(path);
+  }
+  const files = await Promise.all([...closure].sort().map(async (path) => {
+    const bytes = await readFile(resolve(root, path));
+    return { path, bytes: bytes.byteLength, sha256: sha256(bytes) };
+  }));
+  const snapshot = { schemaVersion: "1.0.0" as const, entrypoints: normalizedEntrypoints, supportFiles: normalizedSupportFiles, files };
+  return { ...snapshot, closureSha256: canonicalExecutableSnapshotHash(snapshot) };
+}
+
+export async function createValueBenchmarkExecutableSourceSnapshot(root: string): Promise<ExecutableSourceSnapshot> {
+  const rootFiles = await readdir(root);
+  const supportFiles = ["package.json", "package-lock.json", ...rootFiles.filter((path) => /^tsconfig.*\.json$/u.test(path))];
+  return createExecutableSourceSnapshot(root, VALUE_BENCHMARK_EXECUTABLE_ENTRYPOINTS, supportFiles);
+}
+
+function assertExecutableSnapshot(expected: ExecutableSourceSnapshot, actual: ExecutableSourceSnapshot): void {
+  if (JSON.stringify(expected) !== JSON.stringify(actual)) throw new Error("BENCHMARK_EXECUTABLE_SNAPSHOT_MISMATCH");
 }
 
 export function fingerprintFrozenAsset(path: string, bytes: Uint8Array): FrozenAssetDescriptor {
@@ -96,6 +208,14 @@ export async function loadAndVerifyValueBenchmarkExperiment(root: string, manife
   const manifest = JSON.parse(new TextDecoder().decode(manifestBytes)) as ValueBenchmarkExperimentManifest;
   if (manifest.schemaVersion !== "1.0.0" || manifest.docsAuthority !== "learning-foundry-docs@260747722e8040972deceed3290bce237676f225") throw new Error("BENCHMARK_MANIFEST_AUTHORITY_INVALID");
   if (manifest.encoding.charset !== "UTF-8" || manifest.encoding.lineEnding !== "LF" || manifest.encoding.bom !== false || manifest.encoding.finalNewline !== true) throw new Error("BENCHMARK_MANIFEST_ENCODING_INVALID");
+  if (manifest.executableSnapshot?.schemaVersion !== "1.0.0" || !Array.isArray(manifest.executableSnapshot.entrypoints)
+    || !Array.isArray(manifest.executableSnapshot.supportFiles) || !Array.isArray(manifest.executableSnapshot.files)) {
+    throw new Error("BENCHMARK_EXECUTABLE_SNAPSHOT_INVALID");
+  }
+  const currentExecutableSnapshot = options.verifyRepositoryPolicy === false
+    ? await createExecutableSourceSnapshot(root, manifest.executableSnapshot.entrypoints, manifest.executableSnapshot.supportFiles)
+    : await createValueBenchmarkExecutableSourceSnapshot(root);
+  assertExecutableSnapshot(manifest.executableSnapshot, currentExecutableSnapshot);
   const caseBytes = await readFile(resolve(root, manifest.assets.cases.path));
   const criteriaBytes = await readFile(resolve(root, manifest.assets.reviewerCriteria.path));
   const promptBytes = await readFile(resolve(root, manifest.assets.prompts.path));
@@ -148,7 +268,13 @@ export async function verifyBenchmarkGitPreflight(options: {
   readonly manifestBytes: Uint8Array;
   readonly git: BenchmarkGitSnapshotReader;
 }): Promise<void> {
-  const paths = [options.manifestPath, options.manifest.assets.cases.path, options.manifest.assets.reviewerCriteria.path, options.manifest.assets.prompts.path];
+  const paths = [...new Set([
+    options.manifestPath,
+    options.manifest.assets.cases.path,
+    options.manifest.assets.reviewerCriteria.path,
+    options.manifest.assets.prompts.path,
+    ...options.manifest.executableSnapshot.files.map((item) => item.path),
+  ])].sort();
   await options.git.headCommit();
   if (!(await options.git.isAncestor(options.manifest.implementationCommit))) throw new Error("BENCHMARK_IMPLEMENTATION_COMMIT_MISMATCH");
   if ((await options.git.status(paths)).trim()) throw new Error("BENCHMARK_GOVERNED_ASSETS_DIRTY");

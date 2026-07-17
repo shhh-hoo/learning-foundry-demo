@@ -19,6 +19,12 @@ export interface AgentEvalTargetHealth {
   readonly agentEvalDeliveryAuthorized?: boolean;
   readonly authoritativeAdapterId?: string;
   readonly runtimeAuthority?: string;
+  readonly trainer?: {
+    readonly diagnosisEndpointHash: string;
+    readonly ready: boolean;
+    readonly service: string | null;
+    readonly governedCaseCount: number | null;
+  };
 }
 
 export type AgentEvalTargetResult =

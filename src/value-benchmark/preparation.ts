@@ -47,4 +47,3 @@ export function createBenchmarkCaseComposition(options: {
     },
   };
 }
-

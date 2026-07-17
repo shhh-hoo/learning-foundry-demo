@@ -98,6 +98,7 @@ function dataShape(value: unknown): unknown {
 const AUDIT_METADATA_KEYS = new Set([
   "retrievalTraceId", "sourceId", "sourceType", "sourceVersion", "distributionScope", "section", "page", "score",
   "contentHash", "provenanceId", "indexVersion", "deliveryPolicyVersion", "policyVersion", "capabilityId", "capabilityVersion", "traceId",
+  "chunkId", "syllabusCode", "syllabusVersion", "resultCount", "version",
 ]);
 
 function excerptFreeAuditMetadata(value: unknown): unknown {

@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { LegacyGatewayAgentEvalTarget } from "../src/agent/agenteval-target.ts";
+import { trainerDiagnosisEndpointHash } from "../src/runtime/learning-capability-runtime.ts";
 import { executeBenchmarkFirstAttempts, executeBenchmarkInfrastructureReplacement, type BenchmarkPricingSnapshot, type BenchmarkRunSnapshot } from "../src/value-benchmark/index.ts";
 import { createValueBenchmarkExecutors, type FrozenBenchmarkPrompts } from "../src/value-benchmark/executors.ts";
 import { loadAndVerifyValueBenchmarkExperiment, verifyBenchmarkGitPreflight, type BenchmarkGitSnapshotReader } from "../src/value-benchmark/experiment-manifest.ts";
@@ -55,6 +56,8 @@ for (const [name, expected] of Object.entries(requiredGates)) if (process.env[na
 const apiKey = process.env.DEEPSEEK_API_KEY?.trim();
 if (!apiKey) throw new Error("BENCHMARK_LIVE_GATE_UNSATISFIED: DEEPSEEK_API_KEY is required.");
 const gatewayUrl = process.env.AGENT_GATEWAY_URL?.trim() || "http://127.0.0.1:4176";
+const trainerUrl = process.env.TRAINER_DIAGNOSIS_URL?.trim();
+if (!trainerUrl) throw new Error("BENCHMARK_TRAINER_READINESS_URL_REQUIRED");
 const baseUrl = process.env.DEEPSEEK_BASE_URL?.trim() || loaded.manifest.execution.baseUrlOrigin;
 if (new URL(baseUrl).origin !== loaded.manifest.execution.baseUrlOrigin) throw new Error("BENCHMARK_PROVIDER_ORIGIN_MISMATCH");
 const target = new LegacyGatewayAgentEvalTarget(gatewayUrl);
@@ -74,10 +77,9 @@ if (health.baseUrlOrigin !== loaded.manifest.execution.baseUrlOrigin
 if (!health.corpusReady || !health.corpusIndexVersion || !health.corpusChunkCount) throw new Error("BENCHMARK_GOVERNED_CORPUS_NOT_READY");
 if (loaded.manifest.policySnapshots.governedCorpusIndex !== health.corpusIndexVersion) throw new Error("BENCHMARK_CORPUS_SNAPSHOT_NOT_FROZEN");
 if (!health.agentEvalDeliveryAuthorized) throw new Error("BENCHMARK_AGENT_EVAL_DELIVERY_NOT_AUTHORIZED");
-const trainerUrl = process.env.TRAINER_DIAGNOSIS_URL?.trim();
-if (!trainerUrl) throw new Error("BENCHMARK_TRAINER_READINESS_URL_REQUIRED");
-const trainerHealth = await fetch(`${trainerUrl.replace(/\/diagnose\/?$/u, "")}/health`, { signal: AbortSignal.timeout(5_000) });
-if (!trainerHealth.ok) throw new Error("BENCHMARK_TRAINER_NOT_READY");
+if (health.trainer?.diagnosisEndpointHash !== trainerDiagnosisEndpointHash(trainerUrl)) throw new Error("BENCHMARK_TRAINER_ENDPOINT_MISMATCH");
+if (health.trainer.service !== "trainer-diagnosis-api") throw new Error("BENCHMARK_TRAINER_IDENTITY_MISMATCH");
+if (!health.trainer.ready) throw new Error("BENCHMARK_TRAINER_NOT_READY");
 const executors = createValueBenchmarkExecutors({
   prompts,
   model: {

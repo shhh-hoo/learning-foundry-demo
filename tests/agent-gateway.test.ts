@@ -21,6 +21,23 @@ describe("DeepSeek Agent Gateway", () => {
     expect(JSON.stringify(await run.json())).not.toMatch(/answer|traceId/i);
   });
 
+  it("adds live dependency identity supplied by the configured gateway process", async () => {
+    const gateway = createAgentGateway({
+      configured: true,
+      model: "configured",
+      thinkingMode: "disabled",
+      healthDetails: { authoritativeAdapterId: "legacy-deepseek-agent" },
+      healthDetailsProvider: async () => ({ trainer: { diagnosisEndpointHash: "exact-endpoint-hash", ready: true, service: "trainer-diagnosis-api", governedCaseCount: 5 } }),
+    });
+
+    const response = await gateway.handle(new Request("http://127.0.0.1:4176/health"));
+
+    await expect(response.json()).resolves.toMatchObject({
+      authoritativeAdapterId: "legacy-deepseek-agent",
+      trainer: { diagnosisEndpointHash: "exact-endpoint-hash", ready: true, service: "trainer-diagnosis-api", governedCaseCount: 5 },
+    });
+  });
+
   it("stores and returns only a trace produced by a configured run", async () => {
     const trace = { traceId: "trace-live", conversationId: "c", inputOrigin: "USER_INPUT", runPurpose: "PRODUCT", provider: "deepseek", model: "configured", thinkingMode: "disabled", promptVersion: "1", capabilityRegistryVersion: "1", startedAt: "2026-07-16T10:00:00.000Z", completedAt: "2026-07-16T10:00:01.000Z", toolCalls: [], finalResponse: { status: "ANSWERED", learnerMessage: "Hello", sourceRefs: [] }, latencyMs: 1000 } satisfies AgentTrace;
     const gateway = createAgentGateway({ configured: true, model: "configured", thinkingMode: "disabled", execution: { execute: async () => trace } });

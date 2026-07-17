@@ -12,7 +12,7 @@ import type { AgentRunObservability } from "../src/agent/trace-store.ts";
 import { LegacyLexicalEvidenceSearch, inspectCorpus } from "./lib/corpus-repository.ts";
 import type { CorpusSearchService } from "../src/corpus/types.ts";
 import { createCorpusDeliveryPolicyRuntime } from "../src/corpus/delivery-policy.ts";
-import { LegacyTrainerCapabilityRuntime } from "../src/runtime/learning-capability-runtime.ts";
+import { inspectLegacyTrainerRuntime, LegacyTrainerCapabilityRuntime } from "../src/runtime/learning-capability-runtime.ts";
 import { createRuntimeShadowCoordinator, parseRuntimeShadowConfiguration, type RuntimeExecutor } from "../src/runtime/runtime-shadow.ts";
 import { PurposeAndRoleSeparatedFileRuntimeExecutionRecorder } from "./lib/runtime-execution-recorder.ts";
 import { registeredAgentCapabilities } from "../src/reference-packs/registry.ts";
@@ -115,6 +115,7 @@ const gateway = createAgentGateway({
     authoritativeAdapterId: "legacy-deepseek-agent",
     runtimeAuthority: "LEGACY_AUTHORITATIVE",
   },
+  healthDetailsProvider: async () => ({ trainer: await inspectLegacyTrainerRuntime(diagnosisUrl, globalThis.fetch, AbortSignal.timeout(5_000)) }),
   ...(legacyDeepSeekAgentExecution ? { execution: legacyDeepSeekAgentExecution } : {}),
 });
 

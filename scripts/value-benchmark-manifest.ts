@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { buildBenchmarkExecutionPlan, type BenchmarkCase } from "../src/value-benchmark/index.ts";
-import { fingerprintFrozenAsset, type ValueBenchmarkExperimentManifest } from "../src/value-benchmark/experiment-manifest.ts";
+import { createValueBenchmarkExecutableSourceSnapshot, fingerprintFrozenAsset, type ValueBenchmarkExperimentManifest } from "../src/value-benchmark/experiment-manifest.ts";
 import { createBenchmarkCaseComposition } from "../src/value-benchmark/preparation.ts";
 import { registeredAgentCapabilities } from "../src/reference-packs/registry.ts";
 
@@ -28,13 +28,9 @@ const snapshotPaths = {
   agentInstructions: "config/agent/instructions.md", responsePolicy: "config/agent/response-policy.json", toolDefinitions: "config/tools/tool-descriptions.json",
   corpusDeliveryPolicy: "config/corpus/delivery-policy.json", capabilityRegistry: "src/reference-packs/registry.ts", routePolicy: "src/agent/route-policy.ts",
   pricing: "agent-eval/pricing.json", agentEvalCases: "agent-eval/cases.jsonl",
-  benchmarkRunner: "scripts/value-benchmark.ts", benchmarkReviewRunner: "scripts/value-benchmark-review.ts", benchmarkManifestGenerator: "scripts/value-benchmark-manifest.ts",
-  benchmarkCore: "src/value-benchmark/index.ts", benchmarkExecutors: "src/value-benchmark/executors.ts", benchmarkRepository: "src/value-benchmark/file-repository.ts",
-  benchmarkManifestVerifier: "src/value-benchmark/experiment-manifest.ts", benchmarkPreparation: "src/value-benchmark/preparation.ts",
-  gatewayServer: "scripts/agent-gateway-server.ts", gateway: "src/agent/gateway.ts", agentLoop: "src/agent/run-agent.ts", deepSeekClient: "src/agent/deepseek-client.ts",
-  runtimeCoordinator: "src/runtime/runtime-shadow.ts", toolExecutor: "src/agent/tool-executor.ts", corpusRepository: "scripts/lib/corpus-repository.ts",
 } as const;
 const policySnapshots = Object.fromEntries(await Promise.all(Object.entries(snapshotPaths).map(async ([name, path]) => [name, `${path}@${hash(await bytes(path))}`])));
+const executableSnapshot = await createValueBenchmarkExecutableSourceSnapshot(root);
 const manifest: ValueBenchmarkExperimentManifest = {
   schemaVersion: "1.0.0", experimentId: "learning-foundry-value-benchmark", experimentVersion: "1.0.0",
   docsAuthority: "learning-foundry-docs@260747722e8040972deceed3290bce237676f225", implementationCommit, runId,
@@ -50,6 +46,7 @@ const manifest: ValueBenchmarkExperimentManifest = {
       return { caseId: testCase.caseId, executionPlanHash: composition.hashes.executionPlan, contextSelectionHash: composition.hashes.contextSelection, selectedProviderMessagesHash: composition.hashes.selectedProviderMessages, policyOnlySystemPromptHash: composition.hashes.policyOnlySystemPrompt, authoritativeSystemPromptHash: composition.hashes.authoritativeSystemPrompt };
     }),
   },
+  executableSnapshot,
   policySnapshots: {
     ...policySnapshots,
     runtimeToolDefinitionsSemantic: hash(JSON.stringify(JSON.parse(await text("config/tools/tool-descriptions.json")))),
@@ -59,7 +56,7 @@ const manifest: ValueBenchmarkExperimentManifest = {
   livePolicy: {
     automaticRetry: false, infrastructureReplacementRequiresExplicitCommand: true, modelQualityResampling: false,
     permittedInfrastructureReplacements: ["NETWORK_TRANSPORT", "TIMEOUT", "HTTP_408", "HTTP_429", "HTTP_5XX", "REQUIRED_LOCAL_SERVICE_UNAVAILABLE"],
-    requiredEnvironmentGates: ["DEEPSEEK_API_KEY", "AGENT_GATEWAY_HEALTH_MATCH", "GOVERNED_CORPUS_READY", "AGENT_EVAL_DELIVERY_AUTHORIZED", "PROVIDER_SEED_DISPOSITION_ACCEPTED"],
+    requiredEnvironmentGates: ["DEEPSEEK_API_KEY", "TRAINER_DIAGNOSIS_URL", "AGENT_GATEWAY_HEALTH_MATCH", "GOVERNED_CORPUS_READY", "AGENT_EVAL_DELIVERY_AUTHORIZED", "PROVIDER_SEED_DISPOSITION_ACCEPTED"],
   },
 };
 await mkdir(dirname(resolve(root, outputPath)), { recursive: true });

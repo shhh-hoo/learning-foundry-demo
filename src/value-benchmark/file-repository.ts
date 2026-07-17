@@ -145,6 +145,15 @@ export class FileBenchmarkReviewRepository {
   async appendReview(review: BenchmarkReview): Promise<void> {
     await this.ensure();
     const phase = review.phase === "BLIND_PEDAGOGY" ? "pedagogy" : "evidence";
+    if (review.phase === "EVIDENCE_AUDIT") {
+      try {
+        await readJsonFile<BlindPedagogyReviewLock>(this.path("pedagogy-lock.json"));
+        await readJsonFile<readonly EvidenceAuditPacketItem[]>(this.path("evidence-packet.json"));
+      } catch (error) {
+        if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") throw new Error("BENCHMARK_EVIDENCE_PHASE_NOT_READY");
+        throw error;
+      }
+    }
     const lockPath = this.path(`${phase}-lock.json`);
     try { await readFile(lockPath); throw new Error("BENCHMARK_REVIEW_PHASE_LOCKED"); }
     catch (error) {

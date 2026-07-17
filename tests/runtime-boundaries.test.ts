@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LegacyTrainerCapabilityRuntime } from "../src/runtime/learning-capability-runtime";
+import { inspectLegacyTrainerRuntime, LegacyTrainerCapabilityRuntime, trainerDiagnosisEndpointHash } from "../src/runtime/learning-capability-runtime";
 import { LegacyGatewayAgentEvalTarget } from "../src/agent/agenteval-target";
 
 describe("replaceable runtime boundaries", () => {
@@ -44,6 +44,18 @@ describe("replaceable runtime boundaries", () => {
     await runtime.execute({ capabilityId: "unversioned-capability", input: { learnerAttempt: "evidence" }, runPurpose: "AGENT_EVAL" });
 
     expect(payloads).toEqual([{ componentId: "unversioned-capability", learnerAttempt: "evidence", runPurpose: "AGENT_EVAL" }]);
+  });
+
+  it("probes and identifies the exact Trainer endpoint used by the Legacy adapter", async () => {
+    const diagnosisUrl = "http://127.0.0.1:4177/diagnose";
+    const requests: string[] = [];
+    const health = await inspectLegacyTrainerRuntime(diagnosisUrl, async (input) => {
+      requests.push(String(input));
+      return Response.json({ ok: true, service: "trainer-diagnosis-api", governedCaseCount: 5 });
+    });
+
+    expect(requests).toEqual(["http://127.0.0.1:4177/health"]);
+    expect(health).toEqual({ diagnosisEndpointHash: trainerDiagnosisEndpointHash(diagnosisUrl), ready: true, service: "trainer-diagnosis-api", governedCaseCount: 5 });
   });
 
   it("preserves the structured failure when a Legacy Trainer trace cannot be resolved", async () => {

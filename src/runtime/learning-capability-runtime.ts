@@ -1,8 +1,48 @@
+import { createHash } from "node:crypto";
 import type {
   LearningCapabilityExecution,
   LearningCapabilityExecutionResult,
   LearningCapabilityRuntime,
 } from "../core/ports/learning-capability-runtime";
+
+export interface LegacyTrainerRuntimeHealth {
+  readonly diagnosisEndpointHash: string;
+  readonly ready: boolean;
+  readonly service: string | null;
+  readonly governedCaseCount: number | null;
+}
+
+function normalizedTrainerDiagnosisUrl(diagnosisUrl: string): URL {
+  const url = new URL(diagnosisUrl);
+  if (!/\/diagnose\/?$/u.test(url.pathname)) throw new Error("TRAINER_DIAGNOSIS_URL_INVALID");
+  return url;
+}
+
+export function trainerDiagnosisEndpointHash(diagnosisUrl: string): string {
+  return createHash("sha256").update(normalizedTrainerDiagnosisUrl(diagnosisUrl).href).digest("hex");
+}
+
+export async function inspectLegacyTrainerRuntime(
+  diagnosisUrl: string,
+  fetcher: typeof fetch = globalThis.fetch,
+  signal?: AbortSignal,
+): Promise<LegacyTrainerRuntimeHealth> {
+  const diagnosisEndpoint = normalizedTrainerDiagnosisUrl(diagnosisUrl);
+  const healthEndpoint = new URL(diagnosisEndpoint);
+  healthEndpoint.pathname = healthEndpoint.pathname.replace(/\/diagnose\/?$/u, "/health");
+  healthEndpoint.search = "";
+  healthEndpoint.hash = "";
+  const diagnosisEndpointHash = trainerDiagnosisEndpointHash(diagnosisEndpoint.href);
+  try {
+    const response = await fetcher(healthEndpoint, signal ? { signal } : undefined);
+    const body = await response.json() as { readonly ok?: boolean; readonly service?: unknown; readonly governedCaseCount?: unknown };
+    const service = typeof body.service === "string" ? body.service : null;
+    const governedCaseCount = typeof body.governedCaseCount === "number" && Number.isInteger(body.governedCaseCount) && body.governedCaseCount >= 0 ? body.governedCaseCount : null;
+    return { diagnosisEndpointHash, ready: response.ok && body.ok === true && service === "trainer-diagnosis-api", service, governedCaseCount };
+  } catch {
+    return { diagnosisEndpointHash, ready: false, service: null, governedCaseCount: null };
+  }
+}
 
 export type {
   LearningCapabilityExecution,

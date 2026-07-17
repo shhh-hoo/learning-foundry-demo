@@ -247,7 +247,13 @@ function estimateCost(usage: TokenUsage | undefined, pricing: BenchmarkPricingSn
 }
 
 function errorCode(error: unknown): string {
-  if (error && typeof error === "object" && "code" in error && typeof error.code === "string") return error.code;
+  let candidate = error;
+  const visited = new Set<unknown>();
+  while (candidate && typeof candidate === "object" && !visited.has(candidate)) {
+    visited.add(candidate);
+    if ("code" in candidate && typeof candidate.code === "string") return candidate.code;
+    candidate = "cause" in candidate ? candidate.cause : undefined;
+  }
   const message = error instanceof Error ? error.message : String(error);
   const prefix = message.match(/^([A-Z][A-Z0-9_]+):/u)?.[1];
   return prefix ?? "BENCHMARK_EXECUTION_FAILED";
@@ -259,7 +265,7 @@ function errorHttpStatus(error: unknown): number | undefined {
 
 function classifyFailure(code: string, httpStatus?: number): Exclude<BenchmarkExecutionStatus, "COMPLETED"> {
   if (httpStatus === 408 || httpStatus === 429 || Boolean(httpStatus && httpStatus >= 500)) return "INFRASTRUCTURE_FAILURE";
-  if (/^(?:BENCHMARK_TIMEOUT|ECONNRESET|ECONNREFUSED|ENETUNREACH|ETIMEDOUT|REQUIRED_SERVICE_UNAVAILABLE)$/u.test(code)) return "INFRASTRUCTURE_FAILURE";
+  if (/^(?:BENCHMARK_TIMEOUT|TIMEOUT|NETWORK_TRANSPORT|ECONNRESET|ECONNREFUSED|ENETUNREACH|ETIMEDOUT|HTTP_408|HTTP_429|HTTP_5XX|REQUIRED_LOCAL_SERVICE_UNAVAILABLE)$/u.test(code)) return "INFRASTRUCTURE_FAILURE";
   if (/^(?:MODEL_RESPONSE_INVALID|INVALID_AGENT_RESPONSE|AGENT_UNSUPPORTED_CLAIM)$/u.test(code)) return "MODEL_QUALITY_FAILURE";
   return "POLICY_FAILURE";
 }
@@ -659,16 +665,18 @@ export function createValueBenchmarkReport(options: {
     const winnersFor = (field: "pedagogyScore" | "evidenceScore" | "combinedScore") => {
       const best = Math.max(...arms.map((item) => item[field]));
       const winners = arms.filter((item) => item[field] === best);
-      return winners.length === 1 ? winners[0]!.arm : "TIE" as const;
+      return { label: winners.length === 1 ? winners[0]!.arm : "TIE" as const, winners };
     };
-    const answerQualityWinner = winnersFor("pedagogyScore");
-    const evidenceWinner = winnersFor("evidenceScore");
-    const productValueWinner = winnersFor("combinedScore");
-    const productWinners = arms.filter((item) => item.arm === productValueWinner || productValueWinner === "TIE");
+    const answerQuality = winnersFor("pedagogyScore");
+    const evidenceQuality = winnersFor("evidenceScore");
+    const productValue = winnersFor("combinedScore");
+    const answerQualityWinner = answerQuality.label;
+    const evidenceWinner = evidenceQuality.label;
+    const productValueWinner = productValue.label;
     return {
       caseId: testCase.caseId, scenario: testCase.scenario, variant: testCase.variant, exposureClass: testCase.exposureClass, input: testCase.input, arms,
       answerQualityWinner, evidenceWinner, productValueWinner, winner: productValueWinner,
-      winnerReason: productWinners.map((item) => `${item.arm}: ${item.reviewerReasons.join(" ")}`).join(" | "),
+      winnerReason: productValue.winners.map((item) => `${item.arm}: ${item.reviewerReasons.join(" ")}`).join(" | "),
       demonstratedLearningEffectiveness: "NOT_MEASURED" as const,
     };
   });
