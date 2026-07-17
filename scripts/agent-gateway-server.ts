@@ -8,6 +8,7 @@ import { resolveAgentExecutionPlan } from "../src/agent/route-policy.ts";
 import { AGENT_PROMPT_VERSION, buildAgentSystemPrompt, runAgent } from "../src/agent/run-agent.ts";
 import { createAgentToolExecutor, type CapabilityRecord } from "../src/agent/tool-executor.ts";
 import { PurposeSeparatedAgentTraceRepository } from "./lib/agent-trace-repository.ts";
+import type { AgentRunObservability } from "../src/agent/trace-store.ts";
 import { LegacyLexicalEvidenceSearch, inspectCorpus } from "./lib/corpus-repository.ts";
 import type { CorpusSearchService } from "../src/corpus/types.ts";
 import { createCorpusDeliveryPolicyRuntime } from "../src/corpus/delivery-policy.ts";
@@ -54,14 +55,16 @@ const legacyDeepSeekRuntimeExecutor: RuntimeExecutor | null = client ? {
     const initialRoute = executionPlan.route;
     const tools = createAgentToolExecutor({ capabilities: capabilities.capabilities, corpus, corpusDeliveryPolicy, provider: "deepseek", capabilityRuntime, runPurpose: request.runPurpose, conversationId: request.conversationId, conversationEvidenceHash: contentHash(currentUserMessage), currentUserMessage });
     const traceId = `agent-trace-${randomUUID()}`; const startedAt = new Date().toISOString();
-    await traceRepository.start({ traceId, request, initialRoute, obligations: executionPlan.obligations, provider: "deepseek", model, thinkingMode, prompt: policy.prompt, capabilityRegistry: policy.capabilityRegistry, toolDefinitions: policy.toolDefinitions, startedAt });
+    let latestControlPlaneState: AgentRunObservability | undefined;
+    await traceRepository.start({ traceId, request, initialRoute, obligations: executionPlan.obligations, executionPlan, contextSelection: executionPlan.contextSelection, provider: "deepseek", model, thinkingMode, prompt: policy.prompt, capabilityRegistry: policy.capabilityRegistry, toolDefinitions: policy.toolDefinitions, startedAt });
     try {
-      const trace = await runAgent({ request, initialRoute, initialObligations: executionPlan.obligations, model, thinkingMode, systemPrompt, promptVersion: AGENT_PROMPT_VERSION, capabilityRegistryVersion: capabilities.version, toolDefinitions: toolConfig.tools, modelClient: client, tools, createId: () => traceId, onToolResult: (result) => toolResults.push(result), onModelResponse: (message, usage) => traceRepository.appendModelResponse(traceId, toObservableAgentMessage(message), usage), onToolExecution: (execution) => traceRepository.appendToolExecution(traceId, execution) });
-      await traceRepository.complete(traceId, trace.finalResponse, trace.completedAt, trace.route);
+      const trace = await runAgent({ request, executionPlan, model, thinkingMode, systemPrompt, promptVersion: AGENT_PROMPT_VERSION, capabilityRegistryVersion: capabilities.version, toolDefinitions: toolConfig.tools, modelClient: client, tools, createId: () => traceId, onToolResult: (result) => toolResults.push(result), onModelResponse: (message, usage) => traceRepository.appendModelResponse(traceId, toObservableAgentMessage(message), usage), onToolExecution: (execution) => traceRepository.appendToolExecution(traceId, execution), onControlPlaneUpdate: (observability) => { latestControlPlaneState = observability; } });
+      await traceRepository.complete(traceId, trace.finalResponse, trace.completedAt, trace.route, { budgetConsumption: trace.budgetConsumption, evidenceAssessments: trace.evidenceAssessments, stopReason: trace.stopReason, governedWorkflow: trace.governedWorkflow });
       return { trace, toolResults };
     } catch (error) {
       const code = error && typeof error === "object" && "code" in error && typeof error.code === "string" ? error.code : "AGENT_RUN_FAILED";
-      await traceRepository.fail(traceId, { code, message: error instanceof Error ? error.message : String(error) }, new Date().toISOString());
+      const message = error instanceof Error ? error.message : String(error);
+      await traceRepository.fail(traceId, { code, message }, new Date().toISOString(), { ...latestControlPlaneState, stopReason: `${code}: ${message}` });
       throw error;
     }
   },

@@ -220,6 +220,19 @@ function successfulTools(record: RuntimeExecutionRecord): readonly string[] {
   return record.toolCalls.filter((call) => call.status === "SUCCEEDED").map((call) => call.name);
 }
 
+function evidenceAssessmentShape(record: RuntimeExecutionRecord) {
+  return record.evidenceAssessments?.map(({ toolId, toolCallIndex, outcome, topicalFit, sourceAuthority, coverage, missingAspects, lineageComplete, contaminationRisk, anotherCallJustified }) => ({
+    toolId, toolCallIndex, outcome, topicalFit, sourceAuthority, coverage, missingAspects, lineageComplete, contaminationRisk, anotherCallJustified,
+  }));
+}
+
+function workflowShape(record: RuntimeExecutionRecord) {
+  return record.governedWorkflow ? {
+    identity: record.governedWorkflow.identity,
+    steps: record.governedWorkflow.steps.map(({ id, status }) => ({ id, status })),
+  } : undefined;
+}
+
 function requiredToolFailures(testCase: RuntimeParityCase, record: RuntimeExecutionRecord): readonly string[] {
   const actual = new Set(successfulTools(record));
   return testCase.requiredTools.filter((name) => !actual.has(name));
@@ -314,7 +327,11 @@ export function compareRuntimeParityCase(
     regression("selection", authoritative.selection, candidate.selection, "Selection modes and values must match."),
     regression("route", authoritative.record.route, candidate.record.route, "The candidate must preserve route behavior."),
     regression("obligations", authoritative.record.obligations, candidate.record.obligations, "The candidate must preserve policy obligations."),
+    regression("executionPlan", authoritative.record.executionPlan, candidate.record.executionPlan, "Both runtimes must execute the same immutable Foundry Plan snapshot."),
     outcomeDifference("toolCalls", toolShape(authoritative.record), toolShape(candidate.record), "Tool order, names, and statuses differ; governed quality records whether the direction is improvement or regression."),
+    outcomeDifference("toolBudgets", authoritative.record.budgetConsumption, candidate.record.budgetConsumption, "Plan-owned tool-budget consumption differs."),
+    outcomeDifference("evidenceAssessments", evidenceAssessmentShape(authoritative.record), evidenceAssessmentShape(candidate.record), "Foundry Evidence sufficiency outcomes differ."),
+    outcomeDifference("governedWorkflow", workflowShape(authoritative.record), workflowShape(candidate.record), "Governed workflow identity or step completion differs."),
     regression("sourceRefs", referenceSet(authoritative.record.sourceRefs), referenceSet(candidate.record.sourceRefs), "Source-reference sets must match; order is not meaningful."),
     outcomeDifference("evidenceLineage", authoritativeEvidence.lineage, candidateEvidence.lineage, "Evidence classes and producing tool lineage must match; execution-local result references are ignored."),
     outcomeDifference("diagnosisTracePresent", Boolean(authoritative.record.diagnosisTraceId), Boolean(candidate.record.diagnosisTraceId), "Diagnosis trace presence must match; trace identifiers are execution-local."),

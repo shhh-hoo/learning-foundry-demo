@@ -11,7 +11,7 @@ afterEach(async () => { await Promise.all(roots.splice(0).map((root) => rm(root,
 
 function record(runPurpose: RunPurpose, role: RuntimeExecutionRole): RuntimeExecutionRecord {
   return {
-    schemaVersion: "1.1.0",
+    schemaVersion: "1.2.0",
     executionId: `${runPurpose.toLowerCase()}-${role.toLowerCase()}-execution`,
     role,
     runPurpose,
@@ -67,7 +67,7 @@ describe("purpose-and-role-separated runtime execution recording", () => {
     expect((await readdir(join(root, "product"))).sort()).toEqual(["authoritative", "shadow"]);
     expect((await readdir(join(root, "agent-eval"))).sort()).toEqual(["authoritative", "shadow"]);
     const serialized = await readFile(join(root, "agent-eval", "shadow", "agent_eval-shadow-execution.json"), "utf8");
-    expect(JSON.parse(serialized)).toMatchObject({ schemaVersion: "1.1.0", runPurpose: "AGENT_EVAL", role: "SHADOW" });
+    expect(JSON.parse(serialized)).toMatchObject({ schemaVersion: "1.2.0", runPurpose: "AGENT_EVAL", role: "SHADOW" });
     expect(serialized).not.toMatch(/secret-token|private-sources|hidden_reasoning|never persist|\/Users\//u);
   });
 
@@ -82,6 +82,19 @@ describe("purpose-and-role-separated runtime execution recording", () => {
 
     await expect(recorder.list("AGENT_EVAL", "AUTHORITATIVE")).resolves.toEqual([legacyRecord]);
     await expect(recorder.record(legacyRecord)).rejects.toThrow("RUNTIME_EXECUTION_SCHEMA_WRITE_UNSUPPORTED");
+  });
+
+  it("keeps 1.1.0 lifecycle records readable after the Execution Plan snapshot upgrade", async () => {
+    const root = await mkdtemp(join(tmpdir(), "runtime-executions-"));
+    roots.push(root);
+    const recorder = new PurposeAndRoleSeparatedFileRuntimeExecutionRecorder(root);
+    const priorRecord = { ...record("PRODUCT", "AUTHORITATIVE"), schemaVersion: "1.1.0" as const };
+    const priorDirectory = join(root, "product", "authoritative");
+    await mkdir(priorDirectory, { recursive: true });
+    await writeFile(join(priorDirectory, "prior.json"), JSON.stringify(priorRecord), "utf8");
+
+    await expect(recorder.list("PRODUCT", "AUTHORITATIVE")).resolves.toEqual([priorRecord]);
+    await expect(recorder.record(priorRecord)).rejects.toThrow("RUNTIME_EXECUTION_SCHEMA_WRITE_UNSUPPORTED");
   });
 
   it("waits for a delayed terminal shadow record within the bounded window", async () => {

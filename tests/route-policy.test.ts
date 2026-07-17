@@ -21,7 +21,7 @@ describe("application route policy", () => {
   it("keeps incomplete multi-stage evidence and capability inspection as orthogonal decisions", () => {
     const plan = resolveAgentExecutionPlan(request("Diagnose my entire multi-stage purity, limiting-reagent and titration route, but I only have one partial line of working."));
 
-    expect(plan).toEqual({
+    expect(plan).toMatchObject({
       route: "LEARNER_DIAGNOSIS_INCOMPLETE",
       obligations: { retrievalRequired: false, capabilityInspectionRequired: true, diagnosisRequired: false },
     });
