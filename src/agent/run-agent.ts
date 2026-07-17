@@ -50,7 +50,7 @@ function validateClaims(response: ReturnType<typeof agentResponseEnvelopeSchema.
   if (response.proposedFollowUp && !matchesProposal("propose_schedule_followup", response.proposedFollowUp)) throw new AgentRunError("AGENT_UNSUPPORTED_CLAIM", "Schedule proposal was not produced by its tool.");
 }
 
-export const AGENT_PROMPT_VERSION = "1.3.0";
+export const AGENT_PROMPT_VERSION = "1.3.1";
 
 const finalResponseContract = [
   "Return only one JSON object after all required tools have succeeded.",
@@ -73,7 +73,7 @@ function validationDetail(error: unknown): string {
 }
 
 function correctionForMalformedResponse(error: unknown): string {
-  if (error instanceof RoutePolicyError) return `Your previous final response was rejected by the application route policy: ${error.message}. Call the missing required tool or return the required non-ANSWERED status, then emit the complete JSON contract. Do not add markdown.`;
+  if (error instanceof RoutePolicyError) return `Your previous final response was rejected by the application route policy: ${error.message}. Follow the route-specific status and Evidence requirements, then emit the complete JSON contract. Do not call a tool that is no longer available and do not add markdown.`;
   if (error instanceof AgentRunError && error.code === "AGENT_UNSUPPORTED_CLAIM") return `Your previous final response used an ID in the wrong reference class: ${error.message}. sourceRefs may contain only source IDs returned by search_learning_resources; capability, retrieval, gap and Diagnosis IDs belong in evidenceRefs. Use only IDs actually returned in this run and emit the complete JSON contract. Do not add markdown.`;
   return `Your previous final response failed validation: ${validationDetail(error)}. ${finalResponseContract} If the answer requires source-grounded course evidence and search_learning_resources has not succeeded in this run, call search_learning_resources now instead of returning a final response. Do not repeat the invalid response and do not add markdown.`;
 }
@@ -97,12 +97,26 @@ function providerToolsForRoute(route: AgentRoute, obligations: AgentObligations,
   }
   if (obligations.capabilityInspectionRequired && !obligations.diagnosisRequired && (route === "LEARNER_DIAGNOSIS_INCOMPLETE" || route === "SOLVE_WITH_CHECKS")) return [];
   if (route === "CAPABILITY_GAP") return matchingToolDefinitions(definitions, ["record_capability_gap"]);
-  if (route !== "LEARNER_DIAGNOSIS_COMPLETE") return definitions;
-  const succeeded = records.filter((record) => record.status === "SUCCEEDED").map((record) => record.name);
-  if (!succeeded.includes("list_capabilities")) return matchingToolDefinitions(definitions, ["list_capabilities"]);
-  if (!succeeded.includes("get_capability")) return matchingToolDefinitions(definitions, ["get_capability"]);
-  if (!succeeded.includes("run_learner_diagnosis")) return matchingToolDefinitions(definitions, ["run_learner_diagnosis"]);
+  if (route === "LEARNER_DIAGNOSIS_COMPLETE") {
+    const succeeded = records.filter((record) => record.status === "SUCCEEDED").map((record) => record.name);
+    if (!succeeded.includes("list_capabilities")) return matchingToolDefinitions(definitions, ["list_capabilities"]);
+    if (!succeeded.includes("get_capability")) return matchingToolDefinitions(definitions, ["get_capability"]);
+    if (!succeeded.includes("run_learner_diagnosis")) return matchingToolDefinitions(definitions, ["run_learner_diagnosis"]);
+    return [];
+  }
+  if (route === "SOLVE_WITH_CHECKS") return matchingToolDefinitions(definitions, ["propose_library_artifact", "propose_schedule_followup"]);
   return [];
+}
+
+function stableArguments(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableArguments).join(",")}]`;
+  if (value && typeof value === "object") return `{${Object.entries(value).sort(([left], [right]) => left.localeCompare(right)).map(([key, item]) => `${JSON.stringify(key)}:${stableArguments(item)}`).join(",")}}`;
+  return JSON.stringify(value);
+}
+
+function isDuplicateSuccessfulCall(records: AgentTrace["toolCalls"], name: string, argumentsValue: unknown): boolean {
+  const fingerprint = stableArguments(argumentsValue);
+  return records.some((record) => record.status === "SUCCEEDED" && record.name === name && stableArguments(record.arguments) === fingerprint);
 }
 
 function canonicalizeRouteOwnedReferences(
@@ -182,6 +196,14 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentTrace> {
           const structuredError = { code: "INVALID_TOOL_ARGUMENTS", message: `${call.function.name} arguments are not valid JSON.` };
           await options.onToolExecution?.({ name: call.function.name, arguments: { invalidJson: true }, resultRef, status: "FAILED", error: structuredError });
           records.push({ name: call.function.name, arguments: { invalidJson: true }, resultRef, status: "FAILED" });
+          messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify({ resultRef, error: `${structuredError.code}: ${structuredError.message}` }) });
+          continue;
+        }
+        if (isDuplicateSuccessfulCall(records, call.function.name, parsed)) {
+          const resultRef = `tool-error-${call.id}`;
+          const structuredError = { code: "DUPLICATE_TOOL_CALL", message: `${call.function.name} already succeeded with the same arguments in this run.` };
+          await options.onToolExecution?.({ name: call.function.name, arguments: parsed, resultRef, status: "FAILED", error: structuredError });
+          records.push({ name: call.function.name, arguments: parsed, resultRef, status: "FAILED" });
           messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify({ resultRef, error: `${structuredError.code}: ${structuredError.message}` }) });
           continue;
         }
