@@ -120,13 +120,16 @@ export function enforceRoutePolicy(
 
   if (route === "COURSE_EXPLANATION") {
     const retrievalCalls = successfulCalls.filter((call) => call.name === "search_learning_resources");
+    const hasGovernedSource = searchHasGovernedSource(successfulToolResults);
+    if (hasGovernedSource && response.status !== "ANSWERED") {
+      throw new RoutePolicyError(route, "A course explanation with governed evidence must return ANSWERED.");
+    }
     if (retrievalCalls.length !== 1 || !retrievalCalls.some((call) => response.evidenceRefs?.includes(call.resultRef))) {
       throw new RoutePolicyError(route, "A course explanation requires exactly one successful retrieval and its evidence reference.");
     }
-    const hasGovernedSource = searchHasGovernedSource(successfulToolResults);
     if (hasGovernedSource) {
-      if (response.status !== "ANSWERED" || response.sourceRefs.length === 0) {
-        throw new RoutePolicyError(route, "A course explanation with governed evidence must return ANSWERED with at least one source reference.");
+      if (response.sourceRefs.length === 0) {
+        throw new RoutePolicyError(route, "ANSWERED with governed course evidence requires at least one source reference.");
       }
     } else if (response.status !== "NEEDS_MORE_EVIDENCE" || response.sourceRefs.length !== 0) {
       throw new RoutePolicyError(route, "A completed retrieval without governed course evidence must return NEEDS_MORE_EVIDENCE with no source references.");
