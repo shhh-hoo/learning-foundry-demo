@@ -1,0 +1,125 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://learning-foundry.local/schemas/external-learning-components-1.0.0.json",
+  "title": "External learning component governance record",
+  "oneOf": [
+    { "$ref": "#/$defs/resourceDocument" },
+    { "$ref": "#/$defs/reviewDecision" }
+  ],
+  "$defs": {
+    "nonEmpty": { "type": "string", "minLength": 1 },
+    "semver": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "httpsUrl": { "type": "string", "pattern": "^https://" },
+    "timestamp": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T" },
+    "reviewGate": { "enum": ["APPROVED", "NOT_APPROVED", "REVIEW_REQUIRED"] },
+    "resourceDocument": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "generatedAt", "components"],
+      "properties": {
+        "schemaVersion": { "const": "1.0.0" },
+        "generatedAt": { "$ref": "#/$defs/timestamp" },
+        "components": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/resource" }
+        }
+      }
+    },
+    "resource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "id", "version", "provider", "providerResourceId", "title", "description", "subjects", "concepts", "curriculumAlignments", "integrationMode", "launch", "rights", "privacy", "accessibilityNotes", "evidence", "status"],
+      "properties": {
+        "schemaVersion": { "const": "1.0.0" },
+        "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+        "version": { "$ref": "#/$defs/semver" },
+        "provider": { "$ref": "#/$defs/nonEmpty" },
+        "providerResourceId": { "$ref": "#/$defs/nonEmpty" },
+        "title": { "$ref": "#/$defs/nonEmpty" },
+        "description": { "$ref": "#/$defs/nonEmpty" },
+        "subjects": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/nonEmpty" } },
+        "concepts": { "type": "array", "items": { "$ref": "#/$defs/nonEmpty" } },
+        "curriculumAlignments": { "type": "array", "items": { "$ref": "#/$defs/nonEmpty" } },
+        "integrationMode": { "enum": ["LINK_ONLY", "IFRAME", "PROVIDER_API", "REVIEWED_PACKAGE", "LTI_OR_EQUIVALENT"] },
+        "launch": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "url": { "$ref": "#/$defs/httpsUrl" },
+            "packageRef": { "$ref": "#/$defs/nonEmpty" },
+            "apiProvider": { "$ref": "#/$defs/nonEmpty" }
+          }
+        },
+        "rights": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["licenseId", "termsEvidenceRef", "attribution", "commercialUse", "modification", "redistribution"],
+          "properties": {
+            "licenseId": { "$ref": "#/$defs/nonEmpty" },
+            "termsEvidenceRef": { "$ref": "#/$defs/nonEmpty" },
+            "attribution": { "$ref": "#/$defs/nonEmpty" },
+            "commercialUse": { "enum": ["ALLOWED", "PROHIBITED", "LICENSE_REQUIRED", "REVIEW_REQUIRED"] },
+            "modification": { "enum": ["ALLOWED", "PROHIBITED", "REVIEW_REQUIRED"] },
+            "redistribution": { "enum": ["ALLOWED", "PROHIBITED", "REVIEW_REQUIRED"] }
+          }
+        },
+        "privacy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sendsLearnerData", "dataCategories", "cookieOrTrackingStatus", "approvalStatus"],
+          "properties": {
+            "sendsLearnerData": { "type": "boolean" },
+            "dataCategories": { "type": "array", "items": { "$ref": "#/$defs/nonEmpty" } },
+            "destination": { "$ref": "#/$defs/nonEmpty" },
+            "cookieOrTrackingStatus": { "enum": ["NONE_DECLARED", "PRESENT", "UNKNOWN"] },
+            "approvalStatus": { "enum": ["APPROVED", "NOT_APPROVED", "REVIEW_REQUIRED"] }
+          }
+        },
+        "accessibilityNotes": { "type": "array", "items": { "$ref": "#/$defs/nonEmpty" } },
+        "evidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["launchTrace", "completionSignal", "outcomeEligible"],
+          "properties": {
+            "launchTrace": { "type": "boolean" },
+            "completionSignal": { "enum": ["NONE", "XAPI", "LTI", "PROVIDER_API", "CUSTOM"] },
+            "outcomeEligible": { "const": false }
+          }
+        },
+        "lastReviewedAt": { "$ref": "#/$defs/timestamp" },
+        "status": { "enum": ["DISCOVERED", "REVIEW_REQUIRED", "APPROVED_LINK_ONLY", "APPROVED_EMBED", "APPROVED_PACKAGE", "DISABLED", "REJECTED"] }
+      }
+    },
+    "reviewDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schemaVersion", "decisionId", "componentId", "componentVersion", "reviewer", "reviewedAt", "termsEvidence", "deploymentScope", "rightsDecision", "privacyDecision", "trackingDecision", "accessibilityDecision", "status"],
+      "properties": {
+        "schemaVersion": { "const": "1.0.0" },
+        "decisionId": { "$ref": "#/$defs/nonEmpty" },
+        "componentId": { "$ref": "#/$defs/nonEmpty" },
+        "componentVersion": { "$ref": "#/$defs/semver" },
+        "reviewer": { "$ref": "#/$defs/nonEmpty" },
+        "reviewedAt": { "$ref": "#/$defs/timestamp" },
+        "termsEvidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["url", "evidenceRef", "sha256"],
+          "properties": {
+            "url": { "$ref": "#/$defs/httpsUrl" },
+            "evidenceRef": { "$ref": "#/$defs/nonEmpty" },
+            "sha256": { "type": "string", "pattern": "^[a-fA-F0-9]{64}$" }
+          }
+        },
+        "deploymentScope": { "$ref": "#/$defs/nonEmpty" },
+        "rightsDecision": { "$ref": "#/$defs/reviewGate" },
+        "privacyDecision": { "$ref": "#/$defs/reviewGate" },
+        "trackingDecision": { "$ref": "#/$defs/reviewGate" },
+        "accessibilityDecision": { "$ref": "#/$defs/reviewGate" },
+        "status": { "enum": ["REVIEW_REQUIRED", "APPROVED_LINK_ONLY", "APPROVED_EMBED", "APPROVED_PACKAGE", "DISABLED", "REJECTED", "REVOKED"] },
+        "supersedesDecisionId": { "$ref": "#/$defs/nonEmpty" },
+        "notes": { "$ref": "#/$defs/nonEmpty" }
+      }
+    }
+  }
+}
