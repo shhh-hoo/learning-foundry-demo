@@ -2,7 +2,7 @@
 
 Docs authority: `learning-foundry-docs@e6ec2408d18fc6850e92c996b36712dbd5be9df5`
 
-Assessment basis: parity implementation `9ea9e78ee190a965a3d319462ad4f1388caec052` stacked on shadow foundation `21b1208e8b520c62696b71dba0902c5c76851453`.
+Assessment basis: parity implementation `2653544e5bc78168a64e91c1d6eaab4c2b081bc5` stacked on shadow foundation `21b1208e8b520c62696b71dba0902c5c76851453`.
 
 ## Decision
 
@@ -16,6 +16,7 @@ The Foundry-owned harness is ready to receive one candidate `RuntimeExecutor` ad
 - Candidate failure, timeout and recorder failure are isolated from the product result.
 - Shadow lifecycle records and bounded polling distinguish absent, pending, timed-out and failed candidate evidence.
 - Runtime records preserve case/trace linkage, route, obligations, ordered tools, source/evidence references, Diagnosis outcome, final status, grader inputs, latency, usage, cost, completeness and terminal failure.
+- Runtime records are joined to the exact AgentEval-run conversation, so a failed case without an Agent trace cannot reuse stale successful evidence from an older run.
 - AgentEval cases, selection and `gradeAgentCase` remain the source of grading policy.
 - Case-level parity separately reports behavioral equivalence, directional governed quality and operational impact.
 - Diagnosis Evidence must link to the declared trace; unresolved references fail integrity checks, while execution-local IDs are normalized through lineage.

@@ -6,7 +6,7 @@ Corrected boundary base: `codex/runtime-boundary-program@df0aaa062128a2657e28c86
 
 Shadow foundation base: `codex/runtime-shadow-foundation@21b1208e8b520c62696b71dba0902c5c76851453`
 
-Parity implementation checkpoint: `9ea9e78ee190a965a3d319462ad4f1388caec052`
+Parity implementation checkpoint: `2653544e5bc78168a64e91c1d6eaab4c2b081bc5`
 
 ## Scope and responsibility
 
@@ -61,13 +61,13 @@ Artifacts are written under gitignored `.runtime-parity-results/<reportId>/` as 
 
 ## Automated validation
 
-- `npm test` — 32 files, 216 tests passed;
+- `npm test` — 32 files, 217 tests passed;
 - `npm run check` — passed;
 - `npm run build` — passed;
 - `git diff --check` — passed;
 - `npm run runtime:parity:fixture` — `EXACT_MATCH`.
 
-The parity matrix covers exact equivalence; route and obligation drift; missing required and present forbidden tools; ordered tool status; Diagnosis-trace linkage and unrelated-reference rejection; object-key-order-independent structural equality; source-reference set equality; candidate regression, candidate improvement and shared quality failure; delayed shadow arrival; pending versus absent evidence; candidate timeout/failure; authoritative failure; operational review-required/non-zero CLI behavior; missing usage/cost; partial/unplanned/not-run coverage; deterministic serialization; safe redaction; and candidate-failure isolation.
+The parity matrix covers exact equivalence; route and obligation drift; missing required and present forbidden tools; ordered tool status; Diagnosis-trace linkage and unrelated-reference rejection; object-key-order-independent structural equality; source-reference set equality; candidate regression, candidate improvement and shared quality failure; delayed shadow arrival; pending versus absent evidence; candidate timeout/failure; authoritative failure; exact Eval-run/conversation binding that rejects stale records when a failed case has no Agent trace ID; operational review-required/non-zero CLI behavior; missing usage/cost; partial/unplanned/not-run coverage; deterministic serialization; safe redaction; and candidate-failure isolation.
 
 ## Genuine live evidence
 
@@ -89,6 +89,8 @@ After explicit informed approval to send `SCHOOL_INTERNAL` corpus-derived prompt
 - rerun Legacy self-comparison `runtime-parity-2026-07-17T05-00-42-673Z-fb7cc665` — complete 6/6, six `EXACT_MATCH`, no review-required result, regression or infrastructure failure.
 
 Both attempts are retained. The second pass does not erase the first failure; together they show provider variance and support the readiness requirement for repeated-run reliability evidence. Self-comparison validates mapping only and does not establish candidate parity.
+
+The final review-hardened head produced checkpoint `agenteval-2026-07-17T05-35-32-868Z-21b7fe8f`: complete 6/6 evidence with 5/6 passing, while `C-complete-registered-diagnosis` failed with `INVALID_AGENT_RESPONSE`. An initial self-comparison report (`runtime-parity-2026-07-17T05-36-10-240Z-5a36f3ca`) was rejected as invalid evidence because it exposed a stale-record join: the failed case had no Agent trace ID and the CLI selected an older successful record sharing the same case ID. After binding records to the exact Eval-run conversation, regression test coverage was added and the same immutable run was compared again as `runtime-parity-2026-07-17T05-37-47-300Z-94b1a987`: complete 6/6 evidence, five `EXACT_MATCH`, one preserved authoritative infrastructure failure, exit `4`. No retry was used to replace this result with a favorable provider sample.
 
 ## Non-claims, rollback and authority
 
