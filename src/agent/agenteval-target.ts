@@ -13,7 +13,7 @@ export type AgentEvalTargetResult =
 
 export interface AgentEvalTarget {
   health(): Promise<AgentEvalTargetHealth>;
-  execute(request: AgentRunRequest & { readonly runPurpose: "AGENT_EVAL" }): Promise<AgentEvalTargetResult>;
+  execute(request: AgentRunRequest & { readonly runPurpose: "AGENT_EVAL" }, options?: { readonly signal?: AbortSignal }): Promise<AgentEvalTargetResult>;
 }
 
 export class LegacyGatewayAgentEvalTarget implements AgentEvalTarget {
@@ -29,11 +29,12 @@ export class LegacyGatewayAgentEvalTarget implements AgentEvalTarget {
     return { provider: body.provider ?? "deepseek", model: body.model, thinkingMode: body.thinkingMode ?? "unknown" };
   }
 
-  async execute(request: AgentRunRequest & { readonly runPurpose: "AGENT_EVAL" }): Promise<AgentEvalTargetResult> {
+  async execute(request: AgentRunRequest & { readonly runPurpose: "AGENT_EVAL" }, options?: { readonly signal?: AbortSignal }): Promise<AgentEvalTargetResult> {
     const response = await this.fetcher(`${this.gatewayUrl}/agent/runs`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(request),
+      ...(options?.signal ? { signal: options.signal } : {}),
     });
     const body = await response.json() as { readonly ok?: boolean; readonly trace?: AgentTrace; readonly toolResults?: readonly AgentEvalToolResult[]; readonly error?: { readonly code?: string; readonly message?: string } };
     if (!response.ok || !body.ok || !body.trace) return { ok: false, error: { code: body.error?.code ?? "AGENT_RUN_FAILED", message: body.error?.message ?? "Agent run did not return a trace." } };

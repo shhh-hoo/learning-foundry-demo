@@ -8,6 +8,7 @@ coverage/
 .env.local
 .env.*.local
 .agent-eval-results/
+.value-benchmark-results/
 .local-data/
 .runtime-parity-results/
 private-sources/

@@ -1,0 +1,196 @@
+{
+  "schemaVersion": "1.0.0",
+  "experimentId": "learning-foundry-value-benchmark",
+  "experimentVersion": "1.0.0",
+  "docsAuthority": "learning-foundry-docs@260747722e8040972deceed3290bce237676f225",
+  "contractReference": "docs/WAVE_IMPLEMENTATION_CONTRACT.md#pr-6--foundry-value-benchmark",
+  "assets": {
+    "cases": "config/value-benchmark/cases.jsonl",
+    "reviewerCriteria": "config/value-benchmark/reviewer-criteria.jsonl",
+    "reviewerCriteriaDelivery": "REVIEWER_ONLY_NEVER_MODEL_INPUT"
+  },
+  "arms": {
+    "A_BARE_LLM": {
+      "label": "Bare same-model LLM",
+      "systemPrompt": "You are a helpful tutor answering a fixed educational benchmark case. Answer the learner's latest request using only the supplied conversation and generally applicable reasoning. Do not claim access to a source, tool, registry, persisted review, or outcome that was not supplied. Return only one JSON object with exactly one non-empty string field named answer.",
+      "foundryPlan": "NOT_USED",
+      "tools": "NONE",
+      "toolChoiceField": "OMITTED",
+      "conversationInput": "ALL_FROZEN_CASE_MESSAGES_AS_ROLE_AND_CONTENT_ONLY",
+      "maximumProviderCalls": 1
+    },
+    "B_FOUNDRY_POLICY_NO_TOOLS": {
+      "label": "Foundry policy without tools",
+      "systemPrompt": "You are the Learning Foundry policy-only tutor in a controlled benchmark. No tools are available in this arm. Follow the supplied Foundry Execution Plan and Context selection, but never claim that a search, registry inspection, capability, diagnosis, save, schedule, review, outcome, or publication occurred. Use only ACTIVE task-local conversation selected by Foundry; ignore STALE, SUPERSEDED, and other-task items. Keep source references and Evidence references conceptually distinct. For a course-authority claim that requires retrieval, state what must be verified rather than inventing a citation. Diagnose a learner only when both the original problem and the learner's complete attempt are evidenced; otherwise name the missing evidence precisely. Respect capability boundaries. Never turn model text into TeacherReview, LearningOutcome, canonical Product State, or a published Component. Explain causal relationships rather than repeating rules. Return only one JSON object with exactly one non-empty string field named answer.",
+      "foundryPlan": "PLAN_AND_CONTEXT_SELECTION_SUPPLIED_WITHOUT_TOOL_OUTPUTS",
+      "tools": "NONE",
+      "toolChoiceField": "OMITTED",
+      "conversationInput": "FOUNDRY_SELECTED_FROZEN_MESSAGES_AS_ROLE_AND_CONTENT_ONLY",
+      "maximumProviderCalls": 1
+    },
+    "C_FULL_FOUNDRY": {
+      "label": "Full authoritative Foundry",
+      "systemPromptComposition": {
+        "instructions": "config/agent/instructions.md",
+        "responsePolicy": "config/agent/response-policy.json",
+        "routeAndObligations": "FOUNDRY_COMPOSED_PER_CASE",
+        "exactComposedPromptHash": "RECORDED_PER_CASE_IN_COMMITTED_RUN_MANIFEST"
+      },
+      "foundryPlan": "AUTHORITATIVE_EXECUTION_PLAN",
+      "tools": "ROUTE_GOVERNED",
+      "conversationInput": "FOUNDRY_SELECTED_FROZEN_MESSAGES_WITH_CONTEXT_RETAINED_IN_PLAN_AND_STRIPPED_FROM_PROVIDER_MESSAGE_FIELDS",
+      "maximumProviderCalls": "PLAN_GOVERNED",
+      "runPurpose": "AGENT_EVAL",
+      "runtimeAuthority": "LEGACY_AUTHORITATIVE"
+    }
+  },
+  "sameModelControls": {
+    "provider": "MUST_MATCH_ACROSS_ALL_ARMS",
+    "model": "MUST_MATCH_ACROSS_ALL_ARMS",
+    "thinkingMode": "MUST_MATCH_ACROSS_ALL_ARMS",
+    "temperature": null,
+    "topP": null,
+    "maxTokens": 1800,
+    "responseFormat": "json_object",
+    "providerSeed": {
+      "status": "UNSUPPORTED_NOT_SENT",
+      "value": null,
+      "rule": "A schedule seed is not a provider seed. Live execution requires an approved contract disposition for the provider's missing seed control."
+    },
+    "cache": {
+      "isolationClaim": "NOT_CLAIMED",
+      "capture": [
+        "promptCacheHitTokens",
+        "promptCacheMissTokens"
+      ],
+      "rule": "Fresh conversation IDs isolate Foundry execution state but do not guarantee provider prefix-cache isolation."
+    },
+    "freshConversationIdPerCaseAndArm": true,
+    "crossArmHistoryOrOutputSharing": false
+  },
+  "noToolControls": {
+    "arms": [
+      "A_BARE_LLM",
+      "B_FOUNDRY_POLICY_NO_TOOLS"
+    ],
+    "requestTools": [],
+    "omitToolChoice": true,
+    "forbidCallingAuthoritativeRunAgent": true,
+    "forbidCorpusOrCapabilityDelivery": true,
+    "forbidToolResultSimulation": true,
+    "forbidSourceOrEvidenceIdFabrication": true
+  },
+  "caseControls": {
+    "caseCount": 24,
+    "scenarioCount": 8,
+    "variantsPerScenario": 3,
+    "requiredCaseIdPattern": "^VB-S0[1-8]-V[1-3]$",
+    "maximumKnownFitCasesPerScenario": 1,
+    "inputMustEqualFinalUserMessage": true,
+    "exactAgentEvalInputDuplicates": 0,
+    "encoding": "UTF-8",
+    "lineEnding": "LF",
+    "byteFreeze": "WHOLE_FILE_AND_EACH_JSONL_LINE_SHA256_INCLUDING_FINAL_LF"
+  },
+  "schedule": {
+    "algorithm": "SHA256_KEY_SORT_V1",
+    "scheduleSeed": "learning-foundry-value-benchmark-1.0.0",
+    "orders": [
+      "ABC",
+      "BCA",
+      "CAB",
+      "ACB",
+      "CBA",
+      "BAC"
+    ],
+    "casesPerOrder": 4,
+    "firstAttempts": 72,
+    "completeAllFirstAttemptsBeforeReplacement": true
+  },
+  "attemptPolicy": {
+    "writeStartBeforeNetworkCall": true,
+    "automaticArmRetry": false,
+    "modelQualityResampling": false,
+    "replacementEligibility": [
+      "NETWORK_TRANSPORT",
+      "TIMEOUT",
+      "HTTP_408",
+      "HTTP_429",
+      "HTTP_5XX",
+      "REQUIRED_LOCAL_SERVICE_UNAVAILABLE"
+    ],
+    "replacementIneligible": [
+      "WRONG_ANSWER",
+      "REFUSAL",
+      "MALFORMED_MODEL_OUTPUT",
+      "POLICY_FAILURE",
+      "TOOL_SELECTION_FAILURE",
+      "NO_RESULTS",
+      "LOW_RELEVANCE",
+      "PARTIAL_COVERAGE"
+    ],
+    "preserveOriginalFailure": true,
+    "replacementRequiresFreshConversationId": true,
+    "replacementLineageRequired": true
+  },
+  "review": {
+    "criteriaSource": "config/value-benchmark/reviewer-criteria.jsonl",
+    "criteriaMayBeSentToModel": false,
+    "scoreRange": {
+      "minimum": 1,
+      "maximum": 5,
+      "anchors": {
+        "1": "Absent, materially wrong, or integrity-breaking",
+        "2": "Major omissions or errors",
+        "3": "Adequate but incomplete",
+        "4": "Strong with only minor limitations",
+        "5": "Fully satisfies the frozen criterion"
+      }
+    },
+    "phase1": {
+      "id": "BLIND_PEDAGOGY",
+      "armIdentityVisible": false,
+      "toolsSourcesAndEvidenceVisible": false,
+      "dimensions": {
+        "correctness": "Accuracy against the reviewer-only answer reference and must-cover/must-avoid criteria",
+        "clarity": "Understandable structure, precision, and economy",
+        "pedagogy": "Explanation or guidance that supports learner understanding without overclaiming",
+        "contextFidelity": "Faithfulness to the active task, episode, history, constraints, and requested scope"
+      },
+      "lockBeforePhase2": true
+    },
+    "phase2": {
+      "id": "EVIDENCE_AUDIT",
+      "armIdentityVisible": false,
+      "sourcesToolsAndEvidenceVisible": true,
+      "dimensions": {
+        "grounding": "Claims are supported by case input or disclosed governed Evidence",
+        "authority": "Source type and authority fit the claim being made",
+        "provenance": "Sources, Evidence, tool trajectory, delivery policy, and runtime trace are resolvable",
+        "integrity": "Reference classes, capability boundaries, permissions, and non-canonical model output are preserved"
+      },
+      "lockBeforeArmReveal": true
+    },
+    "blindAnswerTransform": {
+      "replaceKnownSourceAndEvidenceIds": "[reference]",
+      "replaceUrls": "[reference]",
+      "preserveExplanatoryProse": true,
+      "recordOriginalAndBlindHashes": true
+    },
+    "winnerRules": {
+      "answerQualityWinner": "HIGHEST_MEAN_PHASE1_SCORE",
+      "evidenceWinner": "HIGHEST_MEAN_PHASE2_SCORE",
+      "productValueScore": "0.5 * NORMALIZED_PHASE1 + 0.5 * NORMALIZED_PHASE2",
+      "ties": "PRESERVE_AS_TIE",
+      "winnerReasonRequired": true
+    }
+  },
+  "claimBoundaries": {
+    "answerQuality": "MEASURED_BY_FROZEN_REVIEW_PROTOCOL",
+    "productValue": "MEASURED_BY_FROZEN_REVIEW_PROTOCOL",
+    "demonstratedLearningEffectiveness": "NOT_MEASURED",
+    "agentEvalReleaseGate": "UNCHANGED",
+    "runtimeAuthority": "UNCHANGED",
+    "productStateAuthority": "UNCHANGED"
+  }
+}
