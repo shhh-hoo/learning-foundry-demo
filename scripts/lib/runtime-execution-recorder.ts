@@ -1,5 +1,6 @@
 import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
+import type { RunPurpose } from "../../src/agent/types";
 import type { RuntimeExecutionRecord, RuntimeExecutionRecorder, RuntimeExecutionRole } from "../../src/runtime/runtime-shadow";
 
 function safeExecutionId(value: string): string {
@@ -22,17 +23,23 @@ function sanitize(value: unknown): unknown {
     .replace(/\S*private-sources[\\/]\S*/giu, "[REDACTED]");
 }
 
-function namespace(role: RuntimeExecutionRole): "authoritative" | "shadow" {
+function purposeNamespace(runPurpose: RunPurpose): "product" | "agent-eval" {
+  return runPurpose === "PRODUCT" ? "product" : "agent-eval";
+}
+
+function roleNamespace(role: RuntimeExecutionRole): "authoritative" | "shadow" {
   return role === "AUTHORITATIVE" ? "authoritative" : "shadow";
 }
 
-export class RoleSeparatedFileRuntimeExecutionRecorder implements RuntimeExecutionRecorder {
+export class PurposeAndRoleSeparatedFileRuntimeExecutionRecorder implements RuntimeExecutionRecorder {
   constructor(readonly rootDirectory: string) {}
 
-  private directory(role: RuntimeExecutionRole): string { return join(this.rootDirectory, namespace(role)); }
+  private directory(runPurpose: RunPurpose, role: RuntimeExecutionRole): string {
+    return join(this.rootDirectory, purposeNamespace(runPurpose), roleNamespace(role));
+  }
 
   async record(record: RuntimeExecutionRecord): Promise<void> {
-    const directory = this.directory(record.role);
+    const directory = this.directory(record.runPurpose, record.role);
     await mkdir(directory, { recursive: true });
     const target = join(directory, `${safeExecutionId(record.executionId)}.json`);
     const temporary = join(directory, `.${basename(target)}.${process.pid}.${crypto.randomUUID()}.tmp`);
@@ -40,8 +47,8 @@ export class RoleSeparatedFileRuntimeExecutionRecorder implements RuntimeExecuti
     await rename(temporary, target);
   }
 
-  async list(role: RuntimeExecutionRole): Promise<readonly RuntimeExecutionRecord[]> {
-    const directory = this.directory(role);
+  async list(runPurpose: RunPurpose, role: RuntimeExecutionRole): Promise<readonly RuntimeExecutionRecord[]> {
+    const directory = this.directory(runPurpose, role);
     await mkdir(directory, { recursive: true });
     const records = await Promise.all((await readdir(directory))
       .filter((file) => file.endsWith(".json"))
