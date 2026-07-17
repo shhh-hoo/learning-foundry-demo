@@ -6,7 +6,7 @@ import { AGENT_EVAL_SUITE_VERSION, gradeAgentCase, type AgentEvalCase } from "..
 import { buildAgentEvalCheckpoint } from "../src/agent/agenteval-checkpoint.ts";
 import { parseAgentEvalDimension, parseAgentEvalLayer, selectAgentEvalBaseline, selectAgentEvalDimension, selectAgentEvalLayer, type AgentEvalBehaviorContract, type AgentEvalSelection } from "../src/agent/agenteval-suite.ts";
 import type { AgentTrace } from "../src/agent/types.ts";
-import { compareRuntimeParityCase, createRuntimeParityPlan, createRuntimeParityReport, decideRuntimeParityCommand, findRuntimeExecutionForEvalCase, type RuntimeParityExecution } from "../src/runtime/runtime-parity.ts";
+import { compareRuntimeParityCase, createRuntimeParityPlan, createRuntimeParityReport, decideRuntimeParityCommand, findRuntimeExecutionForEvalCase, selectShadowWaitExecutionIds, type RuntimeParityExecution } from "../src/runtime/runtime-parity.ts";
 import type { RuntimeExecutionRecord } from "../src/runtime/runtime-shadow.ts";
 import { AgentEvalRepository } from "./lib/agent-eval-repository.ts";
 import { PurposeAndRoleSeparatedFileRuntimeExecutionRecorder } from "./lib/runtime-execution-recorder.ts";
@@ -113,7 +113,7 @@ async function main(): Promise<void> {
     ? { records: [], pendingAuthoritativeExecutionIds: [], absentAuthoritativeExecutionIds: [] }
     : await records.waitForTerminalShadows(
         "AGENT_EVAL",
-        [...authoritativeByCaseId.values()].filter((record): record is RuntimeExecutionRecord => record !== null).map((record) => record.executionId),
+        selectShadowWaitExecutionIds([...authoritativeByCaseId.values()]),
         { timeoutMs: shadowWaitMs },
       );
   const shadowRecords = shadowWait.records;

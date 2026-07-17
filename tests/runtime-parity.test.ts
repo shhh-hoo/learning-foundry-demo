@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compareRuntimeParityCase, createRuntimeParityPlan, createRuntimeParityReport, decideRuntimeParityCommand, findRuntimeExecutionForEvalCase, summarizeRuntimeParityCoverage, type RuntimeParityCase, type RuntimeParityExecution, type RuntimeParityPlan } from "../src/runtime/runtime-parity";
+import { compareRuntimeParityCase, createRuntimeParityPlan, createRuntimeParityReport, decideRuntimeParityCommand, findRuntimeExecutionForEvalCase, selectShadowWaitExecutionIds, summarizeRuntimeParityCoverage, type RuntimeParityCase, type RuntimeParityExecution, type RuntimeParityPlan } from "../src/runtime/runtime-parity";
 import type { RuntimeExecutionRecord, RuntimeExecutionRole } from "../src/runtime/runtime-shadow";
 
 function record(role: RuntimeExecutionRole, overrides: Partial<RuntimeExecutionRecord> = {}): RuntimeExecutionRecord {
@@ -306,6 +306,50 @@ describe("case-level runtime parity", () => {
     const result = compareRuntimeParityCase(parityCase, execution("AUTHORITATIVE"), null);
     expect(result.classification).toBe("NOT_EXECUTED");
     expect(result.candidate).toBeNull();
+  });
+
+  it("preserves an authoritative failure when authoritative-first execution produces no candidate", () => {
+    const authoritative = execution("AUTHORITATIVE", {
+      record: record("AUTHORITATIVE", {
+        status: "FAILED",
+        failureStage: "EXECUTION",
+        terminalError: { code: "LEGACY_FAILED", message: "failed" },
+      }),
+    });
+
+    const result = compareRuntimeParityCase(parityCase, authoritative, null);
+
+    expect(result).toMatchObject({
+      classification: "INFRASTRUCTURE_FAILURE",
+      authoritative,
+      candidate: null,
+      behavioralEquivalence: "NOT_EVALUATED",
+      governedQuality: { classification: "NOT_EVALUATED" },
+    });
+    expect(result.differences).toContainEqual(expect.objectContaining({
+      field: "terminalError",
+      authoritative: { code: "LEGACY_FAILED", message: "failed" },
+      candidate: undefined,
+    }));
+    const report = createRuntimeParityReport(
+      "authoritative-failure",
+      { schemaVersion: "1.0.0", planId: "authoritative-failure", suiteVersion: "2.0.0", selection: { mode: "CHECKPOINT" }, cases: [parityCase], createdAt: "2026-07-17T00:00:00.000Z" },
+      [result],
+    );
+    expect(decideRuntimeParityCommand(report, { authoritativeAvailable: true, candidateAvailable: false, selfComparison: false })).toEqual({
+      exitCode: 4,
+      message: "RUNTIME_PARITY_INFRASTRUCTURE_FAILURE",
+    });
+  });
+
+  it("does not request shadow polling for an authoritative execution that did not complete", () => {
+    const failed = record("AUTHORITATIVE", {
+      status: "FAILED",
+      failureStage: "EXECUTION",
+      terminalError: { code: "LEGACY_FAILED", message: "failed" },
+    });
+
+    expect(selectShadowWaitExecutionIds([failed])).toEqual([]);
   });
 
   it.each([

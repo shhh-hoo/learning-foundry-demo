@@ -116,6 +116,10 @@ export function findRuntimeExecutionForEvalCase(
     && (!agentTraceId || record.agentTraceId === agentTraceId)) ?? null;
 }
 
+export function selectShadowWaitExecutionIds(records: readonly (RuntimeExecutionRecord | null)[]): readonly string[] {
+  return records.filter((record): record is RuntimeExecutionRecord => record?.status === "COMPLETED").map((record) => record.executionId);
+}
+
 export function createRuntimeParityPlan(
   planId: string,
   suiteVersion: string,
@@ -277,10 +281,21 @@ export function compareRuntimeParityCase(
   authoritative: RuntimeParityExecution | null,
   candidate: RuntimeParityExecution | null,
 ): RuntimeParityCaseResult {
-  if (!authoritative || !candidate) {
+  if (!authoritative) {
     return { caseId: testCase.caseId, classification: "NOT_EXECUTED", authoritative, candidate, differences: [], behavioralEquivalence: "NOT_EVALUATED", governedQuality: { classification: "NOT_EVALUATED", checks: {} }, operationalImpact: { classification: "NOT_EVALUATED" }, reviewRequired: false };
   }
-  if (authoritative.record.status !== "COMPLETED" || candidate.record.status !== "COMPLETED") {
+  if (authoritative.record.status !== "COMPLETED") {
+    const differences = [
+      regression("execution.status", authoritative.record.status, candidate?.record.status, "Authoritative execution must complete before candidate parity can be evaluated."),
+      regression("terminalError", authoritative.record.terminalError, candidate?.record.terminalError, "Authoritative terminal errors are preserved as infrastructure evidence."),
+      regression("failureStage", authoritative.record.failureStage, candidate?.record.failureStage, "Authoritative failure stages are preserved as infrastructure evidence."),
+    ].filter((item): item is RuntimeParityDifference => item !== null);
+    return { caseId: testCase.caseId, classification: "INFRASTRUCTURE_FAILURE", authoritative, candidate, differences, behavioralEquivalence: "NOT_EVALUATED", governedQuality: { classification: "NOT_EVALUATED", checks: {} }, operationalImpact: { classification: "NOT_EVALUATED" }, reviewRequired: false };
+  }
+  if (!candidate) {
+    return { caseId: testCase.caseId, classification: "NOT_EXECUTED", authoritative, candidate, differences: [], behavioralEquivalence: "NOT_EVALUATED", governedQuality: { classification: "NOT_EVALUATED", checks: {} }, operationalImpact: { classification: "NOT_EVALUATED" }, reviewRequired: false };
+  }
+  if (candidate.record.status !== "COMPLETED") {
     const differences = [
       regression("execution.status", authoritative.record.status, candidate.record.status, "Both executions must complete before behavioral parity can be evaluated."),
       regression("terminalError", authoritative.record.terminalError, candidate.record.terminalError, "Terminal errors are preserved as infrastructure evidence."),
@@ -382,8 +397,8 @@ export function decideRuntimeParityCommand(
   context: { readonly authoritativeAvailable: boolean; readonly candidateAvailable: boolean; readonly selfComparison: boolean },
 ): RuntimeParityCommandDecision {
   if (!context.authoritativeAvailable) return { exitCode: 3, message: "AUTHORITATIVE_EVIDENCE_UNAVAILABLE" };
-  if (!context.selfComparison && !context.candidateAvailable) return { exitCode: 2, message: "CANDIDATE_RUNTIME_UNAVAILABLE" };
   if (report.counts.INFRASTRUCTURE_FAILURE > 0) return { exitCode: 4, message: "RUNTIME_PARITY_INFRASTRUCTURE_FAILURE" };
+  if (!context.selfComparison && !context.candidateAvailable) return { exitCode: 2, message: "CANDIDATE_RUNTIME_UNAVAILABLE" };
   if (report.counts.REGRESSION > 0 || report.counts.NOT_EXECUTED > 0) return { exitCode: 1, message: "RUNTIME_PARITY_REGRESSION" };
   if (report.counts.REVIEW_REQUIRED > 0) return { exitCode: 6, message: "RUNTIME_PARITY_REVIEW_REQUIRED" };
   return { exitCode: 0, message: context.selfComparison ? "LEGACY_SELF_COMPARISON_PASS (harness validation only; not candidate parity)." : "RUNTIME_PARITY_PASS" };
