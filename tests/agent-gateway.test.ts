@@ -23,7 +23,7 @@ describe("DeepSeek Agent Gateway", () => {
 
   it("stores and returns only a trace produced by a configured run", async () => {
     const trace = { traceId: "trace-live", conversationId: "c", inputOrigin: "USER_INPUT", runPurpose: "PRODUCT", provider: "deepseek", model: "configured", thinkingMode: "disabled", promptVersion: "1", capabilityRegistryVersion: "1", startedAt: "2026-07-16T10:00:00.000Z", completedAt: "2026-07-16T10:00:01.000Z", toolCalls: [], finalResponse: { status: "ANSWERED", learnerMessage: "Hello", sourceRefs: [] }, latencyMs: 1000 } satisfies AgentTrace;
-    const gateway = createAgentGateway({ configured: true, model: "configured", thinkingMode: "disabled", run: async () => trace });
+    const gateway = createAgentGateway({ configured: true, model: "configured", thinkingMode: "disabled", execution: { execute: async () => trace } });
     const response = await gateway.handle(new Request("http://127.0.0.1:4176/agent/runs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ conversationId: "c", inputOrigin: "USER_INPUT", runPurpose: "PRODUCT", messages: [{ role: "user", content: "hello" }] }) }));
     expect(response.status).toBe(200);
     expect(gateway.traces.get("trace-live")).toEqual(trace);
@@ -33,7 +33,7 @@ describe("DeepSeek Agent Gateway", () => {
 
   it("requires runPurpose before starting a configured run", async () => {
     let called = false;
-    const gateway = createAgentGateway({ configured: true, model: "configured", thinkingMode: "disabled", run: async () => { called = true; throw new Error("should not run"); } });
+    const gateway = createAgentGateway({ configured: true, model: "configured", thinkingMode: "disabled", execution: { execute: async () => { called = true; throw new Error("should not run"); } } });
     const response = await gateway.handle(new Request("http://127.0.0.1:4176/agent/runs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ conversationId: "c", inputOrigin: "USER_INPUT", messages: [{ role: "user", content: "hello" }] }) }));
     expect(response.status).toBe(400);
     expect(called).toBe(false);
@@ -42,7 +42,7 @@ describe("DeepSeek Agent Gateway", () => {
   it("filters and clears in-memory evidence by runPurpose", async () => {
     const productTrace = { traceId: "product-trace", conversationId: "product", inputOrigin: "USER_INPUT", runPurpose: "PRODUCT", provider: "deepseek", model: "configured", thinkingMode: "disabled", promptVersion: "1", capabilityRegistryVersion: "1", startedAt: "2026-07-16T10:00:00.000Z", completedAt: "2026-07-16T10:00:01.000Z", toolCalls: [], finalResponse: { status: "ANSWERED", learnerMessage: "Product", sourceRefs: [] }, latencyMs: 1000 } satisfies AgentTrace;
     const agentEvalTrace = { ...productTrace, traceId: "agent-eval-trace", conversationId: "agent-eval", runPurpose: "AGENT_EVAL" } satisfies AgentTrace;
-    const gateway = createAgentGateway({ configured: true, model: "configured", thinkingMode: "disabled", run: async (request) => request.runPurpose === "PRODUCT" ? productTrace : agentEvalTrace });
+    const gateway = createAgentGateway({ configured: true, model: "configured", thinkingMode: "disabled", execution: { execute: async (request) => request.runPurpose === "PRODUCT" ? productTrace : agentEvalTrace } });
     for (const runPurpose of ["PRODUCT", "AGENT_EVAL"] as const) {
       await gateway.handle(new Request("http://127.0.0.1:4176/agent/runs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ conversationId: runPurpose, inputOrigin: "USER_INPUT", runPurpose, messages: [{ role: "user", content: "hello" }] }) }));
     }

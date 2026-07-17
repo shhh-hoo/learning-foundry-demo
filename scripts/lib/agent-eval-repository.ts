@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { AGENT_EVAL_DIMENSIONS, AGENT_EVAL_LAYERS, type AgentEvalDimension, type AgentEvalLayer, type DiagnosisGeneralizationDimension, type ExpectedCapabilityResolution, type RetrievalGeneralizationVariant } from "../../src/agent/agenteval-suite";
+import { AGENT_EVAL_DIMENSIONS, AGENT_EVAL_LAYERS, type AgentEvalDimension, type AgentEvalLayer, type AgentEvalSelection, type DiagnosisGeneralizationDimension, type ExpectedCapabilityResolution, type RetrievalGeneralizationVariant } from "../../src/agent/agenteval-suite";
 import type { TokenUsage } from "../../src/agent/types";
 
 interface VersionedHash { readonly version: string; readonly contentHash: string }
@@ -52,10 +52,7 @@ export interface PersistedAgentEvalRun {
   readonly cases: readonly PersistedAgentEvalCase[];
 }
 
-export interface AgentEvalRunSelection {
-  readonly mode: "FULL" | "CHECKPOINT" | "BASELINE" | "LAYER" | "DIMENSION";
-  readonly value?: string;
-}
+export type AgentEvalRunSelection = AgentEvalSelection;
 
 export interface AgentEvalSuitePlan {
   readonly layerCaseIds: Readonly<Record<AgentEvalLayer, readonly string[]>>;
@@ -75,7 +72,7 @@ export interface AgentEvalCoverageMetricSummary {
   readonly passedCases: number;
   readonly coverageComplete: boolean;
   readonly rate: number | null;
-  readonly status: "NOT_RUN" | "PARTIAL" | "COMPLETE";
+  readonly status: "UNPLANNED" | "NOT_RUN" | "PARTIAL" | "COMPLETE";
 }
 
 export interface AgentEvalReport {
@@ -87,6 +84,7 @@ export interface AgentEvalReport {
   readonly completedAt: string | null;
   readonly runStatus: PersistedAgentEvalRun["status"];
   readonly isComplete: boolean;
+  readonly fullSuiteCoverageComplete: boolean;
   readonly completedCases: number;
   readonly totalPlannedCases: number;
   readonly totalCases: number;
@@ -170,12 +168,12 @@ function metric(run: PersistedAgentEvalRun, check: string, eligibility: keyof Ag
   return { eligibleCases: relevant.length, passedCases, rate: relevant.length ? passedCases / relevant.length : emptyValue };
 }
 
-function coverageMetric(plannedCaseIds: readonly string[], executedCases: readonly PersistedAgentEvalCase[]): AgentEvalCoverageMetricSummary {
+function coverageMetric(plannedCaseIds: readonly string[], executedCases: readonly PersistedAgentEvalCase[], completionEligible = true): AgentEvalCoverageMetricSummary {
   const planned = new Set(plannedCaseIds);
   const relevant = executedCases.filter((item) => planned.has(item.sourceCaseId ?? item.caseId));
   const passedCases = relevant.filter((item) => item.passed).length;
-  const coverageComplete = planned.size > 0 && relevant.length === planned.size;
-  const status = coverageComplete ? "COMPLETE" : relevant.length ? "PARTIAL" : "NOT_RUN";
+  const coverageComplete = completionEligible && planned.size > 0 && relevant.length === planned.size;
+  const status = planned.size === 0 ? "UNPLANNED" : coverageComplete ? "COMPLETE" : relevant.length ? "PARTIAL" : "NOT_RUN";
   return {
     plannedCases: planned.size,
     executedCases: relevant.length,
@@ -189,14 +187,14 @@ function coverageMetric(plannedCaseIds: readonly string[], executedCases: readon
 function metricByLayer(run: PersistedAgentEvalRun): Readonly<Record<AgentEvalLayer, AgentEvalCoverageMetricSummary>> {
   return Object.fromEntries(AGENT_EVAL_LAYERS.map((layer) => [
     layer,
-    coverageMetric(run.suitePlan?.layerCaseIds[layer] ?? [], run.cases),
+    coverageMetric(run.suitePlan?.layerCaseIds[layer] ?? [], run.cases, run.selection?.mode === "FULL" || (run.selection?.mode === "LAYER" && run.selection.value === layer)),
   ])) as Record<AgentEvalLayer, AgentEvalCoverageMetricSummary>;
 }
 
 function metricByDimension(run: PersistedAgentEvalRun): Readonly<Record<AgentEvalDimension, AgentEvalCoverageMetricSummary>> {
   return Object.fromEntries(AGENT_EVAL_DIMENSIONS.map((dimension) => [
     dimension,
-    coverageMetric(run.suitePlan?.dimensionCaseIds[dimension] ?? [], run.cases),
+    coverageMetric(run.suitePlan?.dimensionCaseIds[dimension] ?? [], run.cases, run.selection?.mode === "FULL" || (run.selection?.mode === "DIMENSION" && run.selection.value === dimension)),
   ])) as Record<AgentEvalDimension, AgentEvalCoverageMetricSummary>;
 }
 
@@ -212,15 +210,17 @@ export function buildAgentEvalReport(run: PersistedAgentEvalRun): AgentEvalRepor
   const unpricedCases = run.cases.length - pricedCases;
   return {
     evalRunId: run.evalRunId, suiteVersion: run.suiteVersion, provider: run.provider, model: run.model, startedAt: run.startedAt, completedAt: run.completedAt ?? null,
-    runStatus: run.status, isComplete: run.status === "COMPLETED" && run.cases.length === run.totalPlannedCases, completedCases: run.cases.length, totalPlannedCases: run.totalPlannedCases,
+    runStatus: run.status, isComplete: run.status === "COMPLETED" && run.cases.length === run.totalPlannedCases,
+    fullSuiteCoverageComplete: run.selection?.mode === "FULL" && run.totalPlannedCases > 0 && run.status === "COMPLETED" && run.cases.length === run.totalPlannedCases,
+    completedCases: run.cases.length, totalPlannedCases: run.totalPlannedCases,
     totalCases: run.cases.length, passedCases: run.cases.filter((item) => item.passed).length, failedCases: run.cases.filter((item) => !item.passed).length,
     passRate: run.cases.length ? run.cases.filter((item) => item.passed).length / run.cases.length : 0,
     requiredToolAccuracy: requiredToolMetric.rate, requiredToolMetric,
     forbiddenToolRate: 1 - forbiddenToolComplianceMetric.rate, forbiddenToolComplianceMetric,
     diagnosisFidelity: diagnosisFidelityMetric.rate, diagnosisFidelityMetric, sourceGroundingMetric,
     selection: run.selection ?? null, layerMetrics: metricByLayer(run), dimensionMetrics: metricByDimension(run),
-    supportedInputGeneralizationMetric: coverageMetric(run.suitePlan?.capabilityResolutionCaseIds?.FULL_MATCH ?? [], run.cases),
-    capabilityBoundaryComplianceMetric: coverageMetric(run.suitePlan?.capabilityResolutionCaseIds?.NO_MATCH ?? [], run.cases),
+    supportedInputGeneralizationMetric: coverageMetric(run.suitePlan?.capabilityResolutionCaseIds?.FULL_MATCH ?? [], run.cases, run.selection?.mode === "FULL"),
+    capabilityBoundaryComplianceMetric: coverageMetric(run.suitePlan?.capabilityResolutionCaseIds?.NO_MATCH ?? [], run.cases, run.selection?.mode === "FULL"),
     latencyMs: run.cases.reduce((sum, item) => sum + item.latencyMs, 0), tokenUsage: usage,
     estimatedCostUsd: unpricedCases === 0 ? knownEstimatedCostUsd : null,
     knownEstimatedCostUsd, pricedCases, unpricedCases, costCoverage: run.cases.length ? pricedCases / run.cases.length : 0,

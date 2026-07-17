@@ -1,21 +1,9 @@
 import { mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
-import type { AgentObligations, AgentResponseEnvelope, AgentRoute, AgentRunRequest, InputOrigin, RunPurpose, TokenUsage } from "../../src/agent/types";
-import type { ModelMessage } from "../../src/agent/deepseek-client";
+import type { AgentResponseEnvelope, AgentRoute, RunPurpose, TokenUsage } from "../../src/agent/types";
+import type { AgentRunQuery, AgentRunStart, AgentTraceStore, ObservableAgentMessage, PersistedAgentRun, PersistedToolExecution } from "../../src/agent/trace-store";
 
-export type AgentRunStatus = "RUNNING" | "COMPLETED" | "FAILED";
-interface VersionedHash { readonly version: string; readonly contentHash: string }
-export interface AgentRunStart {
-  readonly traceId: string; readonly request: AgentRunRequest; readonly initialRoute?: AgentRoute; readonly obligations?: AgentObligations; readonly provider: "deepseek"; readonly model: string; readonly thinkingMode: "enabled" | "disabled";
-  readonly prompt: VersionedHash; readonly capabilityRegistry: VersionedHash; readonly toolDefinitions: VersionedHash; readonly startedAt: string;
-}
-export interface PersistedToolExecution { readonly name: string; readonly arguments: unknown; readonly resultRef: string; readonly status: "SUCCEEDED" | "FAILED"; readonly result?: unknown; readonly error?: { readonly code: string; readonly message: string } }
-export interface PersistedAgentRun extends AgentRunStart {
-  readonly schemaVersion: "1.0.0"; readonly status: AgentRunStatus; readonly observableModelMessages: readonly Omit<ModelMessage, "reasoning_content">[];
-  readonly toolExecutions: readonly PersistedToolExecution[]; readonly tokenUsage?: TokenUsage; readonly finalResponse?: AgentResponseEnvelope; readonly route?: AgentRoute;
-  readonly completedAt?: string; readonly updatedAt: string; readonly terminalError?: { readonly code: string; readonly message: string };
-}
-export interface AgentRunQuery { readonly conversationId?: string; readonly status?: AgentRunStatus; readonly inputOrigin?: InputOrigin; readonly runPurpose?: RunPurpose; readonly startedFrom?: string; readonly startedTo?: string }
+export type { AgentRunQuery, AgentRunStart, AgentTraceStore, ObservableAgentMessage, PersistedAgentRun, PersistedToolExecution } from "../../src/agent/trace-store";
 
 function safeId(value: string): string { if (!/^[a-zA-Z0-9._-]+$/u.test(value)) throw new Error("INVALID_TRACE_ID: Trace id contains unsafe characters."); return value; }
 function sanitize(value: unknown): unknown {
@@ -29,7 +17,7 @@ function addUsage(current: TokenUsage | undefined, next: TokenUsage | undefined)
   return { promptTokens: (current?.promptTokens ?? 0) + next.promptTokens, completionTokens: (current?.completionTokens ?? 0) + next.completionTokens, totalTokens: (current?.totalTokens ?? 0) + next.totalTokens, promptCacheHitTokens: (current?.promptCacheHitTokens ?? 0) + (next.promptCacheHitTokens ?? 0), promptCacheMissTokens: (current?.promptCacheMissTokens ?? 0) + (next.promptCacheMissTokens ?? 0) };
 }
 
-export class AgentTraceRepository {
+export class FileAgentTraceStore implements AgentTraceStore {
   constructor(readonly directory: string) {}
   private path(traceId: string) { return join(this.directory, `${safeId(traceId)}.json`); }
   private async write(record: PersistedAgentRun): Promise<void> {
@@ -41,7 +29,7 @@ export class AgentTraceRepository {
   async start(input: AgentRunStart): Promise<void> { await this.write({ ...input, schemaVersion: "1.0.0", status: "RUNNING", observableModelMessages: [], toolExecutions: [], updatedAt: input.startedAt }); }
   async get(traceId: string): Promise<PersistedAgentRun | null> { try { return JSON.parse(await readFile(this.path(traceId), "utf8")) as PersistedAgentRun; } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return null; throw error; } }
   private async mutate(traceId: string, update: (record: PersistedAgentRun) => PersistedAgentRun): Promise<void> { const record = await this.get(traceId); if (!record) throw new Error(`TRACE_NOT_FOUND: ${traceId}`); await this.write(update(record)); }
-  async appendModelResponse(traceId: string, message: ModelMessage, usage?: TokenUsage): Promise<void> { await this.mutate(traceId, (record) => ({ ...record, observableModelMessages: [...record.observableModelMessages, sanitize(message) as Omit<ModelMessage, "reasoning_content">], tokenUsage: addUsage(record.tokenUsage, usage), updatedAt: new Date().toISOString() })); }
+  async appendModelResponse(traceId: string, message: ObservableAgentMessage, usage?: TokenUsage): Promise<void> { await this.mutate(traceId, (record) => ({ ...record, observableModelMessages: [...record.observableModelMessages, sanitize(message) as ObservableAgentMessage], tokenUsage: addUsage(record.tokenUsage, usage), updatedAt: new Date().toISOString() })); }
   async appendToolExecution(traceId: string, execution: PersistedToolExecution): Promise<void> { await this.mutate(traceId, (record) => ({ ...record, toolExecutions: [...record.toolExecutions, sanitize(execution) as PersistedToolExecution], updatedAt: new Date().toISOString() })); }
   async complete(traceId: string, finalResponse: AgentResponseEnvelope, completedAt: string, route?: AgentRoute): Promise<void> { await this.mutate(traceId, (record) => ({ ...record, status: "COMPLETED", finalResponse, ...(route ? { route } : {}), completedAt, updatedAt: completedAt })); }
   async fail(traceId: string, terminalError: { readonly code: string; readonly message: string }, completedAt: string): Promise<void> { await this.mutate(traceId, (record) => ({ ...record, status: "FAILED", terminalError: sanitize(terminalError) as typeof terminalError, completedAt, updatedAt: completedAt })); }
@@ -56,14 +44,16 @@ export class AgentTraceRepository {
   }
 }
 
+export { FileAgentTraceStore as AgentTraceRepository };
+
 export class PurposeSeparatedAgentTraceRepository {
-  private readonly product: AgentTraceRepository;
-  private readonly agentEval: AgentTraceRepository;
+  private readonly product: AgentTraceStore;
+  private readonly agentEval: AgentTraceStore;
   constructor(productDirectory: string, agentEvalDirectory: string) {
-    this.product = new AgentTraceRepository(productDirectory);
-    this.agentEval = new AgentTraceRepository(agentEvalDirectory);
+    this.product = new FileAgentTraceStore(productDirectory);
+    this.agentEval = new FileAgentTraceStore(agentEvalDirectory);
   }
-  forPurpose(runPurpose: RunPurpose): AgentTraceRepository { return runPurpose === "PRODUCT" ? this.product : this.agentEval; }
+  forPurpose(runPurpose: RunPurpose): AgentTraceStore { return runPurpose === "PRODUCT" ? this.product : this.agentEval; }
   async get(traceId: string): Promise<PersistedAgentRun | null> { return await this.product.get(traceId) ?? await this.agentEval.get(traceId); }
   async query(query: AgentRunQuery = {}): Promise<readonly PersistedAgentRun[]> {
     if (query.runPurpose) return this.forPurpose(query.runPurpose).query(query);

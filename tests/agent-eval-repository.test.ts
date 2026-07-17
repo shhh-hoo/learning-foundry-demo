@@ -47,7 +47,7 @@ describe("AgentEvalRepository", () => {
       selection: { mode: "DIMENSION", value: "RETRIEVAL" },
       layerMetrics: {
         CORE_CONTRACT: { plannedCases: 16, executedCases: 5, passedCases: 5, coverageComplete: false, rate: null, status: "PARTIAL" },
-        LEARNING_LOOP: { plannedCases: 0, executedCases: 0, passedCases: 0, coverageComplete: false, rate: null, status: "NOT_RUN" },
+        LEARNING_LOOP: { plannedCases: 0, executedCases: 0, passedCases: 0, coverageComplete: false, rate: null, status: "UNPLANNED" },
       },
     });
   });
@@ -107,12 +107,56 @@ describe("AgentEvalRepository", () => {
     const candidate = buildAgentEvalReport(run("run-b", true));
     expect(baseline.passRate).toBe(0);
     expect(candidate.passRate).toBe(1);
+    expect(candidate.fullSuiteCoverageComplete).toBe(true);
     expect(candidate.layerMetrics).toMatchObject({
-      SMOKE: { plannedCases: 0, executedCases: 0, passedCases: 0, rate: null, status: "NOT_RUN" },
+      SMOKE: { plannedCases: 0, executedCases: 0, passedCases: 0, rate: null, status: "UNPLANNED" },
       CORE_CONTRACT: { plannedCases: 1, executedCases: 1, passedCases: 1, rate: 1, status: "COMPLETE" },
       GENERALIZATION: { plannedCases: 1, executedCases: 1, passedCases: 1, rate: 1, status: "COMPLETE" },
     });
     expect(compareAgentEvalReports(baseline, candidate)).toMatchObject({ baselineEvalRunId: "run-a", candidateEvalRunId: "run-b", delta: { passRate: 1, diagnosisFidelity: 1 } });
+  });
+
+  it("distinguishes unplanned, not-run, partial and complete coverage", () => {
+    const baseCase = run("coverage", true).cases[0]!;
+    const report = buildAgentEvalReport({
+      ...run("coverage", true),
+      totalPlannedCases: 2,
+      suitePlan: {
+        layerCaseIds: {
+          SMOKE: [],
+          CORE_CONTRACT: ["executed"],
+          REFERENCE_PACK: ["missing"],
+          GENERALIZATION: ["executed", "missing"],
+          ADVERSARIAL: [],
+          LEARNING_LOOP: [],
+        },
+        dimensionCaseIds: {},
+      },
+      cases: [{ ...baseCase, caseId: "executed" }],
+    } as unknown as PersistedAgentEvalRun);
+
+    expect(report.layerMetrics).toMatchObject({
+      SMOKE: { status: "UNPLANNED" },
+      REFERENCE_PACK: { status: "NOT_RUN" },
+      GENERALIZATION: { status: "PARTIAL" },
+      CORE_CONTRACT: { status: "COMPLETE" },
+    });
+  });
+
+  it("does not report a completed subset as complete full-suite coverage", () => {
+    const subset: PersistedAgentEvalRun = {
+      ...run("baseline-subset", true),
+      selection: { mode: "BASELINE", value: "1.2.0" },
+    };
+
+    expect(buildAgentEvalReport(subset)).toMatchObject({
+      isComplete: true,
+      fullSuiteCoverageComplete: false,
+      layerMetrics: {
+        CORE_CONTRACT: { coverageComplete: false, status: "PARTIAL", rate: null },
+        GENERALIZATION: { coverageComplete: false, status: "PARTIAL", rate: null },
+      },
+    });
   });
 
   it("uses only eligible cases for aggregate metrics and preserves partial cost evidence", () => {

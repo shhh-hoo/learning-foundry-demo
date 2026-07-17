@@ -6,14 +6,14 @@ import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 import { buildPublicSafeExport } from "../scripts/lib/corpus-ingestion";
-import { CorpusRepository } from "../scripts/lib/corpus-repository";
+import { LegacyLexicalEvidenceSearch } from "../scripts/lib/corpus-repository";
 import type { CorpusChunk, CorpusIndexManifest } from "../src/corpus/types";
 
 const executeFile = promisify(execFile);
 const roots: string[] = [];
 const sha256 = (value: string) => createHash("sha256").update(value).digest("hex");
 
-async function fixtureRepository(): Promise<{ readonly root: string; readonly repository: CorpusRepository }> {
+async function fixtureRepository(): Promise<{ readonly root: string; readonly repository: LegacyLexicalEvidenceSearch }> {
   const root = await mkdtemp(join(tmpdir(), "corpus-retrieval-"));
   roots.push(root);
   const chunks: CorpusChunk[] = [
@@ -28,12 +28,35 @@ async function fixtureRepository(): Promise<{ readonly root: string; readonly re
   await writeFile(join(directory, "chunks.json"), chunksText);
   await writeFile(join(directory, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`);
   await writeFile(join(root, ".local-data/corpus/latest.json"), `${JSON.stringify({ indexVersion: version, indexHash: manifest.indexHash, manifestPath: `indexes/${version}/manifest.json` }, null, 2)}\n`);
-  return { root, repository: await CorpusRepository.open(root) };
+  return { root, repository: await LegacyLexicalEvidenceSearch.open(root) };
 }
 
 afterEach(() => { roots.length = 0; });
 
 describe("governed corpus retrieval", () => {
+  it("returns the current lexical Evidence Search response contract", async () => {
+    const { repository } = await fixtureRepository();
+    const result = await repository.search("limiting reagent", { calculationFamilyId: "STOICH-005" });
+
+    expect(result).toMatchObject({
+      retrievalTraceId: expect.stringMatching(/^retrieval-trace-/u),
+      query: "limiting reagent",
+      filters: { calculationFamilyId: "STOICH-005" },
+      results: [{
+        chunkId: "TN-003::note",
+        sourceId: "TN-003-LIMITING-REAGENT",
+        sourceType: "TEACHER_NOTE",
+        distributionScope: "SCHOOL_INTERNAL",
+        title: "Limiting reagent",
+        excerpt: expect.stringContaining("balanced-equation coefficient"),
+        syllabusCode: "9701",
+        learningOutcomeIds: ["2.4.1(d)"],
+        calculationFamilyIds: ["STOICH-005"],
+        score: expect.any(Number),
+      }],
+    });
+  });
+
   it("filters by board/version metadata and exact calculation family", async () => {
     const { repository } = await fixtureRepository();
     const match = await repository.search("limiting reagent", { examBoard: "CAIE", syllabusCode: "9701", syllabusVersion: "2025-2027", calculationFamilyId: "STOICH-005" });

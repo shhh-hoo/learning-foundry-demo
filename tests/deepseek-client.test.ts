@@ -1,9 +1,22 @@
 import { describe, expect, it } from "vitest";
-import { createDeepSeekClient } from "../src/agent/deepseek-client";
+import { createDeepSeekClient, toObservableAgentMessage } from "../src/agent/deepseek-client";
 
 const TEST_FIXTURE = "TEST_FIXTURE" as const;
 
 describe("DeepSeek HTTP boundary", () => {
+  it("maps provider output to the neutral observable message without hidden reasoning", () => {
+    expect(toObservableAgentMessage({
+      role: "assistant",
+      content: null,
+      tool_calls: [{ id: "call-1", type: "function", function: { name: "search_learning_resources", arguments: "{}" } }],
+      reasoning_content: "private provider reasoning",
+    })).toEqual({
+      role: "assistant",
+      content: null,
+      tool_calls: [{ id: "call-1", type: "function", function: { name: "search_learning_resources", arguments: "{}" } }],
+    });
+  });
+
   it("uses the configured model, JSON output, tools and explicit thinking toggle", async () => {
     let url = ""; let init: RequestInit | undefined;
     const client = createDeepSeekClient({ apiKey: TEST_FIXTURE, model: "configured-model", baseUrl: "https://api.deepseek.com", thinkingMode: "disabled", fetcher: async (input, requestInit) => {

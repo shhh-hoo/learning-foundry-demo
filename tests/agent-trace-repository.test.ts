@@ -3,6 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { AgentTraceRepository, PurposeSeparatedAgentTraceRepository } from "../scripts/lib/agent-trace-repository";
+import type { ModelMessage } from "../src/agent/deepseek-client";
+import type { AgentRunStart } from "../src/agent/trace-store";
 
 const TEST_FIXTURE = "TEST_FIXTURE" as const;
 const directories: string[] = [];
@@ -10,12 +12,36 @@ async function directory() { const value = await mkdtemp(join(tmpdir(), "lf-agen
 afterEach(async () => { await Promise.all(directories.splice(0).map((value) => rm(value, { recursive: true, force: true }))); });
 
 describe("AgentTraceRepository", () => {
+  it("accepts provider-neutral trace starts and observable messages", async () => {
+    const root = await directory();
+    const repository = new AgentTraceRepository(root);
+    const start = {
+      traceId: "candidate-trace",
+      request: { conversationId: "candidate", inputOrigin: "PRESET_INPUT", runPurpose: "AGENT_EVAL", messages: [{ role: "user", content: "case" }] },
+      provider: "candidate-shadow",
+      model: "candidate-model",
+      thinkingMode: "disabled",
+      prompt: { version: "1", contentHash: "p" },
+      capabilityRegistry: { version: "1", contentHash: "c" },
+      toolDefinitions: { version: "1", contentHash: "t" },
+      startedAt: "2026-07-16T09:00:00.000Z",
+    } as const satisfies AgentRunStart;
+
+    await repository.start(start);
+    await repository.appendModelResponse("candidate-trace", { role: "assistant", content: "candidate response" });
+    await expect(repository.get("candidate-trace")).resolves.toMatchObject({
+      provider: "candidate-shadow",
+      observableModelMessages: [{ role: "assistant", content: "candidate response" }],
+    });
+  });
+
   it("persists routes, completed model and tool observations across repository re-instantiation", async () => {
     expect(TEST_FIXTURE).toBe("TEST_FIXTURE");
     const root = await directory();
     const repository = new AgentTraceRepository(root);
     await repository.start({ traceId: "trace-1", request: { conversationId: "c-1", inputOrigin: "USER_INPUT", runPurpose: "PRODUCT", messages: [{ role: "user", content: "question" }] }, initialRoute: "COURSE_EXPLANATION", provider: "deepseek", model: "configured", thinkingMode: "disabled", prompt: { version: "1.3.0", contentHash: "prompt-hash" }, capabilityRegistry: { version: "1", contentHash: "registry-hash" }, toolDefinitions: { version: "1", contentHash: "tools-hash" }, startedAt: "2026-07-16T10:00:00.000Z" });
-    await repository.appendModelResponse("trace-1", { role: "assistant", content: null, tool_calls: [{ id: "call-1", type: "function", function: { name: "search_learning_resources", arguments: '{"query":"ratio"}' } }], reasoning_content: "must never persist" }, { promptTokens: 10, completionTokens: 2, totalTokens: 12 });
+    const providerMessage = { role: "assistant", content: null, tool_calls: [{ id: "call-1", type: "function", function: { name: "search_learning_resources", arguments: '{"query":"ratio"}' } }], reasoning_content: "must never persist" } as const satisfies ModelMessage;
+    await repository.appendModelResponse("trace-1", providerMessage, { promptTokens: 10, completionTokens: 2, totalTokens: 12 });
     await repository.appendToolExecution("trace-1", { name: "search_learning_resources", arguments: { query: "ratio" }, resultRef: "resource-search-1", status: "SUCCEEDED", result: [{ sourceId: "source-1" }] });
     await repository.complete("trace-1", { status: "ANSWERED", learnerMessage: "answer", sourceRefs: ["source-1"] }, "2026-07-16T10:00:01.000Z", "COURSE_EXPLANATION");
 

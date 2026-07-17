@@ -74,14 +74,14 @@ function excerpt(text: string, query: string): string {
   return `${start > 0 ? "… " : ""}${words.slice(start, start + 80).join(" ")}${start + 80 < words.length ? " …" : ""}`;
 }
 
-export class CorpusRepository implements CorpusSearchService {
+export class LegacyLexicalEvidenceSearch implements CorpusSearchService {
   private constructor(
     readonly rootDirectory: string,
     readonly manifest: CorpusIndexManifest,
     readonly chunks: readonly CorpusChunk[],
   ) {}
 
-  static async open(rootDirectory = process.cwd()): Promise<CorpusRepository> {
+  static async open(rootDirectory = process.cwd()): Promise<LegacyLexicalEvidenceSearch> {
     const root = resolve(rootDirectory);
     const corpusDirectory = join(root, ".local-data/corpus");
     const latest = await readJson<LatestPointer>(join(corpusDirectory, "latest.json"));
@@ -90,7 +90,7 @@ export class CorpusRepository implements CorpusSearchService {
     const manifestDirectory = join(corpusDirectory, "indexes", manifest.indexVersion);
     const chunksText = await readFile(join(manifestDirectory, manifest.chunksFile), "utf8");
     if (sha256(chunksText) !== manifest.chunksHash) throw new Error("CORPUS_INDEX_HASH_MISMATCH: chunks do not match the immutable manifest.");
-    return new CorpusRepository(root, manifest, JSON.parse(chunksText) as readonly CorpusChunk[]);
+    return new LegacyLexicalEvidenceSearch(root, manifest, JSON.parse(chunksText) as readonly CorpusChunk[]);
   }
 
   async search(query: string, filters: CorpusSearchFilters, context: { readonly conversationId?: string; readonly conversationEvidenceHash?: string; readonly route?: string } = {}): Promise<CorpusSearchResponse> {
@@ -139,6 +139,8 @@ export class CorpusRepository implements CorpusSearchService {
   }
 }
 
+export { LegacyLexicalEvidenceSearch as CorpusRepository };
+
 export async function inspectCorpus(rootDirectory = process.cwd()): Promise<{ readonly sources: readonly CorpusSourceStatus[]; readonly indexVersion: string | null; readonly chunkCount: number; readonly chunkCounts: Readonly<Record<string, number>> }> {
   const root = resolve(rootDirectory);
   const sourceManifest = await readJson<{ readonly sources: readonly { readonly sourceId: string; readonly sourceType: string; readonly expectedLocalFilename: string }[] }>(join(root, "corpus/02_SOURCE_MANIFEST.json"));
@@ -149,7 +151,7 @@ export async function inspectCorpus(rootDirectory = process.cwd()): Promise<{ re
     return { sourceId: source.sourceId, sourceType: source.sourceType === "OFFICIAL_SYLLABUS" ? "OFFICIAL_SYLLABUS" : "SECONDARY_REFERENCE", distributionScope: "SCHOOL_INTERNAL", expectedLocalFilename: source.expectedLocalFilename, status: registered ? "REGISTERED" : "MISSING" };
   }));
   try {
-    const repository = await CorpusRepository.open(root);
+    const repository = await LegacyLexicalEvidenceSearch.open(root);
     return { sources, indexVersion: repository.manifest.indexVersion, chunkCount: repository.manifest.chunkCount, chunkCounts: repository.manifest.chunkCounts };
   } catch {
     return { sources, indexVersion: null, chunkCount: 0, chunkCounts: {} };

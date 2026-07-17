@@ -11,6 +11,11 @@ export type DiagnosisGeneralizationDimension = typeof DIAGNOSIS_GENERALIZATION_D
 export const EXPECTED_CAPABILITY_RESOLUTIONS = ["FULL_MATCH", "PARTIAL_MATCH", "NO_MATCH"] as const;
 export type ExpectedCapabilityResolution = typeof EXPECTED_CAPABILITY_RESOLUTIONS[number];
 
+export interface AgentEvalSelection {
+  readonly mode: "FULL" | "CHECKPOINT" | "BASELINE" | "LAYER" | "DIMENSION";
+  readonly value?: string;
+}
+
 export interface AgentEvalBehaviorContract {
   readonly caseId: string;
   readonly input: string;
@@ -39,6 +44,13 @@ export function selectAgentEvalLayer(cases: readonly AgentEvalCase[], layer: Age
 
 export function selectAgentEvalDimension(cases: readonly AgentEvalCase[], dimension: AgentEvalDimension): readonly AgentEvalCase[] {
   return cases.filter((testCase) => testCase.evaluationDimensions?.includes(dimension));
+}
+
+export function requireNonEmptyAgentEvalSelection<T>(selection: AgentEvalSelection, cases: readonly T[]): readonly T[] {
+  if ((selection.mode === "LAYER" || selection.mode === "DIMENSION") && cases.length === 0) {
+    throw new Error(`AGENT_EVAL_SELECTION_EMPTY: ${selection.mode} ${selection.value ?? "UNKNOWN"} selected 0 cases`);
+  }
+  return cases;
 }
 
 export function buildAgentEvalSuitePlan(cases: readonly AgentEvalCase[]) {
