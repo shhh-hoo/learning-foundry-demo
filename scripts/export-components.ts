@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { z } from "zod";
-import { publishedComponents } from "../src/components/published";
+import { registeredPublishedDiagnosticComponents as publishedComponents } from "../src/reference-packs/registry";
 import { COMPONENT_SCHEMA_VERSION } from "../src/contracts/schema-version";
 import { diagnosticLearningComponentSchema, parsePublishedComponent } from "../src/contracts/published-component";
 import { contentHashMatches } from "../src/governance/content-hash";
