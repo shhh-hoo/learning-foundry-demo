@@ -155,4 +155,3 @@ const authority: Readonly<Record<ProductRecordKind, RecordAuthority>> = {
 export function productRecordAuthority(kind: ProductRecordKind): RecordAuthority {
   return structuredClone(authority[kind]);
 }
-

@@ -76,4 +76,3 @@ export function createEvidenceReference(evidenceUnitId: string, provenanceId: st
     provenanceId: requireId(provenanceId, "provenanceId"),
   };
 }
-

@@ -11,4 +11,3 @@ export const chemistryCaie9701PublishedComponents = [
   publishApprovedComponent(kpDraft, publication),
   publishApprovedComponent(massDraft, publication),
 ] as const;
-

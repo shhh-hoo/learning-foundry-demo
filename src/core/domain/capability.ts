@@ -21,4 +21,3 @@ export interface CapabilityProfile {
     | "PRODUCT_ACTION";
   readonly limitations: readonly string[];
 }
-

@@ -28,4 +28,3 @@ export function adaptLegacyCapability(
     implementation: record,
   };
 }
-

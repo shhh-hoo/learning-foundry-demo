@@ -46,4 +46,3 @@ This work does not claim:
 - a new curriculum, retrieval or Agent authority;
 - a separate Pack product-state machine;
 - permission to delete Legacy contracts or Adapters.
-

@@ -8,4 +8,3 @@ export interface ComponentProfile {
   readonly capabilityIds: readonly string[];
   readonly contentHash?: string;
 }
-

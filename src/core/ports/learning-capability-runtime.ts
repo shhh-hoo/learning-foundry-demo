@@ -15,4 +15,3 @@ export interface LearningCapabilityExecutionResult {
 export interface LearningCapabilityRuntime {
   execute(execution: LearningCapabilityExecution): Promise<LearningCapabilityExecutionResult>;
 }
-
