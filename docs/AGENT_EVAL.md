@@ -30,7 +30,7 @@ Cases can belong to more than one layer. Layer counts therefore overlap.
 | `ADVERSARIAL` | 3 | no fabrication and safety boundaries | `npm run agenteval:adversarial` |
 | `LEARNING_LOOP` | 0 | linked correction and retry evidence | `npm run agenteval:learning-loop` |
 
-Evaluation dimensions are orthogonal to suite layers: `CONTEXT`, `RETRIEVAL`, `INTERPRETATION`, `PEDAGOGY`, `COMPONENT`, `OUTCOME` and `CAPABILITY_BOUNDARY`. `npm run agenteval:retrieval` selects the `RETRIEVAL` dimension; it does not define another top-level suite layer.
+Assessment dimensions are orthogonal to suite layers: `CONTEXT`, `RETRIEVAL`, `INTERPRETATION`, `PEDAGOGY`, `COMPONENT`, `OUTCOME` and `CAPABILITY_BOUNDARY`. `npm run agenteval:retrieval` selects the `RETRIEVAL` dimension; it does not define another top-level suite layer.
 
 `npm run agenteval:live` runs all 73 cases. Layer, dimension, retrieval-variant, Diagnosis-dimension and capability-resolution taxonomy is validated before the first model call. Duplicate IDs, missing or unknown taxonomy and inconsistent contracts fail closed.
 
