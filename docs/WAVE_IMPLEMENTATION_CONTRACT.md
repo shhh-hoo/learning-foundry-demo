@@ -320,7 +320,7 @@ No arm shares history or outputs.
 Run exactly 72 first attempts. Only infrastructure failures may be
 replaced; preserve original failures and lineage.
 
-Evaluation has two locked phases:
+Review has two locked phases:
 
 1. blind pedagogy review hides arm identity, tools, sources and Evidence
    metadata and scores correctness, clarity, pedagogy and Context fidelity;
@@ -332,7 +332,7 @@ and arm, cache metrics, latency, tokens, cost, winner and reason, and
 distinguishes answer quality, product value and demonstrated learning
 effectiveness.
 
-PR 6 adds no external Eval vendor, OTel migration, retrieval replacement or
+PR 6 adds no external assessment vendor, OTel migration, retrieval replacement or
 AgentEval release-gate change.
 
 ## 5. Validation, authority and delivery defaults
