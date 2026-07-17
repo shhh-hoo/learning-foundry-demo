@@ -126,7 +126,7 @@ export function enforceRoutePolicy(
     const hasGovernedSource = searchHasGovernedSource(successfulToolResults);
     if (hasGovernedSource) {
       if (response.status !== "ANSWERED" || response.sourceRefs.length === 0) {
-        throw new RoutePolicyError(route, "Governed course evidence requires ANSWERED with at least one source reference.");
+        throw new RoutePolicyError(route, "A course explanation with governed evidence must return ANSWERED with at least one source reference.");
       }
     } else if (response.status !== "NEEDS_MORE_EVIDENCE" || response.sourceRefs.length !== 0) {
       throw new RoutePolicyError(route, "A completed retrieval without governed course evidence must return NEEDS_MORE_EVIDENCE with no source references.");
