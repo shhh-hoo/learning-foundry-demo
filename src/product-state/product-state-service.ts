@@ -170,6 +170,7 @@ export class ProductStateService {
       occurredAt: now,
       actor: actor.role,
       kind: required(input.kind, "kind"),
+      payload: structuredClone(input.payload),
       artifactRefs: structuredClone(input.artifactRefs),
       sourceRefs: structuredClone(input.sourceRefs),
       evidenceRefs: structuredClone(input.evidenceRefs),

@@ -1,0 +1,513 @@
+import { Pool, type PoolClient, type QueryResultRow } from "pg";
+import type {
+  ConversationEvent,
+  DiagnosticObservation,
+  LearningEpisode,
+  LearningOutcome,
+  LearningTask,
+  LearnerAttempt,
+  ObservationCorrection,
+  RetryAttempt,
+  TeacherReview,
+} from "../core/domain/learning";
+import type {
+  LearningLoopView,
+  ProductStateHealth,
+  ProductStateRepository,
+  ProductStateWrite,
+} from "../core/ports/product-state-repository";
+
+function json(value: unknown): string {
+  return JSON.stringify(value);
+}
+
+function iso(value: string | Date): string {
+  return value instanceof Date ? value.toISOString() : new Date(value).toISOString();
+}
+
+function optionalJson<T>(value: T | null): T | undefined {
+  return value === null ? undefined : value;
+}
+
+function taskFrom(row: QueryResultRow): LearningTask {
+  return {
+    id: row.id as string,
+    status: row.status as LearningTask["status"],
+    goal: row.goal as string,
+    createdAt: iso(row.created_at as string | Date),
+    updatedAt: iso(row.updated_at as string | Date),
+    materialRefs: row.material_refs as LearningTask["materialRefs"],
+  };
+}
+
+function episodeFrom(row: QueryResultRow): LearningEpisode {
+  const completedAt = row.completed_at as string | Date | null;
+  return {
+    id: row.id as string,
+    taskId: row.task_id as string,
+    status: row.status as LearningEpisode["status"],
+    startedAt: iso(row.started_at as string | Date),
+    ...(completedAt ? { completedAt: iso(completedAt) } : {}),
+  };
+}
+
+function eventFrom(row: QueryResultRow): ConversationEvent {
+  return {
+    id: row.id as string,
+    taskId: row.task_id as string,
+    episodeId: row.episode_id as string,
+    sequence: row.sequence as number,
+    occurredAt: iso(row.occurred_at as string | Date),
+    actor: row.actor as ConversationEvent["actor"],
+    kind: row.kind as string,
+    payload: row.payload as ConversationEvent["payload"],
+    artifactRefs: row.artifact_refs as ConversationEvent["artifactRefs"],
+    sourceRefs: row.source_refs as ConversationEvent["sourceRefs"],
+    evidenceRefs: row.evidence_refs as ConversationEvent["evidenceRefs"],
+  };
+}
+
+function attemptFrom(row: QueryResultRow): LearnerAttempt {
+  const capability = optionalJson(row.capability as LearnerAttempt["capability"] | null);
+  const supersedesAttemptId = row.supersedes_attempt_id as string | null;
+  return {
+    id: row.id as string,
+    taskId: row.task_id as string,
+    episodeId: row.episode_id as string,
+    submittedAt: iso(row.submitted_at as string | Date),
+    status: row.status as LearnerAttempt["status"],
+    artifactRefs: row.artifact_refs as LearnerAttempt["artifactRefs"],
+    evidenceRefs: row.evidence_refs as LearnerAttempt["evidenceRefs"],
+    ...(capability ? { capability } : {}),
+    ...(supersedesAttemptId ? { supersedesAttemptId } : {}),
+  };
+}
+
+function correctionFrom(row: QueryResultRow): ObservationCorrection {
+  const supersedesCorrectionId = row.supersedes_correction_id as string | null;
+  return {
+    id: row.id as string,
+    observationId: row.observation_id as string,
+    createdAt: iso(row.created_at as string | Date),
+    actorId: row.actor_id as string,
+    reason: row.reason as string,
+    ...(supersedesCorrectionId ? { supersedesCorrectionId } : {}),
+  };
+}
+
+function observationFrom(row: QueryResultRow, corrections: readonly ObservationCorrection[]): DiagnosticObservation {
+  return {
+    id: row.id as string,
+    attemptId: row.attempt_id as string,
+    status: row.status as DiagnosticObservation["status"],
+    createdAt: iso(row.created_at as string | Date),
+    sourceRefs: row.source_refs as DiagnosticObservation["sourceRefs"],
+    evidenceRefs: row.evidence_refs as DiagnosticObservation["evidenceRefs"],
+    provenance: row.provenance as DiagnosticObservation["provenance"],
+    diagnosisPayload: row.diagnosis_payload as DiagnosticObservation["diagnosisPayload"],
+    corrections,
+  };
+}
+
+function reviewFrom(row: QueryResultRow): TeacherReview {
+  const supersedesReviewId = row.supersedes_review_id as string | null;
+  return {
+    id: row.id as string,
+    observationId: row.observation_id as string,
+    reviewerId: row.reviewer_id as string,
+    reviewedAt: iso(row.reviewed_at as string | Date),
+    decision: row.decision as TeacherReview["decision"],
+    rationale: row.rationale as string,
+    evidenceRefs: row.evidence_refs as TeacherReview["evidenceRefs"],
+    ...(supersedesReviewId ? { supersedesReviewId } : {}),
+  };
+}
+
+function retryFrom(row: QueryResultRow): RetryAttempt {
+  const attemptId = row.attempt_id as string | null;
+  return {
+    id: row.id as string,
+    taskId: row.task_id as string,
+    episodeId: row.episode_id as string,
+    originalAttemptId: row.original_attempt_id as string,
+    reviewId: row.review_id as string,
+    ...(attemptId ? { attemptId } : {}),
+    status: row.status as RetryAttempt["status"],
+    createdAt: iso(row.created_at as string | Date),
+  };
+}
+
+function outcomeFrom(row: QueryResultRow): LearningOutcome {
+  return {
+    id: row.id as string,
+    taskId: row.task_id as string,
+    episodeId: row.episode_id as string,
+    originalAttemptId: row.original_attempt_id as string,
+    retryAttemptId: row.retry_attempt_id as string,
+    recordedAt: iso(row.recorded_at as string | Date),
+    outcomeType: row.outcome_type as LearningOutcome["outcomeType"],
+    result: row.result as LearningOutcome["result"],
+    evidenceRefs: row.evidence_refs as LearningOutcome["evidenceRefs"],
+    recordedBy: row.recorded_by as string,
+  };
+}
+
+async function insertAttempt(client: PoolClient, attempt: LearnerAttempt): Promise<void> {
+  await client.query(
+    `INSERT INTO product_state.learner_attempt
+      (id, task_id, episode_id, submitted_at, status, artifact_refs, evidence_refs, capability, supersedes_attempt_id)
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7::jsonb, $8::jsonb, $9)`,
+    [
+      attempt.id,
+      attempt.taskId,
+      attempt.episodeId,
+      attempt.submittedAt,
+      attempt.status,
+      json(attempt.artifactRefs),
+      json(attempt.evidenceRefs),
+      attempt.capability ? json(attempt.capability) : null,
+      attempt.supersedesAttemptId ?? null,
+    ],
+  );
+}
+
+async function insertObservation(client: PoolClient, observation: DiagnosticObservation): Promise<void> {
+  await client.query(
+    `INSERT INTO product_state.diagnostic_observation
+      (id, attempt_id, status, created_at, source_refs, evidence_refs, provenance, diagnosis_payload)
+     VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb, $8::jsonb)`,
+    [
+      observation.id,
+      observation.attemptId,
+      observation.status,
+      observation.createdAt,
+      json(observation.sourceRefs),
+      json(observation.evidenceRefs),
+      json(observation.provenance),
+      json(observation.diagnosisPayload),
+    ],
+  );
+}
+
+function requireUpdated(rowCount: number | null, code: string): void {
+  if (rowCount !== 1) throw new Error(code);
+}
+
+export class PostgresProductStateRepository implements ProductStateRepository {
+  constructor(private readonly pool: Pool) {}
+
+  async apply(write: ProductStateWrite): Promise<void> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await this.applyMutation(client, write);
+      await client.query(
+        `INSERT INTO product_state.product_state_decision
+          (id, schema_version, event_type, actor_id, actor_role, aggregate_type, aggregate_id, occurred_at, details)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)`,
+        [
+          write.decision.id,
+          write.decision.schemaVersion,
+          write.decision.eventType,
+          write.decision.actor.actorId,
+          write.decision.actor.role,
+          write.decision.aggregateType,
+          write.decision.aggregateId,
+          write.decision.occurredAt,
+          json(write.decision.details),
+        ],
+      );
+      await client.query(
+        `INSERT INTO product_state.outbox_message
+          (id, schema_version, event_type, aggregate_type, aggregate_id, occurred_at, payload)
+         VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)`,
+        [
+          write.outbox.id,
+          write.outbox.schemaVersion,
+          write.outbox.eventType,
+          write.outbox.aggregateType,
+          write.outbox.aggregateId,
+          write.outbox.occurredAt,
+          json(write.outbox.payload),
+        ],
+      );
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async getTask(taskId: string): Promise<LearningTask | null> {
+    const result = await this.pool.query("SELECT * FROM product_state.learning_task WHERE id = $1", [taskId]);
+    return result.rows[0] ? taskFrom(result.rows[0]) : null;
+  }
+
+  async getEpisode(episodeId: string): Promise<LearningEpisode | null> {
+    const result = await this.pool.query("SELECT * FROM product_state.learning_episode WHERE id = $1", [episodeId]);
+    return result.rows[0] ? episodeFrom(result.rows[0]) : null;
+  }
+
+  async getAttempt(attemptId: string): Promise<LearnerAttempt | null> {
+    const result = await this.pool.query("SELECT * FROM product_state.learner_attempt WHERE id = $1", [attemptId]);
+    return result.rows[0] ? attemptFrom(result.rows[0]) : null;
+  }
+
+  async getObservation(observationId: string): Promise<DiagnosticObservation | null> {
+    const [observation, corrections] = await Promise.all([
+      this.pool.query("SELECT * FROM product_state.diagnostic_observation WHERE id = $1", [observationId]),
+      this.pool.query(
+        "SELECT * FROM product_state.observation_correction WHERE observation_id = $1 ORDER BY created_at, id",
+        [observationId],
+      ),
+    ]);
+    return observation.rows[0]
+      ? observationFrom(observation.rows[0], corrections.rows.map(correctionFrom))
+      : null;
+  }
+
+  async getReview(reviewId: string): Promise<TeacherReview | null> {
+    const result = await this.pool.query("SELECT * FROM product_state.teacher_review WHERE id = $1", [reviewId]);
+    return result.rows[0] ? reviewFrom(result.rows[0]) : null;
+  }
+
+  async getRetry(retryAttemptId: string): Promise<RetryAttempt | null> {
+    const result = await this.pool.query("SELECT * FROM product_state.retry_attempt WHERE id = $1", [retryAttemptId]);
+    return result.rows[0] ? retryFrom(result.rows[0]) : null;
+  }
+
+  async getOutcomeForRetry(retryAttemptId: string): Promise<LearningOutcome | null> {
+    const result = await this.pool.query("SELECT * FROM product_state.learning_outcome WHERE retry_attempt_id = $1", [retryAttemptId]);
+    return result.rows[0] ? outcomeFrom(result.rows[0]) : null;
+  }
+
+  async nextConversationEventSequence(episodeId: string): Promise<number> {
+    const result = await this.pool.query(
+      "SELECT COALESCE(MAX(sequence), 0) + 1 AS next_sequence FROM product_state.conversation_event WHERE episode_id = $1",
+      [episodeId],
+    );
+    return Number(result.rows[0]?.next_sequence ?? 1);
+  }
+
+  async getLearningLoop(taskId: string): Promise<LearningLoopView | null> {
+    const [task, episodes, events, attempts, observations, corrections, reviews, retries, outcomes] = await Promise.all([
+      this.pool.query("SELECT * FROM product_state.learning_task WHERE id = $1", [taskId]),
+      this.pool.query("SELECT * FROM product_state.learning_episode WHERE task_id = $1 ORDER BY started_at, id", [taskId]),
+      this.pool.query("SELECT * FROM product_state.conversation_event WHERE task_id = $1 ORDER BY occurred_at, sequence, id", [taskId]),
+      this.pool.query("SELECT * FROM product_state.learner_attempt WHERE task_id = $1 ORDER BY submitted_at, id", [taskId]),
+      this.pool.query(
+        `SELECT observation.* FROM product_state.diagnostic_observation observation
+         JOIN product_state.learner_attempt attempt ON attempt.id = observation.attempt_id
+         WHERE attempt.task_id = $1 ORDER BY observation.created_at, observation.id`,
+        [taskId],
+      ),
+      this.pool.query(
+        `SELECT correction.* FROM product_state.observation_correction correction
+         JOIN product_state.diagnostic_observation observation ON observation.id = correction.observation_id
+         JOIN product_state.learner_attempt attempt ON attempt.id = observation.attempt_id
+         WHERE attempt.task_id = $1 ORDER BY correction.created_at, correction.id`,
+        [taskId],
+      ),
+      this.pool.query(
+        `SELECT review.* FROM product_state.teacher_review review
+         JOIN product_state.diagnostic_observation observation ON observation.id = review.observation_id
+         JOIN product_state.learner_attempt attempt ON attempt.id = observation.attempt_id
+         WHERE attempt.task_id = $1 ORDER BY review.reviewed_at, review.id`,
+        [taskId],
+      ),
+      this.pool.query("SELECT * FROM product_state.retry_attempt WHERE task_id = $1 ORDER BY created_at, id", [taskId]),
+      this.pool.query("SELECT * FROM product_state.learning_outcome WHERE task_id = $1 ORDER BY recorded_at, id", [taskId]),
+    ]);
+    if (!task.rows[0]) return null;
+    const correctionRecords = corrections.rows.map(correctionFrom);
+    return {
+      task: taskFrom(task.rows[0]),
+      episodes: episodes.rows.map(episodeFrom),
+      conversationEvents: events.rows.map(eventFrom),
+      attempts: attempts.rows.map(attemptFrom),
+      observations: observations.rows.map((row) => observationFrom(
+        row,
+        correctionRecords.filter((item) => item.observationId === row.id),
+      )),
+      reviews: reviews.rows.map(reviewFrom),
+      retries: retries.rows.map(retryFrom),
+      outcomes: outcomes.rows.map(outcomeFrom),
+    };
+  }
+
+  async health(): Promise<ProductStateHealth> {
+    try {
+      const result = await this.pool.query(
+        "SELECT version FROM product_state.schema_migration ORDER BY version DESC LIMIT 1",
+      );
+      return {
+        ready: result.rows[0]?.version === "0002",
+        schemaVersion: (result.rows[0]?.version as string | undefined) ?? null,
+        readOnly: false,
+      };
+    } catch {
+      return { ready: false, schemaVersion: null, readOnly: false };
+    }
+  }
+
+  private async applyMutation(client: PoolClient, write: ProductStateWrite): Promise<void> {
+    const mutation = write.mutation;
+    switch (mutation.kind) {
+      case "CREATE_TASK":
+        await client.query(
+          `INSERT INTO product_state.learning_task
+            (id, status, goal, material_refs, created_at, updated_at)
+           VALUES ($1, $2, $3, $4::jsonb, $5, $6)`,
+          [mutation.task.id, mutation.task.status, mutation.task.goal, json(mutation.task.materialRefs), mutation.task.createdAt, mutation.task.updatedAt],
+        );
+        return;
+      case "START_EPISODE":
+        await client.query(
+          `INSERT INTO product_state.learning_episode
+            (id, task_id, status, started_at, completed_at)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [mutation.episode.id, mutation.episode.taskId, mutation.episode.status, mutation.episode.startedAt, mutation.episode.completedAt ?? null],
+        );
+        return;
+      case "APPEND_CONVERSATION_EVENT":
+        await client.query(
+          `INSERT INTO product_state.conversation_event
+            (id, task_id, episode_id, sequence, occurred_at, actor, kind, payload, artifact_refs, source_refs, evidence_refs)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10::jsonb, $11::jsonb)`,
+          [
+            mutation.event.id,
+            mutation.event.taskId,
+            mutation.event.episodeId,
+            mutation.event.sequence,
+            mutation.event.occurredAt,
+            mutation.event.actor,
+            mutation.event.kind,
+            json(mutation.event.payload),
+            json(mutation.event.artifactRefs),
+            json(mutation.event.sourceRefs),
+            json(mutation.event.evidenceRefs),
+          ],
+        );
+        return;
+      case "SUBMIT_ATTEMPT":
+        await insertAttempt(client, mutation.attempt);
+        return;
+      case "RECORD_OBSERVATION":
+        await insertObservation(client, mutation.observation);
+        return;
+      case "RECORD_REVIEW":
+        await client.query(
+          `INSERT INTO product_state.teacher_review
+            (id, observation_id, reviewer_id, reviewed_at, decision, rationale, evidence_refs, supersedes_review_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)`,
+          [
+            mutation.review.id,
+            mutation.review.observationId,
+            mutation.review.reviewerId,
+            mutation.review.reviewedAt,
+            mutation.review.decision,
+            mutation.review.rationale,
+            json(mutation.review.evidenceRefs),
+            mutation.review.supersedesReviewId ?? null,
+          ],
+        );
+        if (mutation.correction) {
+          await client.query(
+            `INSERT INTO product_state.observation_correction
+              (id, observation_id, created_at, actor_id, reason, supersedes_correction_id)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [
+              mutation.correction.id,
+              mutation.correction.observationId,
+              mutation.correction.createdAt,
+              mutation.correction.actorId,
+              mutation.correction.reason,
+              mutation.correction.supersedesCorrectionId ?? null,
+            ],
+          );
+        }
+        return;
+      case "PLAN_RETRY":
+        await client.query(
+          `INSERT INTO product_state.retry_attempt
+            (id, task_id, episode_id, original_attempt_id, review_id, attempt_id, status, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [
+            mutation.retry.id,
+            mutation.retry.taskId,
+            mutation.retry.episodeId,
+            mutation.retry.originalAttemptId,
+            mutation.retry.reviewId,
+            mutation.retry.attemptId ?? null,
+            mutation.retry.status,
+            mutation.retry.createdAt,
+          ],
+        );
+        return;
+      case "SUBMIT_RETRY": {
+        await insertAttempt(client, mutation.attempt);
+        const result = await client.query(
+          `UPDATE product_state.retry_attempt
+           SET attempt_id = $2, status = 'SUBMITTED'
+           WHERE id = $1 AND status = 'PLANNED'`,
+          [mutation.retryAttemptId, mutation.attempt.id],
+        );
+        requireUpdated(result.rowCount, "PLANNED_RETRY_REQUIRED");
+        return;
+      }
+      case "RECORD_RETRY_RESULT": {
+        await insertObservation(client, mutation.observation);
+        const result = await client.query(
+          `UPDATE product_state.retry_attempt
+           SET status = 'COMPLETED'
+           WHERE id = $1 AND status = 'SUBMITTED' AND attempt_id = $2`,
+          [mutation.retryAttemptId, mutation.observation.attemptId],
+        );
+        requireUpdated(result.rowCount, "SUBMITTED_RETRY_REQUIRED");
+        return;
+      }
+      case "RECORD_OUTCOME":
+        await client.query(
+          `INSERT INTO product_state.learning_outcome
+            (id, task_id, episode_id, original_attempt_id, retry_attempt_id, recorded_at, outcome_type, result, evidence_refs, recorded_by)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10)`,
+          [
+            mutation.outcome.id,
+            mutation.outcome.taskId,
+            mutation.outcome.episodeId,
+            mutation.outcome.originalAttemptId,
+            mutation.outcome.retryAttemptId,
+            mutation.outcome.recordedAt,
+            mutation.outcome.outcomeType,
+            mutation.outcome.result,
+            json(mutation.outcome.evidenceRefs),
+            mutation.outcome.recordedBy,
+          ],
+        );
+        requireUpdated((await client.query(
+          `UPDATE product_state.learning_episode SET status = 'COMPLETED', completed_at = $2
+           WHERE id = $1 AND status = 'ACTIVE'`,
+          [mutation.outcome.episodeId, mutation.outcome.recordedAt],
+        )).rowCount, "ACTIVE_EPISODE_REQUIRED");
+        requireUpdated((await client.query(
+          `UPDATE product_state.learning_task SET status = 'COMPLETED', updated_at = $2
+           WHERE id = $1 AND status = 'ACTIVE'`,
+          [mutation.outcome.taskId, mutation.outcome.recordedAt],
+        )).rowCount, "ACTIVE_TASK_REQUIRED");
+    }
+  }
+}
+
+export function createPostgresProductStateRepository(connectionString: string): {
+  readonly repository: PostgresProductStateRepository;
+  readonly close: () => Promise<void>;
+} {
+  if (!connectionString.trim()) throw new Error("PRODUCT_STATE_DATABASE_URL_REQUIRED");
+  const pool = new Pool({ connectionString, max: 10 });
+  return {
+    repository: new PostgresProductStateRepository(pool),
+    close: () => pool.end(),
+  };
+}

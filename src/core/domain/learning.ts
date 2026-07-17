@@ -43,6 +43,7 @@ export interface ConversationEvent {
   readonly occurredAt: string;
   readonly actor: "LEARNER" | "TEACHER" | "FOUNDRY" | "SYSTEM";
   readonly kind: string;
+  readonly payload: Readonly<Record<string, unknown>>;
   readonly artifactRefs: readonly ArtifactReference[];
   readonly sourceRefs: readonly SourceReference[];
   readonly evidenceRefs: readonly EvidenceReference[];

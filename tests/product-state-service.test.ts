@@ -29,6 +29,7 @@ describe("canonical Product State learning loop", () => {
       taskId: "task-1",
       episodeId: "episode-1",
       kind: "LEARNER_MESSAGE",
+      payload: { content: "Here is my revised explanation." },
       artifactRefs: [],
       sourceRefs: [],
       evidenceRefs: [evidenceRef],
