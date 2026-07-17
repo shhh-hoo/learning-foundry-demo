@@ -8,6 +8,8 @@ Shadow implementation checkpoint: `2e20731d58019ac05928975ff5452bd9742c1dc3`
 
 Isolation correction checkpoint: `9a9e5801cf7ca9864a8c7b5d74ea8e1b05eb0519`
 
+Fail-closed ordering correction checkpoint: `ab4c6f3baf0c781c21144bb40ff769247a263d2a`
+
 ## Problem addressed
 
 PR #7 establishes replaceable current-runtime boundaries, but it intentionally has no mechanism for running a future candidate without affecting the authoritative product path. This stacked change adds the smallest candidate-neutral, default-off shadow coordinator and comparison record needed for a later adapter.
@@ -27,6 +29,7 @@ The Agent Gateway is the real caller. It resolves route and obligations once, bu
 The coordinator guarantees:
 
 - authoritative execution determines the learner-facing result;
+- shadow execution starts only after authoritative execution completes successfully; an authoritative rejection produces no candidate model, tool or write call;
 - candidate success cannot replace that result;
 - candidate failure and timeout are recorded but isolated;
 - authoritative failure remains authoritative;

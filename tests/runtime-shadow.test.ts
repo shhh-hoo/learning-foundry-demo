@@ -246,7 +246,7 @@ describe("candidate-neutral runtime shadow coordination", () => {
     }
   });
 
-  it("preserves and records an authoritative failure even when the candidate succeeds", async () => {
+  it("does not start shadow execution when the authoritative execution fails", async () => {
     const records: RuntimeExecutionRecord[] = [];
     let shadowCalls = 0;
     const authoritative: RuntimeExecutor = {
@@ -264,7 +264,8 @@ describe("candidate-neutral runtime shadow coordination", () => {
 
     await expect(coordinator.execute(normalizedRequest)).rejects.toMatchObject({ code: "AUTHORITATIVE_DOWN" });
 
-    expect(shadowCalls).toBe(1);
+    expect(shadowCalls).toBe(0);
+    expect(records.some((record) => record.role === "SHADOW")).toBe(false);
     expect(records).toContainEqual(expect.objectContaining({
       role: "AUTHORITATIVE",
       status: "FAILED",
