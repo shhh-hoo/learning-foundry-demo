@@ -280,4 +280,25 @@ describe("real agent orchestration contract", () => {
       stopReason: expect.stringContaining("required tool did not produce Evidence"),
     });
   });
+
+  it("keeps Foundry Context metadata out of provider message payloads", async () => {
+    const contextualRequest = {
+      ...request,
+      activeTaskId: "task-current",
+      messages: [
+        { role: "user" as const, content: "Prior task text", context: { taskId: "task-prior", lifecycle: "ACTIVE" as const } },
+        { role: "user" as const, content: "Calculate 2 + 2.", context: { taskId: "task-current", episodeId: "episode-current", lifecycle: "ACTIVE" as const } },
+      ],
+    };
+    const modelClient: AgentModelClient = { call: async ({ messages }) => {
+      expect(messages.slice(1)).toEqual([{ role: "user", content: "Calculate 2 + 2." }]);
+      expect(JSON.stringify(messages)).not.toContain("task-current");
+      expect(JSON.stringify(messages)).not.toContain("episode-current");
+      return { message: { role: "assistant", content: JSON.stringify({ status: "ANSWERED", learnerMessage: "4", sourceRefs: [], evidenceRefs: [] }) } };
+    } };
+
+    const trace = await runAgent({ ...base, request: contextualRequest, modelClient, tools: { execute: async () => { throw new Error("unused"); } } });
+
+    expect(trace.contextSelection).toMatchObject({ selectedMessageIndexes: [1], excludedContextItems: [{ messageIndex: 0, reason: "OTHER_TASK" }] });
+  });
 });
