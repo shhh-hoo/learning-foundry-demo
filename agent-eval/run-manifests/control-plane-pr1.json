@@ -1,0 +1,84 @@
+{
+  "schemaVersion": "1.0.0",
+  "manifestId": "control-plane-pr1-live-evidence",
+  "docsAuthority": "learning-foundry-docs@260747722e8040972deceed3290bce237676f225",
+  "implementationRef": "PR_HEAD_AT_EXECUTION",
+  "status": "PLANNED_NOT_EXECUTED",
+  "modelConfiguration": {
+    "provider": "deepseek",
+    "model": "DEEPSEEK_MODEL_FROM_SERVER_ENVIRONMENT",
+    "thinkingMode": "DEEPSEEK_THINKING_MODE_FROM_SERVER_ENVIRONMENT",
+    "sampling": "PROVIDER_CONFIGURATION_RECORDED_WITH_RUN"
+  },
+  "preconditions": {
+    "technicalEnvironment": [
+      "DEEPSEEK_API_KEY and DEEPSEEK_MODEL configured server-side",
+      "governed corpus index available",
+      "Component Registry and Trainer services healthy"
+    ],
+    "deliveryAuthorization": [
+      "provider deepseek approved",
+      "purpose AGENT_EVAL approved",
+      "distribution scope SCHOOL_INTERNAL approved",
+      "every delivered source type approved"
+    ]
+  },
+  "checkpoint": {
+    "selection": "CHECKPOINT",
+    "caseIds": [
+      "A-course-explanation",
+      "B-incomplete-working",
+      "C-complete-registered-diagnosis",
+      "D-multi-stage-capability-gap",
+      "E-correct-registered-diagnosis",
+      "F-adversarial-no-fabrication"
+    ],
+    "attempts": [
+      { "attemptId": "control-plane-checkpoint-01", "replacementFor": null },
+      { "attemptId": "control-plane-checkpoint-02", "replacementFor": null },
+      { "attemptId": "control-plane-checkpoint-03", "replacementFor": null }
+    ]
+  },
+  "baseline": {
+    "selection": "BASELINE",
+    "contract": "agent-eval/baselines/1.2.0-contract.jsonl",
+    "caseIds": [
+      "retrieval-01",
+      "retrieval-02",
+      "retrieval-03",
+      "retrieval-04",
+      "retrieval-05",
+      "diagnosis-invented-context-01",
+      "diagnosis-01",
+      "diagnosis-02",
+      "diagnosis-missing-context-01",
+      "diagnosis-04",
+      "diagnosis-05",
+      "diagnosis-06",
+      "gap-01",
+      "gap-02",
+      "gap-03",
+      "gap-04",
+      "adversarial-01",
+      "adversarial-02"
+    ],
+    "attempts": [
+      { "attemptId": "control-plane-baseline-01", "replacementFor": null },
+      { "attemptId": "control-plane-baseline-02", "replacementFor": null }
+    ]
+  },
+  "replacementPolicy": {
+    "modelQualityFailure": "NO_REPLACEMENT",
+    "policyOrEvidenceIntegrityFailure": "NO_REPLACEMENT",
+    "classifiedInfrastructureFailure": "ONE_LINKED_REPLACEMENT_PER_FAILED_ATTEMPT",
+    "preserveOriginalFailure": true,
+    "preserveReplacementLineage": true,
+    "favorableResampling": false
+  },
+  "hardGates": [
+    "zero unexplained missing cases",
+    "zero new policy, provenance or Evidence-integrity regression",
+    "zero tool-budget or terminal-condition violation",
+    "every behavioral difference classified"
+  ]
+}
