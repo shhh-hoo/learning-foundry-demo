@@ -57,7 +57,9 @@ rejected.
 Agent and runtime evidence records include the immutable Plan, Context
 indexes and reasons, budget consumption, Evidence assessments,
 continue/stop reason and governed workflow identity. Plan snapshots do not
-contain message content. Runtime parity compares Plan, budgets, Evidence
+contain message content. Failed Agent runs retain the last Control Plane
+snapshot alongside the terminal error, so a failed workflow does not lose
+its budget, Evidence or blocked-step state. Runtime parity compares Plan, budgets, Evidence
 assessment outcomes and governed workflow status in addition to existing
 behavior, quality and operational axes.
 
