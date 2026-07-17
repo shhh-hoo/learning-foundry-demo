@@ -14,6 +14,7 @@ import type { ArtifactReference, EvidenceReference, SourceReference } from "../c
 import type { VersionedIdentity } from "../core/domain/capability";
 import {
   PRODUCT_STATE_SCHEMA_VERSION,
+  type ConversationEventWrite,
   type LearningLoopView,
   type ProductStateActor,
   type ProductStateEventType,
@@ -121,6 +122,38 @@ function writeFor(
   };
 }
 
+function conversationEventWriteFor(
+  actor: ProductStateActor,
+  event: Omit<ConversationEvent, "sequence">,
+  occurredAt: string,
+): ConversationEventWrite {
+  const eventType = "CONVERSATION_EVENT_APPENDED" as const;
+  const suffix = `${eventType.toLowerCase()}:${event.id}`;
+  const details = { taskId: event.taskId, episodeId: event.episodeId };
+  return {
+    event,
+    decision: {
+      schemaVersion: PRODUCT_STATE_SCHEMA_VERSION,
+      id: `decision:${suffix}`,
+      eventType,
+      actor,
+      aggregateType: "CONVERSATION_EVENT",
+      aggregateId: event.id,
+      occurredAt,
+      details,
+    },
+    outbox: {
+      schemaVersion: PRODUCT_STATE_SCHEMA_VERSION,
+      id: `outbox:${suffix}`,
+      eventType,
+      aggregateType: "CONVERSATION_EVENT",
+      aggregateId: event.id,
+      occurredAt,
+      payload: { aggregateId: event.id, ...details },
+    },
+  };
+}
+
 export class ProductStateService {
   constructor(
     private readonly repository: ProductStateRepository,
@@ -173,11 +206,10 @@ export class ProductStateService {
     requireTaskAccess(actor, task);
     requireActiveEpisode(await this.repository.getEpisode(input.episodeId), input.taskId);
     const now = this.clock.now();
-    const event: ConversationEvent = {
+    const event: Omit<ConversationEvent, "sequence"> = {
       id: required(input.eventId, "eventId"),
       taskId: required(input.taskId, "taskId"),
       episodeId: required(input.episodeId, "episodeId"),
-      sequence: await this.repository.nextConversationEventSequence(input.episodeId),
       occurredAt: now,
       actor: actor.role,
       kind: required(input.kind, "kind"),
@@ -186,11 +218,7 @@ export class ProductStateService {
       sourceRefs: structuredClone(input.sourceRefs),
       evidenceRefs: structuredClone(input.evidenceRefs),
     };
-    await this.repository.apply(writeFor(actor, "CONVERSATION_EVENT_APPENDED", "CONVERSATION_EVENT", event.id, now, {
-      kind: "APPEND_CONVERSATION_EVENT",
-      event,
-    }, { taskId: event.taskId, episodeId: event.episodeId, sequence: event.sequence }));
-    return event;
+    return this.repository.appendConversationEvent(conversationEventWriteFor(actor, event, now));
   }
 
   async submitAttempt(actor: ProductStateActor, input: AttemptInput): Promise<LearnerAttempt> {
@@ -199,6 +227,18 @@ export class ProductStateService {
     requireActiveTask(task);
     requireTaskAccess(actor, task);
     requireActiveEpisode(await this.repository.getEpisode(input.episodeId), input.taskId);
+    const supersedesAttemptId = input.supersedesAttemptId
+      ? required(input.supersedesAttemptId, "supersedesAttemptId")
+      : undefined;
+    if (supersedesAttemptId) {
+      const superseded = await this.repository.getAttempt(supersedesAttemptId);
+      if (!superseded
+        || superseded.status !== "SUBMITTED"
+        || superseded.taskId !== input.taskId
+        || superseded.episodeId !== input.episodeId) {
+        throw new Error("SUPERSEDED_ATTEMPT_MUST_BE_CURRENT_AND_IN_SAME_LEARNING_SCOPE");
+      }
+    }
     const now = this.clock.now();
     const attempt: LearnerAttempt = {
       id: required(input.attemptId, "attemptId"),
@@ -209,7 +249,7 @@ export class ProductStateService {
       artifactRefs: structuredClone(input.artifactRefs),
       evidenceRefs: structuredClone(input.evidenceRefs),
       ...(input.capability ? { capability: structuredClone(input.capability) } : {}),
-      ...(input.supersedesAttemptId ? { supersedesAttemptId: input.supersedesAttemptId } : {}),
+      ...(supersedesAttemptId ? { supersedesAttemptId } : {}),
     };
     await this.repository.apply(writeFor(actor, "LEARNER_ATTEMPT_SUBMITTED", "LEARNER_ATTEMPT", attempt.id, now, {
       kind: "SUBMIT_ATTEMPT",
@@ -248,6 +288,13 @@ export class ProductStateService {
     requireRole(actor, "TEACHER");
     const observation = await this.repository.getObservation(input.observationId);
     if (!observation || observation.status !== "ACTIVE") throw new Error("ACTIVE_OBSERVATION_REQUIRED");
+    const currentReview = await this.repository.getCurrentReviewForObservation(observation.id);
+    if (currentReview && input.supersedesReviewId !== currentReview.id) {
+      throw new Error("CURRENT_TEACHER_REVIEW_SUPERSESSION_REQUIRED");
+    }
+    if (!currentReview && input.supersedesReviewId) {
+      throw new Error("TEACHER_REVIEW_SUPERSESSION_TARGET_NOT_CURRENT");
+    }
     if (input.decision === "CORRECT" && !input.correction) throw new Error("CORRECTION_REQUIRED");
     if (input.decision !== "CORRECT" && input.correction) throw new Error("CORRECTION_NOT_ALLOWED");
     const now = this.clock.now();
@@ -259,7 +306,7 @@ export class ProductStateService {
       decision: input.decision,
       rationale: required(input.rationale, "rationale"),
       evidenceRefs: structuredClone(input.evidenceRefs),
-      ...(input.supersedesReviewId ? { supersedesReviewId: input.supersedesReviewId } : {}),
+      ...(currentReview ? { supersedesReviewId: currentReview.id } : {}),
     };
     const correction: ObservationCorrection | undefined = input.correction ? {
       id: required(input.correction.correctionId, "correctionId"),
@@ -281,10 +328,15 @@ export class ProductStateService {
     requireRole(actor, "TEACHER");
     const review = await this.repository.getReview(input.reviewId);
     if (!review || review.decision === "ESCALATE") throw new Error("ACTIONABLE_TEACHER_REVIEW_REQUIRED");
+    const currentReview = await this.repository.getCurrentReviewForObservation(review.observationId);
+    if (!currentReview || currentReview.id !== review.id) throw new Error("CURRENT_ACTIONABLE_TEACHER_REVIEW_REQUIRED");
     const observation = await this.repository.getObservation(review.observationId);
     if (!observation || observation.attemptId !== input.originalAttemptId) throw new Error("REVIEW_ATTEMPT_LINK_REQUIRED");
     const originalAttempt = await this.repository.getAttempt(input.originalAttemptId);
-    if (!originalAttempt || originalAttempt.taskId !== input.taskId || originalAttempt.episodeId !== input.episodeId) {
+    if (!originalAttempt
+      || originalAttempt.status !== "SUBMITTED"
+      || originalAttempt.taskId !== input.taskId
+      || originalAttempt.episodeId !== input.episodeId) {
       throw new Error("ORIGINAL_ATTEMPT_LINK_REQUIRED");
     }
     const now = this.clock.now();

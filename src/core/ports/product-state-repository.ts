@@ -11,6 +11,7 @@ import type {
 } from "../domain/learning";
 
 export const PRODUCT_STATE_SCHEMA_VERSION = "1.0.0" as const;
+export const PRODUCT_STATE_IMPORT_DECISION_SCHEMA_VERSION = "1.1.0" as const;
 
 export type ProductStateEventType =
   | "LEARNING_TASK_CREATED"
@@ -54,7 +55,6 @@ export interface ProductStateOutboxMessage {
 export type ProductStateMutation =
   | { readonly kind: "CREATE_TASK"; readonly task: LearningTask }
   | { readonly kind: "START_EPISODE"; readonly episode: LearningEpisode }
-  | { readonly kind: "APPEND_CONVERSATION_EVENT"; readonly event: ConversationEvent }
   | { readonly kind: "SUBMIT_ATTEMPT"; readonly attempt: LearnerAttempt }
   | { readonly kind: "RECORD_OBSERVATION"; readonly observation: DiagnosticObservation }
   | {
@@ -77,6 +77,12 @@ export type ProductStateMutation =
 
 export interface ProductStateWrite {
   readonly mutation: ProductStateMutation;
+  readonly decision: ProductStateDecisionRecord;
+  readonly outbox: ProductStateOutboxMessage;
+}
+
+export interface ConversationEventWrite {
+  readonly event: Omit<ConversationEvent, "sequence">;
   readonly decision: ProductStateDecisionRecord;
   readonly outbox: ProductStateOutboxMessage;
 }
@@ -120,10 +126,12 @@ export interface LegacyProductStateBundle {
 }
 
 export interface ProductStateImportDecision {
-  readonly schemaVersion: typeof PRODUCT_STATE_SCHEMA_VERSION;
+  readonly schemaVersion: typeof PRODUCT_STATE_SCHEMA_VERSION | typeof PRODUCT_STATE_IMPORT_DECISION_SCHEMA_VERSION;
   readonly id: string;
   readonly environment: string;
+  readonly scope: string;
   readonly decision: "IMPORT_COMPLETED" | "NO_IMPORT_REQUIRED";
+  readonly legacyImportReceiptId?: string;
   readonly decidedAt: string;
   readonly decidedBy: string;
   readonly evidence: Readonly<Record<string, unknown>>;
@@ -150,20 +158,22 @@ export interface ProductStateCutoverAcceptance {
  */
 export interface ProductStateRepository {
   apply(write: ProductStateWrite): Promise<void>;
+  appendConversationEvent(write: ConversationEventWrite): Promise<ConversationEvent>;
   getTask(taskId: string): Promise<LearningTask | null>;
   getEpisode(episodeId: string): Promise<LearningEpisode | null>;
   getAttempt(attemptId: string): Promise<LearnerAttempt | null>;
   getObservation(observationId: string): Promise<DiagnosticObservation | null>;
   getReview(reviewId: string): Promise<TeacherReview | null>;
+  getCurrentReviewForObservation(observationId: string): Promise<TeacherReview | null>;
   getRetry(retryAttemptId: string): Promise<RetryAttempt | null>;
   getOutcomeForRetry(retryAttemptId: string): Promise<LearningOutcome | null>;
-  nextConversationEventSequence(episodeId: string): Promise<number>;
   getLearningLoop(taskId: string): Promise<LearningLoopView | null>;
   health(): Promise<ProductStateHealth>;
 }
 
 export interface ProductStateAdministrationRepository {
   getLegacyImportReceipt(sourceSystem: "LEGACY_SHOWCASE", sourceKey: string): Promise<LegacyImportReceipt | null>;
+  getLegacyImportReceiptById(receiptId: string): Promise<LegacyImportReceipt | null>;
   importLegacyBundle(bundle: LegacyProductStateBundle): Promise<void>;
   recordImportDecision(decision: ProductStateImportDecision): Promise<void>;
   getImportDecision(environment: string): Promise<ProductStateImportDecision | null>;

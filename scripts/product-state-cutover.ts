@@ -26,7 +26,11 @@ try {
     decisionId: `import-decision:${randomUUID()}`,
     environment: configuration.environment,
     decision: decisionValue,
-    evidence: evidence as Record<string, unknown>,
+    evidence: {
+      ...(evidence as Record<string, unknown>),
+      environment: configuration.environment,
+      scope: configuration.environment,
+    },
   });
   const acceptance = await service.accept(actor, {
     acceptanceId: `cutover-acceptance:${randomUUID()}`,

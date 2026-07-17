@@ -11,6 +11,7 @@ import type {
   TeacherReview,
 } from "../core/domain/learning";
 import type {
+  ConversationEventWrite,
   LearningLoopView,
   LegacyImportReceipt,
   LegacyProductStateBundle,
@@ -157,6 +158,20 @@ function outcomeFrom(row: QueryResultRow): LearningOutcome {
   };
 }
 
+function legacyImportReceiptFrom(row: QueryResultRow): LegacyImportReceipt {
+  return {
+    schemaVersion: row.schema_version,
+    id: row.id,
+    sourceSystem: row.source_system,
+    sourceKey: row.source_key,
+    sourceHash: row.source_hash,
+    importedAt: iso(row.imported_at),
+    importedBy: row.imported_by,
+    taskId: row.task_id,
+    details: row.details,
+  } as LegacyImportReceipt;
+}
+
 async function insertAttempt(client: PoolClient, attempt: LearnerAttempt): Promise<void> {
   await client.query(
     `INSERT INTO product_state.learner_attempt
@@ -198,6 +213,58 @@ function requireUpdated(rowCount: number | null, code: string): void {
   if (rowCount !== 1) throw new Error(code);
 }
 
+async function insertDecisionAndOutbox(
+  client: PoolClient,
+  decision: ProductStateWrite["decision"],
+  outbox: ProductStateWrite["outbox"],
+): Promise<void> {
+  await client.query(
+    `INSERT INTO product_state.product_state_decision
+      (id, schema_version, event_type, actor_id, actor_role, aggregate_type, aggregate_id, occurred_at, details)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)`,
+    [
+      decision.id,
+      decision.schemaVersion,
+      decision.eventType,
+      decision.actor.actorId,
+      decision.actor.role,
+      decision.aggregateType,
+      decision.aggregateId,
+      decision.occurredAt,
+      json(decision.details),
+    ],
+  );
+  await client.query(
+    `INSERT INTO product_state.outbox_message
+      (id, schema_version, event_type, aggregate_type, aggregate_id, occurred_at, payload)
+     VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)`,
+    [
+      outbox.id,
+      outbox.schemaVersion,
+      outbox.eventType,
+      outbox.aggregateType,
+      outbox.aggregateId,
+      outbox.occurredAt,
+      json(outbox.payload),
+    ],
+  );
+}
+
+async function inRepeatableReadSnapshot<T>(pool: Pool, read: (client: PoolClient) => Promise<T>): Promise<T> {
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+    const result = await read(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export class PostgresProductStateRepository implements ProductStateRepository {
   constructor(private readonly pool: Pool) {}
 
@@ -206,39 +273,61 @@ export class PostgresProductStateRepository implements ProductStateRepository {
     try {
       await client.query("BEGIN");
       await this.applyMutation(client, write);
-      await client.query(
-        `INSERT INTO product_state.product_state_decision
-          (id, schema_version, event_type, actor_id, actor_role, aggregate_type, aggregate_id, occurred_at, details)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)`,
-        [
-          write.decision.id,
-          write.decision.schemaVersion,
-          write.decision.eventType,
-          write.decision.actor.actorId,
-          write.decision.actor.role,
-          write.decision.aggregateType,
-          write.decision.aggregateId,
-          write.decision.occurredAt,
-          json(write.decision.details),
-        ],
-      );
-      await client.query(
-        `INSERT INTO product_state.outbox_message
-          (id, schema_version, event_type, aggregate_type, aggregate_id, occurred_at, payload)
-         VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)`,
-        [
-          write.outbox.id,
-          write.outbox.schemaVersion,
-          write.outbox.eventType,
-          write.outbox.aggregateType,
-          write.outbox.aggregateId,
-          write.outbox.occurredAt,
-          json(write.outbox.payload),
-        ],
-      );
+      await insertDecisionAndOutbox(client, write.decision, write.outbox);
       await client.query("COMMIT");
     } catch (error) {
       await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async appendConversationEvent(write: ConversationEventWrite): Promise<ConversationEvent> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      requireUpdated((await client.query(
+        `SELECT id FROM product_state.learning_episode
+         WHERE id = $1 AND task_id = $2 AND status = 'ACTIVE'
+         FOR UPDATE`,
+        [write.event.episodeId, write.event.taskId],
+      )).rowCount, "ACTIVE_EPISODE_REQUIRED");
+      const sequenceResult = await client.query(
+        "SELECT COALESCE(MAX(sequence), 0) + 1 AS next_sequence FROM product_state.conversation_event WHERE episode_id = $1",
+        [write.event.episodeId],
+      );
+      const event: ConversationEvent = {
+        ...write.event,
+        sequence: Number(sequenceResult.rows[0]?.next_sequence ?? 1),
+      };
+      await client.query(
+        `INSERT INTO product_state.conversation_event
+          (id, task_id, episode_id, sequence, occurred_at, actor, kind, payload, artifact_refs, source_refs, evidence_refs)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10::jsonb, $11::jsonb)`,
+        [
+          event.id,
+          event.taskId,
+          event.episodeId,
+          event.sequence,
+          event.occurredAt,
+          event.actor,
+          event.kind,
+          json(event.payload),
+          json(event.artifactRefs),
+          json(event.sourceRefs),
+          json(event.evidenceRefs),
+        ],
+      );
+      await insertDecisionAndOutbox(
+        client,
+        { ...write.decision, details: { ...write.decision.details, sequence: event.sequence } },
+        { ...write.outbox, payload: { ...write.outbox.payload, sequence: event.sequence } },
+      );
+      await client.query("COMMIT");
+      return event;
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
       throw error;
     } finally {
       client.release();
@@ -261,20 +350,34 @@ export class PostgresProductStateRepository implements ProductStateRepository {
   }
 
   async getObservation(observationId: string): Promise<DiagnosticObservation | null> {
-    const [observation, corrections] = await Promise.all([
-      this.pool.query("SELECT * FROM product_state.diagnostic_observation WHERE id = $1", [observationId]),
-      this.pool.query(
+    return inRepeatableReadSnapshot(this.pool, async (client) => {
+      const observation = await client.query("SELECT * FROM product_state.diagnostic_observation WHERE id = $1", [observationId]);
+      if (!observation.rows[0]) return null;
+      const corrections = await client.query(
         "SELECT * FROM product_state.observation_correction WHERE observation_id = $1 ORDER BY created_at, id",
         [observationId],
-      ),
-    ]);
-    return observation.rows[0]
-      ? observationFrom(observation.rows[0], corrections.rows.map(correctionFrom))
-      : null;
+      );
+      return observationFrom(observation.rows[0], corrections.rows.map(correctionFrom));
+    });
   }
 
   async getReview(reviewId: string): Promise<TeacherReview | null> {
     const result = await this.pool.query("SELECT * FROM product_state.teacher_review WHERE id = $1", [reviewId]);
+    return result.rows[0] ? reviewFrom(result.rows[0]) : null;
+  }
+
+  async getCurrentReviewForObservation(observationId: string): Promise<TeacherReview | null> {
+    const result = await this.pool.query(
+      `SELECT review.*
+       FROM product_state.teacher_review review
+       WHERE review.observation_id = $1
+         AND NOT EXISTS (
+           SELECT 1 FROM product_state.teacher_review child
+           WHERE child.supersedes_review_id = review.id
+         )
+       LIMIT 1`,
+      [observationId],
+    );
     return result.rows[0] ? reviewFrom(result.rows[0]) : null;
   }
 
@@ -288,58 +391,50 @@ export class PostgresProductStateRepository implements ProductStateRepository {
     return result.rows[0] ? outcomeFrom(result.rows[0]) : null;
   }
 
-  async nextConversationEventSequence(episodeId: string): Promise<number> {
-    const result = await this.pool.query(
-      "SELECT COALESCE(MAX(sequence), 0) + 1 AS next_sequence FROM product_state.conversation_event WHERE episode_id = $1",
-      [episodeId],
-    );
-    return Number(result.rows[0]?.next_sequence ?? 1);
-  }
-
   async getLearningLoop(taskId: string): Promise<LearningLoopView | null> {
-    const [task, episodes, events, attempts, observations, corrections, reviews, retries, outcomes] = await Promise.all([
-      this.pool.query("SELECT * FROM product_state.learning_task WHERE id = $1", [taskId]),
-      this.pool.query("SELECT * FROM product_state.learning_episode WHERE task_id = $1 ORDER BY started_at, id", [taskId]),
-      this.pool.query("SELECT * FROM product_state.conversation_event WHERE task_id = $1 ORDER BY occurred_at, sequence, id", [taskId]),
-      this.pool.query("SELECT * FROM product_state.learner_attempt WHERE task_id = $1 ORDER BY submitted_at, id", [taskId]),
-      this.pool.query(
+    return inRepeatableReadSnapshot(this.pool, async (client) => {
+      const task = await client.query("SELECT * FROM product_state.learning_task WHERE id = $1", [taskId]);
+      if (!task.rows[0]) return null;
+      const episodes = await client.query("SELECT * FROM product_state.learning_episode WHERE task_id = $1 ORDER BY started_at, id", [taskId]);
+      const events = await client.query("SELECT * FROM product_state.conversation_event WHERE task_id = $1 ORDER BY occurred_at, sequence, id", [taskId]);
+      const attempts = await client.query("SELECT * FROM product_state.learner_attempt WHERE task_id = $1 ORDER BY submitted_at, id", [taskId]);
+      const observations = await client.query(
         `SELECT observation.* FROM product_state.diagnostic_observation observation
          JOIN product_state.learner_attempt attempt ON attempt.id = observation.attempt_id
          WHERE attempt.task_id = $1 ORDER BY observation.created_at, observation.id`,
         [taskId],
-      ),
-      this.pool.query(
+      );
+      const corrections = await client.query(
         `SELECT correction.* FROM product_state.observation_correction correction
          JOIN product_state.diagnostic_observation observation ON observation.id = correction.observation_id
          JOIN product_state.learner_attempt attempt ON attempt.id = observation.attempt_id
          WHERE attempt.task_id = $1 ORDER BY correction.created_at, correction.id`,
         [taskId],
-      ),
-      this.pool.query(
+      );
+      const reviews = await client.query(
         `SELECT review.* FROM product_state.teacher_review review
          JOIN product_state.diagnostic_observation observation ON observation.id = review.observation_id
          JOIN product_state.learner_attempt attempt ON attempt.id = observation.attempt_id
          WHERE attempt.task_id = $1 ORDER BY review.reviewed_at, review.id`,
         [taskId],
-      ),
-      this.pool.query("SELECT * FROM product_state.retry_attempt WHERE task_id = $1 ORDER BY created_at, id", [taskId]),
-      this.pool.query("SELECT * FROM product_state.learning_outcome WHERE task_id = $1 ORDER BY recorded_at, id", [taskId]),
-    ]);
-    if (!task.rows[0]) return null;
-    const correctionRecords = corrections.rows.map(correctionFrom);
-    return {
-      task: taskFrom(task.rows[0]),
-      episodes: episodes.rows.map(episodeFrom),
-      conversationEvents: events.rows.map(eventFrom),
-      attempts: attempts.rows.map(attemptFrom),
-      observations: observations.rows.map((row) => observationFrom(
-        row,
-        correctionRecords.filter((item) => item.observationId === row.id),
-      )),
-      reviews: reviews.rows.map(reviewFrom),
-      retries: retries.rows.map(retryFrom),
-      outcomes: outcomes.rows.map(outcomeFrom),
-    };
+      );
+      const retries = await client.query("SELECT * FROM product_state.retry_attempt WHERE task_id = $1 ORDER BY created_at, id", [taskId]);
+      const outcomes = await client.query("SELECT * FROM product_state.learning_outcome WHERE task_id = $1 ORDER BY recorded_at, id", [taskId]);
+      const correctionRecords = corrections.rows.map(correctionFrom);
+      return {
+        task: taskFrom(task.rows[0]),
+        episodes: episodes.rows.map(episodeFrom),
+        conversationEvents: events.rows.map(eventFrom),
+        attempts: attempts.rows.map(attemptFrom),
+        observations: observations.rows.map((row) => observationFrom(
+          row,
+          correctionRecords.filter((item) => item.observationId === row.id),
+        )),
+        reviews: reviews.rows.map(reviewFrom),
+        retries: retries.rows.map(retryFrom),
+        outcomes: outcomes.rows.map(outcomeFrom),
+      };
+    });
   }
 
   async health(): Promise<ProductStateHealth> {
@@ -350,7 +445,7 @@ export class PostgresProductStateRepository implements ProductStateRepository {
       ]);
       const readOnly = readOnlyResult.rows[0]?.transaction_read_only === "on";
       return {
-        ready: result.rows[0]?.version === "0002" && !readOnly,
+        ready: result.rows[0]?.version === "0003" && !readOnly,
         schemaVersion: (result.rows[0]?.version as string | undefined) ?? null,
         readOnly,
       };
@@ -366,18 +461,15 @@ export class PostgresProductStateRepository implements ProductStateRepository {
       [sourceSystem, sourceKey],
     );
     const row = result.rows[0];
-    if (!row) return null;
-    return {
-      schemaVersion: row.schema_version,
-      id: row.id,
-      sourceSystem: row.source_system,
-      sourceKey: row.source_key,
-      sourceHash: row.source_hash,
-      importedAt: iso(row.imported_at),
-      importedBy: row.imported_by,
-      taskId: row.task_id,
-      details: row.details,
-    } as LegacyImportReceipt;
+    return row ? legacyImportReceiptFrom(row) : null;
+  }
+
+  async getLegacyImportReceiptById(receiptId: string): Promise<LegacyImportReceipt | null> {
+    const result = await this.pool.query(
+      "SELECT * FROM product_state.legacy_import_receipt WHERE id = $1",
+      [receiptId],
+    );
+    return result.rows[0] ? legacyImportReceiptFrom(result.rows[0]) : null;
   }
 
   async importLegacyBundle(bundle: LegacyProductStateBundle): Promise<void> {
@@ -474,13 +566,15 @@ export class PostgresProductStateRepository implements ProductStateRepository {
   async recordImportDecision(decision: ProductStateImportDecision): Promise<void> {
     await this.pool.query(
       `INSERT INTO product_state.import_decision
-        (id, schema_version, environment, decision, decided_at, decided_by, evidence)
-       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)`,
+        (id, schema_version, environment, scope, decision, legacy_import_receipt_id, decided_at, decided_by, evidence)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)`,
       [
         decision.id,
         decision.schemaVersion,
         decision.environment,
+        decision.scope,
         decision.decision,
+        decision.legacyImportReceiptId ?? null,
         decision.decidedAt,
         decision.decidedBy,
         json(decision.evidence),
@@ -500,7 +594,9 @@ export class PostgresProductStateRepository implements ProductStateRepository {
       schemaVersion: row.schema_version,
       id: row.id,
       environment: row.environment,
+      scope: row.scope,
       decision: row.decision,
+      ...(row.legacy_import_receipt_id ? { legacyImportReceiptId: row.legacy_import_receipt_id } : {}),
       decidedAt: iso(row.decided_at),
       decidedBy: row.decided_by,
       evidence: row.evidence,
@@ -568,26 +664,6 @@ export class PostgresProductStateRepository implements ProductStateRepository {
             (id, task_id, status, started_at, completed_at)
            VALUES ($1, $2, $3, $4, $5)`,
           [mutation.episode.id, mutation.episode.taskId, mutation.episode.status, mutation.episode.startedAt, mutation.episode.completedAt ?? null],
-        );
-        return;
-      case "APPEND_CONVERSATION_EVENT":
-        await client.query(
-          `INSERT INTO product_state.conversation_event
-            (id, task_id, episode_id, sequence, occurred_at, actor, kind, payload, artifact_refs, source_refs, evidence_refs)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10::jsonb, $11::jsonb)`,
-          [
-            mutation.event.id,
-            mutation.event.taskId,
-            mutation.event.episodeId,
-            mutation.event.sequence,
-            mutation.event.occurredAt,
-            mutation.event.actor,
-            mutation.event.kind,
-            json(mutation.event.payload),
-            json(mutation.event.artifactRefs),
-            json(mutation.event.sourceRefs),
-            json(mutation.event.evidenceRefs),
-          ],
         );
         return;
       case "SUBMIT_ATTEMPT":

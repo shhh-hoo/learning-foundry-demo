@@ -9,6 +9,7 @@ import type {
   TeacherReview,
 } from "../../src/core/domain/learning";
 import type {
+  ConversationEventWrite,
   LearningLoopView,
   LegacyImportReceipt,
   LegacyProductStateBundle,
@@ -44,16 +45,35 @@ export class TestProductStateRepository implements ProductStateRepository {
       case "START_EPISODE":
         this.insert(this.episodes, mutation.episode);
         break;
-      case "APPEND_CONVERSATION_EVENT":
-        this.insert(this.events, mutation.event);
-        break;
-      case "SUBMIT_ATTEMPT":
+      case "SUBMIT_ATTEMPT": {
+        const superseded = mutation.attempt.supersedesAttemptId
+          ? this.attempts.get(mutation.attempt.supersedesAttemptId)
+          : undefined;
+        if (mutation.attempt.supersedesAttemptId && (!superseded
+          || superseded.status !== "SUBMITTED"
+          || superseded.taskId !== mutation.attempt.taskId
+          || superseded.episodeId !== mutation.attempt.episodeId)) {
+          throw new Error("SUPERSEDED_ATTEMPT_MUST_BE_CURRENT_AND_IN_SAME_LEARNING_SCOPE");
+        }
         this.insert(this.attempts, mutation.attempt);
+        if (superseded) this.attempts.set(superseded.id, { ...superseded, status: "SUPERSEDED" });
         break;
+      }
       case "RECORD_OBSERVATION":
         this.insert(this.observations, mutation.observation);
         break;
       case "RECORD_REVIEW": {
+        const current = await this.getCurrentReviewForObservation(mutation.review.observationId);
+        if ((current?.id ?? null) !== (mutation.review.supersedesReviewId ?? null)) {
+          throw new Error("CURRENT_TEACHER_REVIEW_SUPERSESSION_REQUIRED");
+        }
+        if (current && [...this.retries.values()].some((item) => item.reviewId === current.id)) {
+          throw new Error("TEACHER_REVIEW_WITH_PLANNED_RETRY_CANNOT_BE_SUPERSEDED");
+        }
+        if (mutation.review.supersedesReviewId
+          && [...this.reviews.values()].some((item) => item.supersedesReviewId === mutation.review.supersedesReviewId)) {
+          throw new Error("TEACHER_REVIEW_SUPERSESSION_FORK_PROHIBITED");
+        }
         this.insert(this.reviews, mutation.review);
         if (mutation.correction) {
           const observation = this.observations.get(mutation.correction.observationId);
@@ -66,12 +86,18 @@ export class TestProductStateRepository implements ProductStateRepository {
         break;
       }
       case "PLAN_RETRY":
+        if ([...this.retries.values()].some((item) => item.reviewId === mutation.retry.reviewId)) {
+          throw new Error("RETRY_ALREADY_PLANNED_FOR_REVIEW");
+        }
         this.insert(this.retries, mutation.retry);
         break;
       case "SUBMIT_RETRY": {
-        this.insert(this.attempts, mutation.attempt);
         const retry = this.retries.get(mutation.retryAttemptId);
         if (!retry || retry.status !== "PLANNED") throw new Error("PLANNED_RETRY_REQUIRED");
+        const superseded = this.attempts.get(mutation.attempt.supersedesAttemptId!);
+        if (!superseded || superseded.status !== "SUBMITTED") throw new Error("SUBMITTED_SUPERSEDED_ATTEMPT_REQUIRED");
+        this.insert(this.attempts, mutation.attempt);
+        this.attempts.set(superseded.id, { ...superseded, status: "SUPERSEDED" });
         this.retries.set(retry.id, { ...retry, attemptId: mutation.attempt.id, status: "SUBMITTED" });
         break;
       }
@@ -95,17 +121,29 @@ export class TestProductStateRepository implements ProductStateRepository {
     this.outbox.push(structuredClone(write.outbox));
   }
 
+  async appendConversationEvent(write: ConversationEventWrite): Promise<ConversationEvent> {
+    const episode = this.episodes.get(write.event.episodeId);
+    if (!episode || episode.taskId !== write.event.taskId || episode.status !== "ACTIVE") throw new Error("ACTIVE_EPISODE_REQUIRED");
+    const sequence = [...this.events.values()].filter((item) => item.episodeId === write.event.episodeId).length + 1;
+    const event: ConversationEvent = { ...write.event, sequence };
+    this.insert(this.events, event);
+    this.decisions.push(structuredClone({ ...write.decision, details: { ...write.decision.details, sequence } }));
+    this.outbox.push(structuredClone({ ...write.outbox, payload: { ...write.outbox.payload, sequence } }));
+    return structuredClone(event);
+  }
+
   async getTask(taskId: string): Promise<LearningTask | null> { return this.clone(this.tasks.get(taskId)); }
   async getEpisode(episodeId: string): Promise<LearningEpisode | null> { return this.clone(this.episodes.get(episodeId)); }
   async getAttempt(attemptId: string): Promise<LearnerAttempt | null> { return this.clone(this.attempts.get(attemptId)); }
   async getObservation(observationId: string): Promise<DiagnosticObservation | null> { return this.clone(this.observations.get(observationId)); }
   async getReview(reviewId: string): Promise<TeacherReview | null> { return this.clone(this.reviews.get(reviewId)); }
+  async getCurrentReviewForObservation(observationId: string): Promise<TeacherReview | null> {
+    const supersededIds = new Set([...this.reviews.values()].flatMap((item) => item.supersedesReviewId ? [item.supersedesReviewId] : []));
+    return this.clone([...this.reviews.values()].find((item) => item.observationId === observationId && !supersededIds.has(item.id)));
+  }
   async getRetry(retryAttemptId: string): Promise<RetryAttempt | null> { return this.clone(this.retries.get(retryAttemptId)); }
   async getOutcomeForRetry(retryAttemptId: string): Promise<LearningOutcome | null> {
     return this.clone([...this.outcomes.values()].find((item) => item.retryAttemptId === retryAttemptId));
-  }
-  async nextConversationEventSequence(episodeId: string): Promise<number> {
-    return [...this.events.values()].filter((item) => item.episodeId === episodeId).length + 1;
   }
   async getLearningLoop(taskId: string): Promise<LearningLoopView | null> {
     const task = this.tasks.get(taskId);
@@ -126,10 +164,14 @@ export class TestProductStateRepository implements ProductStateRepository {
       outcomes: [...this.outcomes.values()].filter((item) => item.taskId === taskId),
     });
   }
-  async health() { return { ready: true, schemaVersion: "0002", readOnly: false }; }
+  async health() { return { ready: true, schemaVersion: "0003", readOnly: false }; }
 
   async getLegacyImportReceipt(sourceSystem: "LEGACY_SHOWCASE", sourceKey: string): Promise<LegacyImportReceipt | null> {
     return this.clone(this.importReceipts.get(`${sourceSystem}:${sourceKey}`));
+  }
+
+  async getLegacyImportReceiptById(receiptId: string): Promise<LegacyImportReceipt | null> {
+    return this.clone([...this.importReceipts.values()].find((item) => item.id === receiptId));
   }
 
   async importLegacyBundle(bundle: LegacyProductStateBundle): Promise<void> {

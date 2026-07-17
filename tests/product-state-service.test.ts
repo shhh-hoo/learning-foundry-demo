@@ -179,4 +179,93 @@ describe("canonical Product State learning loop", () => {
       }),
     ).rejects.toThrow("ACTIVE_TASK_REQUIRED");
   });
+
+  it("keeps TeacherReview as one explicit supersession chain and plans Retry only from its current actionable leaf", async () => {
+    const repository = new TestProductStateRepository();
+    const service = new ProductStateService(repository, { now: () => at });
+    repository.tasks.set("task-review", {
+      id: "task-review", learnerId: learner.actorId, status: "ACTIVE", goal: "Review safely", createdAt: at, updatedAt: at, materialRefs: [],
+    });
+    repository.episodes.set("episode-review", {
+      id: "episode-review", taskId: "task-review", status: "ACTIVE", startedAt: at,
+    });
+    repository.attempts.set("attempt-review", {
+      id: "attempt-review", taskId: "task-review", episodeId: "episode-review", submittedAt: at, status: "SUBMITTED", artifactRefs: [], evidenceRefs: [],
+    });
+    repository.observations.set("observation-review", {
+      id: "observation-review",
+      attemptId: "attempt-review",
+      status: "ACTIVE",
+      createdAt: at,
+      sourceRefs: [],
+      evidenceRefs: [],
+      provenance: { executionId: "execution-review", policyVersion: "1.0.0" },
+      diagnosisPayload: {
+        representationVersion: "1.0.0",
+        derivedAt: at,
+        derivation: { kind: "DETERMINISTIC", implementationId: "test", implementationVersion: "1.0.0", sourceRecordIds: ["attempt-review"] },
+        value: {},
+      },
+      corrections: [],
+    });
+
+    await service.reviewObservation(teacher, {
+      reviewId: "review-root", observationId: "observation-review", decision: "ACCEPT", rationale: "Initial review", evidenceRefs: [],
+    });
+    await expect(service.reviewObservation(teacher, {
+      reviewId: "review-unlinked", observationId: "observation-review", decision: "ACCEPT", rationale: "Implicit replacement", evidenceRefs: [],
+    })).rejects.toThrow("CURRENT_TEACHER_REVIEW_SUPERSESSION_REQUIRED");
+    await service.reviewObservation(teacher, {
+      reviewId: "review-leaf",
+      observationId: "observation-review",
+      decision: "CORRECT",
+      rationale: "Explicit correction",
+      evidenceRefs: [],
+      supersedesReviewId: "review-root",
+      correction: { correctionId: "correction-leaf", reason: "Use the reviewed explanation." },
+    });
+
+    await expect(service.planRetry(teacher, {
+      retryAttemptId: "retry-stale", taskId: "task-review", episodeId: "episode-review", originalAttemptId: "attempt-review", reviewId: "review-root",
+    })).rejects.toThrow("CURRENT_ACTIONABLE_TEACHER_REVIEW_REQUIRED");
+    await service.planRetry(teacher, {
+      retryAttemptId: "retry-current", taskId: "task-review", episodeId: "episode-review", originalAttemptId: "attempt-review", reviewId: "review-leaf",
+    });
+    await expect(service.reviewObservation(teacher, {
+      reviewId: "review-after-retry",
+      observationId: "observation-review",
+      decision: "ACCEPT",
+      rationale: "Would invalidate the planned retry",
+      evidenceRefs: [],
+      supersedesReviewId: "review-leaf",
+    })).rejects.toThrow("TEACHER_REVIEW_WITH_PLANNED_RETRY_CANNOT_BE_SUPERSEDED");
+  });
+
+  it("supersedes Attempts only inside the same active task, episode and learner chain", async () => {
+    const repository = new TestProductStateRepository();
+    const service = new ProductStateService(repository, { now: () => at });
+    await service.createTask(learner, { taskId: "task-chain", goal: "Attempt chain", materialRefs: [] });
+    await service.startEpisode(learner, { episodeId: "episode-chain", taskId: "task-chain" });
+    await service.startEpisode(learner, { episodeId: "episode-other", taskId: "task-chain" });
+    await service.submitAttempt(learner, {
+      attemptId: "attempt-chain-1", taskId: "task-chain", episodeId: "episode-chain", artifactRefs: [], evidenceRefs: [],
+    });
+    const successor = await service.submitAttempt(learner, {
+      attemptId: "attempt-chain-2",
+      taskId: "task-chain",
+      episodeId: "episode-chain",
+      artifactRefs: [],
+      evidenceRefs: [],
+      supersedesAttemptId: "attempt-chain-1",
+    });
+    expect(successor.supersedesAttemptId).toBe("attempt-chain-1");
+    expect(repository.attempts.get("attempt-chain-1")?.status).toBe("SUPERSEDED");
+
+    await expect(service.submitAttempt(learner, {
+      attemptId: "attempt-fork", taskId: "task-chain", episodeId: "episode-chain", artifactRefs: [], evidenceRefs: [], supersedesAttemptId: "attempt-chain-1",
+    })).rejects.toThrow("SUPERSEDED_ATTEMPT_MUST_BE_CURRENT_AND_IN_SAME_LEARNING_SCOPE");
+    await expect(service.submitAttempt(learner, {
+      attemptId: "attempt-cross-episode", taskId: "task-chain", episodeId: "episode-other", artifactRefs: [], evidenceRefs: [], supersedesAttemptId: "attempt-chain-2",
+    })).rejects.toThrow("SUPERSEDED_ATTEMPT_MUST_BE_CURRENT_AND_IN_SAME_LEARNING_SCOPE");
+  });
 });

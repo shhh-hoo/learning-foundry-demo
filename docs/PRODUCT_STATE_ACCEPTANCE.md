@@ -53,6 +53,12 @@ Events, Observations, corrections, Reviews, Outcomes, governance decisions,
 import receipts and cutover records. Explicit transition triggers protect
 Task, Episode and Retry current state.
 
+ConversationEvent sequence numbers are allocated while holding the Episode
+row lock in the same transaction that writes the Event, decision and outbox.
+Observation-with-corrections and complete LearningLoop projections use one
+database client and one read-only `REPEATABLE READ` snapshot, so a response
+cannot combine records from different committed points in time.
+
 ## Permissions and API
 
 `ProductStateService` owns permissions and lifecycle policy. The repository
@@ -72,6 +78,11 @@ Task/Episode/Event/Attempt/Observation/Review/Retry/Outcome application path
 under `/v1/product-state/`. Actor headers are an integration boundary, not a
 production authentication claim.
 
+This loopback server is the explicit real canonical application surface in
+this slice. The existing browser LearnerView remains on its Legacy showcase
+path; this PR does not claim a browser cutover or silently redirect browser
+storage through Postgres.
+
 ## Migrations and cutover
 
 Versioned migrations live under `migrations/product-state/`:
@@ -81,6 +92,9 @@ Versioned migrations live under `migrations/product-state/`:
    guards.
 2. `0002_import_and_cutover_acceptance.sql` creates Legacy import receipts,
    import/no-import decisions and environment cutover acceptance.
+3. `0003_learning_loop_invariants.sql` adds normalized import-receipt and
+   environment-scope evidence, current-leaf Review/Retry guards, same-scope
+   Attempt supersession and database protections for concurrent chains.
 
 The migration runner verifies immutable migration hashes and serializes
 concurrent migration attempts with a Postgres advisory lock.
@@ -94,9 +108,13 @@ npm run product-state:migrate
 → npm run product-state:server
 ```
 
-Cutover requires migration `0002`, database readiness, one explicit
-`IMPORT_COMPLETED` or `NO_IMPORT_REQUIRED` decision, `dualWrite = false` and
-an append-only acceptance record for the configured environment.
+Cutover requires migration `0003`, database readiness, one explicit
+`IMPORT_COMPLETED` or `NO_IMPORT_REQUIRED` decision whose normalized scope and
+evidence environment both equal the configured environment, `dualWrite =
+false` and an append-only acceptance record. `IMPORT_COMPLETED` additionally
+references a real nonempty Legacy receipt through a foreign key; both decision
+creation and acceptance verify that its imported event count still matches the
+canonical records.
 
 ## Legacy importer
 
@@ -116,11 +134,12 @@ Automated tests cover lifecycle order, human authority, learner ownership,
 lineage, migration contents, mode selection, no fallback, idempotent import,
 cutover prerequisites, API wiring and append-only enforcement.
 
-A temporary local PostgreSQL 15 database was used to run the real migrations
-and the repository integration suite. The suite completed the full ten-step
-Task-to-Outcome chain, verified ten matching decision/outbox writes, rejected
-a Review update, repeated a Legacy import idempotently, recorded explicit
-cutover acceptance and rejected import-receipt deletion.
+A temporary local PostgreSQL 15 database was used to run all three real
+migrations and the repository integration suite. The suite completed the full
+Task-to-Outcome chain, verified matching decision/outbox writes, serialized
+concurrent ConversationEvent numbering, rejected Review and Attempt forks,
+repeated a Legacy import idempotently, recorded receipt-backed cutover
+acceptance and rejected import-receipt deletion.
 
 No public showcase, shared sandbox or production environment was cut over.
 
