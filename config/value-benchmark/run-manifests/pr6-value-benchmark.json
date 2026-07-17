@@ -1,0 +1,1037 @@
+{
+  "schemaVersion": "1.0.0",
+  "experimentId": "learning-foundry-value-benchmark",
+  "experimentVersion": "1.0.0",
+  "docsAuthority": "learning-foundry-docs@260747722e8040972deceed3290bce237676f225",
+  "implementationCommit": "8402b50b62619ccb79402ac832da8c479784248e",
+  "runId": "foundry-value-benchmark-1.0.0-live-01",
+  "encoding": {
+    "charset": "UTF-8",
+    "lineEnding": "LF",
+    "bom": false,
+    "finalNewline": true
+  },
+  "assets": {
+    "cases": {
+      "path": "config/value-benchmark/cases.jsonl",
+      "bytes": 16272,
+      "sha256": "60df5df996746abe2d4b8938c309da069fbc79bd43f9e5b542dbc51b3e125001",
+      "lines": 24,
+      "lineSha256": [
+        "b6863ad3268f3294e753f467533a9663c5cdfbce9d09659e9bdedd2c74eb0967",
+        "542972cbc52e515941e2b97ceb5998d808c0e9c0605dfbf9498f855f6c6cf19f",
+        "5a76b615df514a13c74e7f79a69c6a973008d267a0e83a7ca9c1007675485369",
+        "7a19ce5985afa26ee3d3a7de67d3bd3d6dd73a61374b5393f7d381f13c90cf22",
+        "fb6a1f884cd151779be82bee6570dcf358bafbcd94d6d8e5b091fc6d7b02af96",
+        "c5cf0e9bdc6b33fd30e226449780a5c44e52b19df5ad2bb5cfe13c5416913baa",
+        "e3964d7c07affd3a2ea6232d1335931a30751033bd56f114c6d78f579b3a1857",
+        "b0d7493cd955a6284523c3ec60a44b686d5358e29094de4b17375cb136fa445e",
+        "f0c8c54df57c278081ab3db05b825528c88bdfb67094ed607cad8308afd3b6de",
+        "9a6ed405733816459d96c8a7372f2d3c6741970e1acb4e8c4b82e93d39fa71b2",
+        "507b2497c7a855becb926fbd52e72f57ab14c3a55ef5fb9ea5ca91832b83ca03",
+        "34c49453d86d4d1fbc284b005e4308e5e0eb3d896d9fd30c9d6791bc58949e77",
+        "f2f9457ee877b3c45b31f9bbcb3224691f2539bd592e01bf49086c0a746121ea",
+        "0db7c041a8c7085808da6c746d448ba7a2dbddcf59a87827869d2722cf300e08",
+        "0dabf05de4ff47e1cbdb101a3a659ba744eb96c2cfff689cb58907dbe9fd4fcf",
+        "5551007e0ccf9e6fc442a459394ba045769991ecb10d36a47686ddf2a8939484",
+        "a9238a06040e383acae5ed81be2aeecd7f6656def769dd307e3450d71f9e9a00",
+        "7272f66bf2c26c13c41f8efe9317b48a4dda82dc72ce91f76c413a4bec4faf1f",
+        "7e764652d8e9f5dd73df96209cad781503364bad6a327a45eda807500821ed5f",
+        "37bf558659474a8086404a2d0c2e8dbe8c3c687784b099f0df002b2a1e6bfd4c",
+        "e902adb60f490fe332afdf02537f0e7989fee1caf26c0ab133d70dd7de5ef4d7",
+        "0e38964efc832b1544fe7ba5d8b798f62aebc6da9fce6dc3e3c67d629c1949a7",
+        "0051d537573e10c9abada822c5aea99f42b778e17440138541d4214bcb9c7c06",
+        "c094af6d0f5333b91f054736d92c2b3be4143319441131583fe6242e7ad0b83b"
+      ]
+    },
+    "reviewerCriteria": {
+      "path": "config/value-benchmark/reviewer-criteria.jsonl",
+      "bytes": 26504,
+      "sha256": "f3792d9b46068fb1737ce87a97c8eb1dab7b4e8adb53df2f030df4614e969f41",
+      "lines": 24,
+      "lineSha256": [
+        "2602fba4aa1723378066e55886089aa779cc9b22c1712ef1bef2dd37b7c5fae0",
+        "65f39b3a76f25c803db38b856c5be6526939b44ddcfffaa2eba287bbff69a668",
+        "4da397b9bbee48f44c4f77e381dfae0d016098684319473d467d6f84bb7c5e51",
+        "85801155c66da4825b13ac6a2af7d93e590626f2aab514b3ee2029f96f28ff04",
+        "5ce0530b775fe90d27cac9ea1594837f213eeadcb4bbad6cd18edb626a6fb027",
+        "49b30f90208556a05ed115ccfdf738939b772f4251694683034f14d4640e4373",
+        "71d8c7407f9abc65ac50b947d631aa153c35c6b6a91d349bc680cdad3ec3b1f3",
+        "7ad608acb81f3844e44f3b9482cd16f0110492e01b005007e975f0db92044b09",
+        "d449bc69010081a7b76aca79f5877bc3f5cb9b135be01eaad9406fc6c88fe396",
+        "99ecb8edd73a0a58e5244b03826bd1dbdc65aef65b363cde6043d483b3b2c1ae",
+        "26457ef23430b51cfb088259965256f4e3dc76322647d46ab9360eda4f9227af",
+        "215f706165dedc38565017dab40d65f9065f343737d5fb424727b6cc4ee991e5",
+        "9e23d05248606151d4fe66fa52bf81431a79ed63e05b5cc0969bc5b0d314f4c3",
+        "b186e4429cdefbe6804fe2b26d72794e0539776fffb01ace8f59f5d370012a06",
+        "a89e1a6dafdcbc417d794fc6868fc6d7abaf9dc2b4a6ec2adc480cad128fa37f",
+        "d8f3720f6a17fd263ea1022227f973bd80871c21f5855d1f0bff76bd664c8873",
+        "8cdadef8d055991dd7eef2fc4e2489747ccaa81a1598c206b74f7d15f5b1f5b6",
+        "84ebdc782e762f75b6cad743063b9d66b4aa9deca85b58f9badd4590f9b5e1cd",
+        "46d93cecb3c1448e54f1f287cb3a856e225f71fe885d1079b93f12e47d30d993",
+        "5fd8ccfea352c60e7d0f27d9bcb504524edaa1d5850138b734dd1d85eb12d21c",
+        "3c9f793db95bfd50ee164df3669b433b9184f3356106473f54525876a83ed757",
+        "e28beaa2799f12e35daa9452b5df7cee254af0c89587e6761ad16738afd2d580",
+        "2b9e4ff8be1cd6429bcd61433b23e0618842fdb32e4f4b9d41f484bb95cb370b",
+        "044455ea34caa03978f4047240ecc17269d04225f3b6ecda8dcd43d9fd86fcec"
+      ]
+    },
+    "prompts": {
+      "path": "config/value-benchmark/experiment.json",
+      "bytes": 8434,
+      "sha256": "5749ccd89d852d9d0a353d4b74f15f85711f403c2852aeb3a6aebf0f5beda3f8",
+      "lines": 196,
+      "lineSha256": [
+        "a6fb08fda1acb957b6116bd37811a1fe41a01611c0631edbf786d6889a27a55c",
+        "c4ed752fdf2254bb85cd41d8c433305658efe0081ebe4b71adacf16c53530fcb",
+        "b5572176db07e1c1ad1d187aa72d4b8a0c3f31e509d7dc624276183ce5d10f01",
+        "cd962a72e2f7535a95fc2cc117e49fec49c11230bdb532ed5ec9156bf36e209d",
+        "ea41a49b15cdaee475ac69747dab52f5670a61db60f6d0136744693c11635e8b",
+        "5d46057da673412e9ad187dbfd739be92d179f908391ff406bb071c1ffcdd9d9",
+        "bcc51aad89d6ac06058d6e8b77f9d53f7eb7a6a1789be850f9af12378ca9ad70",
+        "bb583c67a2cc1575e2f0463c49db5dfe08c74065754fdd6a3bb1b3d4d01b9892",
+        "1fffe4b83f8550050479fc52be70b04103852f3de9ee8645ca22ad8ae608dae2",
+        "45558c70ec427cf8459d063fc0a9c442c283433bff5ae7a24354daf154b51a91",
+        "4d5cd2fb4f3df884515255b39523f2f8b5472beea9f566ffca204db802561041",
+        "4efdf6b30772ed6f0b57be795f033078ca075cbd4dfe3155c7609061453df053",
+        "50109ba27fbd538c0cd0e429ef585515ab13ec973328004f0b0ae906492240d2",
+        "5400a1ed5d7df40190ef48b357f03c882fdd7b30672bbeab4c0ff6d3dd1d8d97",
+        "a8389b1ac1ce95573cef97bb67f1f43d6d66cf11a13686425b10ee9d69ef7f96",
+        "a860d00d6e62d0f1d941fe20f7aa9be0a9a534c653f44a08509f87d810d02795",
+        "7dd9a986d7174c0a8843bf49ae86eb453436b03f10e9173c5694d49809df6254",
+        "20d633d7b1fa2c5aa25a17f373cb450599d231144699f93ae8c9215a5c07f8bc",
+        "9ba5e7551bd60e2950630c9c0dd9ab237c3255c8f6ecaf3cda337a408ad49dc9",
+        "310475c6ca0edc2dde7e32ecb1d252655daeb4dc85cdbbdd1d58337b7a77d7fb",
+        "1f0cdb972a7bfb7ed246f9ff672385e55f4968fc11043dc5b684d51dfa31dbcb",
+        "1937982603b22c9dcd4acadb0dee09efbfae88693829325c7579aadf839b1e27",
+        "77d88aabd27d75a8f060eeb558981224745e893b57a50413ca688ec3b0f352ba",
+        "4cc9304ea95ba66e1a08d678c9294f0941d31324e73b21ea37d3820df81ac9d6",
+        "dbc89b3157cf1460ec9aef4c74520b462e19825c4b6eb744f3d6b1cbbe41ea82",
+        "7dd9a986d7174c0a8843bf49ae86eb453436b03f10e9173c5694d49809df6254",
+        "20d633d7b1fa2c5aa25a17f373cb450599d231144699f93ae8c9215a5c07f8bc",
+        "2228a0edd4612488dc4770fdec482477e97d4c14935b175bfb4a5a3fa6ebef1d",
+        "310475c6ca0edc2dde7e32ecb1d252655daeb4dc85cdbbdd1d58337b7a77d7fb",
+        "1f0cdb972a7bfb7ed246f9ff672385e55f4968fc11043dc5b684d51dfa31dbcb",
+        "7fe993b726ad92ff176b34b960728267b713a925276008d5021d0031efdf090b",
+        "2f4a2c34457e9763c6e45a2e73afe52a145e5c9639d261311a6e8447b239ef30",
+        "57ff37ac7b8168dd73dd2e3380a57dd24520cf47673fe88e385d683e6168412f",
+        "4d281139d7bf13e561fc4a2c88ef68a2370c956621fa4b26290e9f461c5cc8f9",
+        "c630326b1d2c5c4887a62b97d5c6472e9e3978d5ea01c10ed3c788d16b0c6ba8",
+        "9d7296e5d806fac3a71a2b68ce2a6b40ecc0b5c2e44e88689fdfec79e2fc1156",
+        "1477be6106c78475a8149cdedf1dcde96352ce8d390dc9691fe428124d48791d",
+        "b978e2503b8cf37a06f7d6f0a3a6b6fe35691fbcab50b8775cab6fabc71c592b",
+        "61c977a73e750ad7af7db5ac1b329a59522e6bc0f5de95dad6944ad9245c93a4",
+        "f8d742e9c32e6d17f21b24d53be40898f70dccc301c646ce469107dab4b3530d",
+        "760eca15401ad28c730c8feb5a41356ef5efe842d911c4373a230f002e53a8b8",
+        "5e76ebff5fee379943dfa6d80b75af937a94aeb699e5ebfa379ebc5f5083078e",
+        "db923272c24b4476354b87697bb32832c3fe75717b28b1d2b345898787e7b364",
+        "433ae12bcfa828939ae546427eaf4f9fe97d94662b722ded7c3a57de98bae335",
+        "4893f40e3781eb896c82d046a08067a11e35cdf2f1dfaf26fea90b8db6676413",
+        "4d5cd2fb4f3df884515255b39523f2f8b5472beea9f566ffca204db802561041",
+        "c2b6d3e1e409261a4f276b8389442fca9d2016705e6dc266ca4d79d8418096f5",
+        "9e4b544cacbf10013261e0344dc0fee8dbe0df80469d2b590cc9c7f62e276153",
+        "4c2f3abe2b9bddc8a8ace0901f261be18736edf35ea9234134f8e7ac36dd352f",
+        "3829ee58c717f9ca631f833445fa9b5b7d99f710bb746a631726801370ceb9af",
+        "16c0244ebd28d18293fed3957bf3ce1468ec5c9a6a1ea94e6dceeb0a3dc87ebe",
+        "70f5a8544cd90769d94cf3c185bee55c60d472be3a3d15d6d8be351e1534f340",
+        "6c65bc47e949e028b0a1a8ea841f032705acd3dfa8a7ffd53cde7f3d951e510e",
+        "ae5c258c05df211d71f709165b54df3eca56f4b9d55e167c5e94d9fc66de10d9",
+        "dff850cc281d247c81b1c5ae23d6687f14d881cf78db58b624d9031556e118ac",
+        "a34e7a0238231fbb871440533a41c9944d28c63bbe84d69148663d69daee8f59",
+        "c2d434f8f0f9ca45d04871c6fb7dcf00dcbb4d02a7ae633f3cc41255ce158130",
+        "3d600b81b1586cd894fbfa11a2f03b113c22cac2365e0dcb9dc9f1b4b4c75dfc",
+        "1f0cdb972a7bfb7ed246f9ff672385e55f4968fc11043dc5b684d51dfa31dbcb",
+        "4e836c570d30128867ab9c5d1cc73645e78ba756fbc29681b65a294d50f14ccc",
+        "22860748388f538bd39554f05937d05aade67b109e655cbce604918f812171c2",
+        "6cb1fc1a85813a275c8d14af08bf6b31358647e656b033e9dac02f3c12db24d9",
+        "e459ee8164dff13d5e11693dcb3095969ee3ae73d2cc0392494678a15fa6dc2d",
+        "8c998f0a1e81a7e578779fcedb6d5e5503d04781ff17ea8e90f65c53c1a6cbec",
+        "89419119799a5045f9f9991cf1f910a48fcbce4582de0176c832a64abc7ff36a",
+        "77451fbd16c0cb38564de84ad2edb81794b0879915f3933b33f859cc82accaa5",
+        "1f0cdb972a7bfb7ed246f9ff672385e55f4968fc11043dc5b684d51dfa31dbcb",
+        "69a5f184adb79b649188f8900bfd4a14cb3457ae627be5f230cdd29538b82b22",
+        "cd0f4f2a4d32211aa39974965f8c0c6c2f51b925a720173ff706f93bbe3114d2",
+        "4d5cd2fb4f3df884515255b39523f2f8b5472beea9f566ffca204db802561041",
+        "9057d4fd71ddec2d7f2c2ac7622c806e7074ff4e07a7d1e5d6bd289ab17d02da",
+        "ec62e5f67c6b233f4eb05c8a147d5dc938365e2b0d2820f5ac776f23d4aac04b",
+        "37f22344e481c42fc8fd5dc2d0fc4659c28f315ef940e86d814ab266a85849d9",
+        "372dae6a8517be4d33af70e5d05831e11afe908a9f184c2e59464e46c3c38110",
+        "c63d535ce38063d6b4c51d8c386a7f9b3e580a14a10c07b198dfaf19c93a3bfe",
+        "bb9d6fc09c97fbade7cb4302a3d67cbecc62531e57068d9c8d883de4fb44d246",
+        "5cbd606e649f2f0c8fb0a333b47a295a9ecfc9fec5fe3ca624c0e390dcbe58f4",
+        "49af75fc83e72a77ad52c6ac52de411155bf974426827bddc56b93e881d5a436",
+        "ad4d84e04b857bbad14ff3708b031bef7940a74711da4853f9cf7ffb7c243565",
+        "865c0ed421fb5d6eb5cf786ce7046f072c89232d694170a98d92e1b75eb45cc2",
+        "94e3b8f390b326fbb801bbea6cb29c405fbd5552e2151ca6ba2426a593527292",
+        "4d5cd2fb4f3df884515255b39523f2f8b5472beea9f566ffca204db802561041",
+        "598f046b22d8b2ee76f6c5f7b6aac1bf36a754cd77a905404317c04e709788e3",
+        "c28b04f52c8614ebd1c1848e203d710230430d4bb49d776cb39d03547117637a",
+        "44aed3c7ddb348fff4e23b7c34cda05c9e6def7bf169970d062c851a455140d0",
+        "e52c913160f1b718024e4ae47c2d9cfc5f0f97413da53a70808eabfa8a9485b8",
+        "e6abcac4b7b3638ac01166de5a19a160ff5d5e42227a2d87b23d1fd6c0b33aa2",
+        "a2642c0e9125e9a5ab4609c91a7c6fae822a86561d37d28a7308e1245b8669cf",
+        "4b8b5a442c2a27378a23f36126a3667fc7e48e8996c1482dc996f690e79fffbf",
+        "6c7122fe5c6593b361ee20077002ead2a112d257e22622f27fae96709e25e2cf",
+        "e4fa3cced3805cc3bf23733beb78806a34dd95a80a3e6bb6f97774b68ddcc9ed",
+        "9403bfdcc682f75c34d5b4c1b480a6e90d38ad3f94a2385de25ef12bf086c4f2",
+        "bbb7f5dc9da3a6309a6da76e9386ecd2afd94a9f534efdcfada79ec722f121c6",
+        "4d5cd2fb4f3df884515255b39523f2f8b5472beea9f566ffca204db802561041",
+        "dc131605b0d24f32a8e05e3d138b0a6b136a7e96413e930d8d289d8c40ce0c43",
+        "0e9f8e938a93a65841c4a9574b7c8b8096116088c47db5308942cfcf565466f7",
+        "d8ea202d8751517c7f4e110be62727df7016fdbede11d0e5b38d7a14c018e522",
+        "5a617a4878a5455c642b97e7bb15440bc7b93f6a116607ec22e857133b28cea8",
+        "ca92bf99a57db3f6347567e60ca2b3fe0e1e0344878f85273a4d1b0024c0df37",
+        "5ba3cb28145d20ace42aa7ba65fa81b0457c8f402c665e24db637d75131b5b06",
+        "5bb63cff91e142a6156b9286d90a4b3c155a581aa5e540d9d3bf5e82a0fd9eb6",
+        "02f1193765cd1602f91e7d10bdd6d21c36c097f4eed5d4a8721e2499ceaa6f35",
+        "ec0344d6a8b2282d2ecfdc22281f03c689e7a9fe32219c7f6ad2d97701f4c760",
+        "220b11c8b483e5bad31d45f939cc3f600d8275458129d44429a66760ab9ea5d3",
+        "c63d535ce38063d6b4c51d8c386a7f9b3e580a14a10c07b198dfaf19c93a3bfe",
+        "c9982318b86ccf713ff38484655aa9bfc3d8fec139bb9ee6c34621185e40f41d",
+        "750d728de1b51b12a46d5832dac36c2e49e3ecb43b3cdcfba1babb0c660f87b6",
+        "7fe9d05cbcb0e5bfdfba60e4bca7e2bcfebba0d32ef76af2556a01973fc15c65",
+        "4d5cd2fb4f3df884515255b39523f2f8b5472beea9f566ffca204db802561041",
+        "9bbc4a4b1fb1ba7217ed61ae8fe3a79d938b648fe8984410281c80b269413f96",
+        "d09e38cb81a7fe333ae074ff8801bc1614211df4d749677d3d264aeb369bb1a5",
+        "611eeadec988b87da878cb050fce33ba47e64f40c6dd7131daf27678a13beabd",
+        "e4436d8a5729dcc82dfa64fb3df159a45a0108b912d124e62bb4eda57844499e",
+        "654f01b5798cf382abd1b591a3548db0a1de050b4a60a38dbe63b544b4b8ddbc",
+        "0df6049cc169db9481e67e7bd291acc3d43fa2137d948113c6e2336329e70049",
+        "c3b107a648ea7b1b3f023afc2f4701c4992840d87a19bd7f8391f10cc3307240",
+        "0616920517650c88c58f65bbae22655bd2da83f10697735ad9dedb4a5a8dff79",
+        "e8c8296666438bc6f9e088b15ddaa67e79b7b02a80b0f22ad0ac12c47810f0b8",
+        "1b06a6f38da3d29540898ce3c80947b765e7f8c592d889fda60be33f3cce4da8",
+        "4cec605c4ba497eb3c6d4c88b02f0587bba1ce8142749dffad03ffa2ee11a118",
+        "c63d535ce38063d6b4c51d8c386a7f9b3e580a14a10c07b198dfaf19c93a3bfe",
+        "248c358e560370992746fe56596cf94d659720c257b716a4bd7efad6cd9cc8d6",
+        "23c2e33a0a739105ad4c4d962f838068202fa81a878124ae002f330bcbd8beda",
+        "cc7b85bb4060a553a4f9b1a29f7608b573c63ec85f33d56506acf7265f88d630",
+        "bec80e2cf6c78beb837f3e22ab3e35b813c47edfe442c14823d8e46440beb443",
+        "41f014b8e3acda2f16fd88a1e5a3e8ea9dc14c644862ce87d4fd23b98bf9ad0e",
+        "04a344fd533b179729da226490ae7f0cb7a03b6d9f1268edddfb9a2fa47159f8",
+        "f8aed1e8f73ffd50d7a888e942bc74931b2291372ebf227143edb5b235859d93",
+        "c439f64fd87ae82da53a02ba10917ac9e4312ee084462338e7bc8b3bdb6a3b55",
+        "a3ffec04153cbf5425916066d9a29e2a555f3b5314b3f80c0ec73f55d2ff7861",
+        "c63d535ce38063d6b4c51d8c386a7f9b3e580a14a10c07b198dfaf19c93a3bfe",
+        "6ce091c43cea288078425d0091684bbbdd5ed8af261c9bcfd5589d5622bca105",
+        "32c83c3a42fba2b0bc4f62b809216a55b947129443bb8bc6c0a4f0e71aef36ec",
+        "69080c595a8310f661c4917b3ecd0150cb76cbbb0b4bcb948fe7517bc9961331",
+        "4d5cd2fb4f3df884515255b39523f2f8b5472beea9f566ffca204db802561041",
+        "a1ef611ad247058ded2c87b46653052a6c7e3d445bd956b80217d99dc31e2b11",
+        "0430959e98bd7c8d42149e442b00691141a34ab392fd6fb70b2ac9dc5c0db75f",
+        "4fc41501c9cafa169392f3c9baf95b5c258ec3df55880aec0a304970ecdd0d3b",
+        "633a7479e00e988d78fb1a14ba3055a27528d2720d3a9cd125720b00b0a1a69c",
+        "fba22630830ed3fdd1d68ada700d13cb3466e835c83ed888ff5f08c556afef3c",
+        "048073fd342d05ba52dfa7937e5a7bfd2baeeabe796d45580de0704b2b03f22a",
+        "582493f58d3574c67d66839cbb9ad6034eb144eae3a35f60a07a279e4e15d592",
+        "4b920541ba4159e9e5b30d0d95228989a7787159614df3f27baef4b1cddd3320",
+        "9568377b227e3997ce9fc238b4492a4758b4bdbd542e8627e066ffeadb29d0bd",
+        "131a48320c3f454f72ef9eecc40e6c86eb1f713fc87642868fcfcdae77d63744",
+        "4f4c642fc3621a6ede53ee4bb3e14fb04790c2a0acbb76151723d4b579641a77",
+        "59bfa3531ac83547dad18405282ead13530a06b41d23a9e7ded60a442b659bed",
+        "9b62f60d8590a579cf46f8d67378c4c572b962ceccdb90c7a5f7b42b960782a4",
+        "1f0cdb972a7bfb7ed246f9ff672385e55f4968fc11043dc5b684d51dfa31dbcb",
+        "4d6a39785a17680075ed640fc148d4cdbc974b680525b88074c2bac54cb007a3",
+        "da095b5b9a97f16e77e5b8aa4780fafcf9bc985fdb0fed4609766f21e052e609",
+        "6d954e928e6b55c6ee5fe9bda39121353a67dcefa9d8f8e12602ffba39203b57",
+        "6a6311fed2a9a552d8f624936057836bd96fb08b67801fae8ad44b97466e6572",
+        "587029c9b7f53e933290d5396648c7220d0d84bc34484351a64fbb8e7bcd3e71",
+        "3d1fccbf7eeeb3c9501f5c8276f3f0fda8fe27e742bac16655271384ee405c11",
+        "36c8c8b25a9e28a34e651249870dc2b5658e1dc3488fd183c09244f5d013402d",
+        "2f580596a1a195a7bc3c25d68f39e1f07c83d01adcfba8e41aa6d086ed3fabdd",
+        "e72aa55d231308ac34d76055981947fad1edd8a6eaecb3a9abe7e92eff907a3f",
+        "b978e2503b8cf37a06f7d6f0a3a6b6fe35691fbcab50b8775cab6fabc71c592b",
+        "2d043e11b82f7eb53d57f8af54a7cb6ce3a2ba4ed1c78d5966ac15a74924c225",
+        "1f0cdb972a7bfb7ed246f9ff672385e55f4968fc11043dc5b684d51dfa31dbcb",
+        "0870dc1c0d20cec557c94355eaf81de5fe6eaf4ef61b1c5b402add7f1d87b674",
+        "a687629bf3247581ae104efd0193f213cd42f48c357b72e9765d803298f410ab",
+        "6d954e928e6b55c6ee5fe9bda39121353a67dcefa9d8f8e12602ffba39203b57",
+        "a2d10e8b14711cf77063c9da98eb1605a66c149acde8c43fcb49aaf96287a581",
+        "587029c9b7f53e933290d5396648c7220d0d84bc34484351a64fbb8e7bcd3e71",
+        "56296e680d7f40f23a86b21be94261268376b7bde482d91b615bf1ef3d320ed5",
+        "6d04a7c04aa32d28630363f8a0d04391b85d37d853a03b940bcf99290394d794",
+        "3ffe5746a54b260ee6a1f15993aa74c10ab98146c2885398220724d3c92e4cab",
+        "488a79a378973c617959f47f032ecaebe22a1e700db4a5bfb9fdf2a9d6389759",
+        "b978e2503b8cf37a06f7d6f0a3a6b6fe35691fbcab50b8775cab6fabc71c592b",
+        "cc826528b36a0582cb690979b5af21e3d85c82fbf04c4a253d62e9a4b87a1cb8",
+        "1f0cdb972a7bfb7ed246f9ff672385e55f4968fc11043dc5b684d51dfa31dbcb",
+        "54b97066aa6d03b49ccc39c7cdc2b77cc8646e131355c30851cced95983fad1b",
+        "55f2d88b02b61a45b09b69bc8d253de0d9bc555d41d48b87b533125e08b82db2",
+        "30bc000454f307972f01264104b9293de2761f77063419360a2358a180513c87",
+        "53e994204a800ae4d6b27f8ca1e28f6959e4d7ce9d285f5ae01ba0b7028e9cf3",
+        "f2931c345c36107c05ff36bf8b7226a0113b55caf37da5e1ff8bb5a76bc9bc3e",
+        "1f0cdb972a7bfb7ed246f9ff672385e55f4968fc11043dc5b684d51dfa31dbcb",
+        "7a434289a34392aade9b4ccd28f9d505676256847e7ab6a5628beaf13881a767",
+        "95fbe56f99a247d54b098e3e767ae52e402dd0046062e169881bf20295b7b6a6",
+        "79e5c1a6f6723a04bc3c82f99fc19d623509d54baac1dcb3f6e30851b09d2b57",
+        "06831abd1802a1e7c0a5527fbf68b95d3352faac69ccc0f0bb34e8dfbb6efcb6",
+        "db2b8d66de7dc6492e57acd1ee80081f7f56fb26d76d2e857355bcf18e11c75a",
+        "628c3ef50bff13ab4951eb213c3574fa44fe724a794dca5da5ff11145c72749b",
+        "4893f40e3781eb896c82d046a08067a11e35cdf2f1dfaf26fea90b8db6676413",
+        "4d5cd2fb4f3df884515255b39523f2f8b5472beea9f566ffca204db802561041",
+        "84d675593da7ce7d63eba89b5ac3f4d962b07fb54d83124ba1efd3162de76ea9",
+        "9b3e14eeb47f208a72fc513481f98d0d2e8899cfead33a7c64277f18089d5096",
+        "cef2234b7b31695174dbe145473838159e6a5e686461473a12e8f73d660009ad",
+        "3c955c79f1451a24468aa26385d7c5b1d95a58c99536a99e57c80681ee6993ed",
+        "5c533c258a085de07f2b42e7635a00225bc6e974b74ca6f4c1257aabad3bf012",
+        "edd2551be4434bf01a405564ef92713aba6d94230adb397249de0e9c72d0f848",
+        "03684eb76a9a1c1cae120733bc9a3e581073a7e0d82c6529edeb73d749699798",
+        "27e5788d5d9d73d24a81dbc0a5a74bfa82c9c3b3af99e52af796e90b468a8a3d",
+        "412ca345ccf75bf9c0806bce695be8de808b79984251a7a54d202cf6101dd451"
+      ]
+    }
+  },
+  "execution": {
+    "scheduleSeed": "learning-foundry-value-benchmark-1.0.0",
+    "scheduleAlgorithm": "SHA256_KEYED_SHUFFLE_BALANCED_SIX_PERMUTATIONS_V1",
+    "providerSeed": {
+      "status": "UNSUPPORTED_NOT_SENT",
+      "value": null
+    },
+    "provider": "deepseek",
+    "model": "deepseek-chat",
+    "baseUrlOrigin": "https://api.deepseek.com",
+    "thinkingMode": "disabled",
+    "sampling": {
+      "temperature": null,
+      "topP": null,
+      "maxTokens": 1800,
+      "responseFormat": "json_object"
+    },
+    "runtimeAdapter": "LegacyGatewayAgentEvalTarget/1.0.0",
+    "firstAttemptCount": 72,
+    "plannedExecutions": [
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S07-V2--A_BARE_LLM",
+        "caseId": "VB-S07-V2",
+        "arm": "A_BARE_LLM",
+        "order": 0,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S07-V2--A_BARE_LLM--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S07-V2--B_FOUNDRY_POLICY_NO_TOOLS",
+        "caseId": "VB-S07-V2",
+        "arm": "B_FOUNDRY_POLICY_NO_TOOLS",
+        "order": 1,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S07-V2--B_FOUNDRY_POLICY_NO_TOOLS--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S07-V2--C_FULL_FOUNDRY",
+        "caseId": "VB-S07-V2",
+        "arm": "C_FULL_FOUNDRY",
+        "order": 2,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S07-V2--C_FULL_FOUNDRY--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S05-V3--A_BARE_LLM",
+        "caseId": "VB-S05-V3",
+        "arm": "A_BARE_LLM",
+        "order": 3,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S05-V3--A_BARE_LLM--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S05-V3--B_FOUNDRY_POLICY_NO_TOOLS",
+        "caseId": "VB-S05-V3",
+        "arm": "B_FOUNDRY_POLICY_NO_TOOLS",
+        "order": 4,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S05-V3--B_FOUNDRY_POLICY_NO_TOOLS--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S05-V3--C_FULL_FOUNDRY",
+        "caseId": "VB-S05-V3",
+        "arm": "C_FULL_FOUNDRY",
+        "order": 5,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S05-V3--C_FULL_FOUNDRY--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S05-V2--A_BARE_LLM",
+        "caseId": "VB-S05-V2",
+        "arm": "A_BARE_LLM",
+        "order": 6,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S05-V2--A_BARE_LLM--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S05-V2--B_FOUNDRY_POLICY_NO_TOOLS",
+        "caseId": "VB-S05-V2",
+        "arm": "B_FOUNDRY_POLICY_NO_TOOLS",
+        "order": 7,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S05-V2--B_FOUNDRY_POLICY_NO_TOOLS--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S05-V2--C_FULL_FOUNDRY",
+        "caseId": "VB-S05-V2",
+        "arm": "C_FULL_FOUNDRY",
+        "order": 8,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S05-V2--C_FULL_FOUNDRY--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S03-V2--A_BARE_LLM",
+        "caseId": "VB-S03-V2",
+        "arm": "A_BARE_LLM",
+        "order": 9,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S03-V2--A_BARE_LLM--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S03-V2--B_FOUNDRY_POLICY_NO_TOOLS",
+        "caseId": "VB-S03-V2",
+        "arm": "B_FOUNDRY_POLICY_NO_TOOLS",
+        "order": 10,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S03-V2--B_FOUNDRY_POLICY_NO_TOOLS--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S03-V2--C_FULL_FOUNDRY",
+        "caseId": "VB-S03-V2",
+        "arm": "C_FULL_FOUNDRY",
+        "order": 11,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S03-V2--C_FULL_FOUNDRY--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S06-V3--B_FOUNDRY_POLICY_NO_TOOLS",
+        "caseId": "VB-S06-V3",
+        "arm": "B_FOUNDRY_POLICY_NO_TOOLS",
+        "order": 12,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S06-V3--B_FOUNDRY_POLICY_NO_TOOLS--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S06-V3--C_FULL_FOUNDRY",
+        "caseId": "VB-S06-V3",
+        "arm": "C_FULL_FOUNDRY",
+        "order": 13,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S06-V3--C_FULL_FOUNDRY--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S06-V3--A_BARE_LLM",
+        "caseId": "VB-S06-V3",
+        "arm": "A_BARE_LLM",
+        "order": 14,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S06-V3--A_BARE_LLM--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S02-V3--B_FOUNDRY_POLICY_NO_TOOLS",
+        "caseId": "VB-S02-V3",
+        "arm": "B_FOUNDRY_POLICY_NO_TOOLS",
+        "order": 15,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S02-V3--B_FOUNDRY_POLICY_NO_TOOLS--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S02-V3--C_FULL_FOUNDRY",
+        "caseId": "VB-S02-V3",
+        "arm": "C_FULL_FOUNDRY",
+        "order": 16,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S02-V3--C_FULL_FOUNDRY--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S02-V3--A_BARE_LLM",
+        "caseId": "VB-S02-V3",
+        "arm": "A_BARE_LLM",
+        "order": 17,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S02-V3--A_BARE_LLM--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S08-V2--B_FOUNDRY_POLICY_NO_TOOLS",
+        "caseId": "VB-S08-V2",
+        "arm": "B_FOUNDRY_POLICY_NO_TOOLS",
+        "order": 18,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S08-V2--B_FOUNDRY_POLICY_NO_TOOLS--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S08-V2--C_FULL_FOUNDRY",
+        "caseId": "VB-S08-V2",
+        "arm": "C_FULL_FOUNDRY",
+        "order": 19,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S08-V2--C_FULL_FOUNDRY--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S08-V2--A_BARE_LLM",
+        "caseId": "VB-S08-V2",
+        "arm": "A_BARE_LLM",
+        "order": 20,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S08-V2--A_BARE_LLM--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S07-V3--B_FOUNDRY_POLICY_NO_TOOLS",
+        "caseId": "VB-S07-V3",
+        "arm": "B_FOUNDRY_POLICY_NO_TOOLS",
+        "order": 21,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S07-V3--B_FOUNDRY_POLICY_NO_TOOLS--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S07-V3--C_FULL_FOUNDRY",
+        "caseId": "VB-S07-V3",
+        "arm": "C_FULL_FOUNDRY",
+        "order": 22,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S07-V3--C_FULL_FOUNDRY--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S07-V3--A_BARE_LLM",
+        "caseId": "VB-S07-V3",
+        "arm": "A_BARE_LLM",
+        "order": 23,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S07-V3--A_BARE_LLM--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S03-V1--C_FULL_FOUNDRY",
+        "caseId": "VB-S03-V1",
+        "arm": "C_FULL_FOUNDRY",
+        "order": 24,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S03-V1--C_FULL_FOUNDRY--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S03-V1--A_BARE_LLM",
+        "caseId": "VB-S03-V1",
+        "arm": "A_BARE_LLM",
+        "order": 25,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S03-V1--A_BARE_LLM--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S03-V1--B_FOUNDRY_POLICY_NO_TOOLS",
+        "caseId": "VB-S03-V1",
+        "arm": "B_FOUNDRY_POLICY_NO_TOOLS",
+        "order": 26,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S03-V1--B_FOUNDRY_POLICY_NO_TOOLS--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S03-V3--C_FULL_FOUNDRY",
+        "caseId": "VB-S03-V3",
+        "arm": "C_FULL_FOUNDRY",
+        "order": 27,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S03-V3--C_FULL_FOUNDRY--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S03-V3--A_BARE_LLM",
+        "caseId": "VB-S03-V3",
+        "arm": "A_BARE_LLM",
+        "order": 28,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S03-V3--A_BARE_LLM--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S03-V3--B_FOUNDRY_POLICY_NO_TOOLS",
+        "caseId": "VB-S03-V3",
+        "arm": "B_FOUNDRY_POLICY_NO_TOOLS",
+        "order": 29,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S03-V3--B_FOUNDRY_POLICY_NO_TOOLS--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S04-V1--C_FULL_FOUNDRY",
+        "caseId": "VB-S04-V1",
+        "arm": "C_FULL_FOUNDRY",
+        "order": 30,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S04-V1--C_FULL_FOUNDRY--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S04-V1--A_BARE_LLM",
+        "caseId": "VB-S04-V1",
+        "arm": "A_BARE_LLM",
+        "order": 31,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S04-V1--A_BARE_LLM--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S04-V1--B_FOUNDRY_POLICY_NO_TOOLS",
+        "caseId": "VB-S04-V1",
+        "arm": "B_FOUNDRY_POLICY_NO_TOOLS",
+        "order": 32,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S04-V1--B_FOUNDRY_POLICY_NO_TOOLS--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S08-V3--C_FULL_FOUNDRY",
+        "caseId": "VB-S08-V3",
+        "arm": "C_FULL_FOUNDRY",
+        "order": 33,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S08-V3--C_FULL_FOUNDRY--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S08-V3--A_BARE_LLM",
+        "caseId": "VB-S08-V3",
+        "arm": "A_BARE_LLM",
+        "order": 34,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S08-V3--A_BARE_LLM--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S08-V3--B_FOUNDRY_POLICY_NO_TOOLS",
+        "caseId": "VB-S08-V3",
+        "arm": "B_FOUNDRY_POLICY_NO_TOOLS",
+        "order": 35,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S08-V3--B_FOUNDRY_POLICY_NO_TOOLS--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S01-V1--A_BARE_LLM",
+        "caseId": "VB-S01-V1",
+        "arm": "A_BARE_LLM",
+        "order": 36,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S01-V1--A_BARE_LLM--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S01-V1--C_FULL_FOUNDRY",
+        "caseId": "VB-S01-V1",
+        "arm": "C_FULL_FOUNDRY",
+        "order": 37,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S01-V1--C_FULL_FOUNDRY--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S01-V1--B_FOUNDRY_POLICY_NO_TOOLS",
+        "caseId": "VB-S01-V1",
+        "arm": "B_FOUNDRY_POLICY_NO_TOOLS",
+        "order": 38,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S01-V1--B_FOUNDRY_POLICY_NO_TOOLS--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S02-V2--A_BARE_LLM",
+        "caseId": "VB-S02-V2",
+        "arm": "A_BARE_LLM",
+        "order": 39,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S02-V2--A_BARE_LLM--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S02-V2--C_FULL_FOUNDRY",
+        "caseId": "VB-S02-V2",
+        "arm": "C_FULL_FOUNDRY",
+        "order": 40,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S02-V2--C_FULL_FOUNDRY--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S02-V2--B_FOUNDRY_POLICY_NO_TOOLS",
+        "caseId": "VB-S02-V2",
+        "arm": "B_FOUNDRY_POLICY_NO_TOOLS",
+        "order": 41,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S02-V2--B_FOUNDRY_POLICY_NO_TOOLS--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S02-V1--A_BARE_LLM",
+        "caseId": "VB-S02-V1",
+        "arm": "A_BARE_LLM",
+        "order": 42,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S02-V1--A_BARE_LLM--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S02-V1--C_FULL_FOUNDRY",
+        "caseId": "VB-S02-V1",
+        "arm": "C_FULL_FOUNDRY",
+        "order": 43,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S02-V1--C_FULL_FOUNDRY--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S02-V1--B_FOUNDRY_POLICY_NO_TOOLS",
+        "caseId": "VB-S02-V1",
+        "arm": "B_FOUNDRY_POLICY_NO_TOOLS",
+        "order": 44,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S02-V1--B_FOUNDRY_POLICY_NO_TOOLS--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S01-V2--A_BARE_LLM",
+        "caseId": "VB-S01-V2",
+        "arm": "A_BARE_LLM",
+        "order": 45,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S01-V2--A_BARE_LLM--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S01-V2--C_FULL_FOUNDRY",
+        "caseId": "VB-S01-V2",
+        "arm": "C_FULL_FOUNDRY",
+        "order": 46,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S01-V2--C_FULL_FOUNDRY--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S01-V2--B_FOUNDRY_POLICY_NO_TOOLS",
+        "caseId": "VB-S01-V2",
+        "arm": "B_FOUNDRY_POLICY_NO_TOOLS",
+        "order": 47,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S01-V2--B_FOUNDRY_POLICY_NO_TOOLS--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S06-V2--C_FULL_FOUNDRY",
+        "caseId": "VB-S06-V2",
+        "arm": "C_FULL_FOUNDRY",
+        "order": 48,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S06-V2--C_FULL_FOUNDRY--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S06-V2--B_FOUNDRY_POLICY_NO_TOOLS",
+        "caseId": "VB-S06-V2",
+        "arm": "B_FOUNDRY_POLICY_NO_TOOLS",
+        "order": 49,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S06-V2--B_FOUNDRY_POLICY_NO_TOOLS--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S06-V2--A_BARE_LLM",
+        "caseId": "VB-S06-V2",
+        "arm": "A_BARE_LLM",
+        "order": 50,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S06-V2--A_BARE_LLM--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S01-V3--C_FULL_FOUNDRY",
+        "caseId": "VB-S01-V3",
+        "arm": "C_FULL_FOUNDRY",
+        "order": 51,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S01-V3--C_FULL_FOUNDRY--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S01-V3--B_FOUNDRY_POLICY_NO_TOOLS",
+        "caseId": "VB-S01-V3",
+        "arm": "B_FOUNDRY_POLICY_NO_TOOLS",
+        "order": 52,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S01-V3--B_FOUNDRY_POLICY_NO_TOOLS--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S01-V3--A_BARE_LLM",
+        "caseId": "VB-S01-V3",
+        "arm": "A_BARE_LLM",
+        "order": 53,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S01-V3--A_BARE_LLM--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S07-V1--C_FULL_FOUNDRY",
+        "caseId": "VB-S07-V1",
+        "arm": "C_FULL_FOUNDRY",
+        "order": 54,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S07-V1--C_FULL_FOUNDRY--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S07-V1--B_FOUNDRY_POLICY_NO_TOOLS",
+        "caseId": "VB-S07-V1",
+        "arm": "B_FOUNDRY_POLICY_NO_TOOLS",
+        "order": 55,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S07-V1--B_FOUNDRY_POLICY_NO_TOOLS--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S07-V1--A_BARE_LLM",
+        "caseId": "VB-S07-V1",
+        "arm": "A_BARE_LLM",
+        "order": 56,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S07-V1--A_BARE_LLM--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S06-V1--C_FULL_FOUNDRY",
+        "caseId": "VB-S06-V1",
+        "arm": "C_FULL_FOUNDRY",
+        "order": 57,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S06-V1--C_FULL_FOUNDRY--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S06-V1--B_FOUNDRY_POLICY_NO_TOOLS",
+        "caseId": "VB-S06-V1",
+        "arm": "B_FOUNDRY_POLICY_NO_TOOLS",
+        "order": 58,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S06-V1--B_FOUNDRY_POLICY_NO_TOOLS--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S06-V1--A_BARE_LLM",
+        "caseId": "VB-S06-V1",
+        "arm": "A_BARE_LLM",
+        "order": 59,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S06-V1--A_BARE_LLM--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S08-V1--B_FOUNDRY_POLICY_NO_TOOLS",
+        "caseId": "VB-S08-V1",
+        "arm": "B_FOUNDRY_POLICY_NO_TOOLS",
+        "order": 60,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S08-V1--B_FOUNDRY_POLICY_NO_TOOLS--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S08-V1--A_BARE_LLM",
+        "caseId": "VB-S08-V1",
+        "arm": "A_BARE_LLM",
+        "order": 61,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S08-V1--A_BARE_LLM--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S08-V1--C_FULL_FOUNDRY",
+        "caseId": "VB-S08-V1",
+        "arm": "C_FULL_FOUNDRY",
+        "order": 62,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S08-V1--C_FULL_FOUNDRY--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S05-V1--B_FOUNDRY_POLICY_NO_TOOLS",
+        "caseId": "VB-S05-V1",
+        "arm": "B_FOUNDRY_POLICY_NO_TOOLS",
+        "order": 63,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S05-V1--B_FOUNDRY_POLICY_NO_TOOLS--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S05-V1--A_BARE_LLM",
+        "caseId": "VB-S05-V1",
+        "arm": "A_BARE_LLM",
+        "order": 64,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S05-V1--A_BARE_LLM--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S05-V1--C_FULL_FOUNDRY",
+        "caseId": "VB-S05-V1",
+        "arm": "C_FULL_FOUNDRY",
+        "order": 65,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S05-V1--C_FULL_FOUNDRY--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S04-V3--B_FOUNDRY_POLICY_NO_TOOLS",
+        "caseId": "VB-S04-V3",
+        "arm": "B_FOUNDRY_POLICY_NO_TOOLS",
+        "order": 66,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S04-V3--B_FOUNDRY_POLICY_NO_TOOLS--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S04-V3--A_BARE_LLM",
+        "caseId": "VB-S04-V3",
+        "arm": "A_BARE_LLM",
+        "order": 67,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S04-V3--A_BARE_LLM--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S04-V3--C_FULL_FOUNDRY",
+        "caseId": "VB-S04-V3",
+        "arm": "C_FULL_FOUNDRY",
+        "order": 68,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S04-V3--C_FULL_FOUNDRY--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S04-V2--B_FOUNDRY_POLICY_NO_TOOLS",
+        "caseId": "VB-S04-V2",
+        "arm": "B_FOUNDRY_POLICY_NO_TOOLS",
+        "order": 69,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S04-V2--B_FOUNDRY_POLICY_NO_TOOLS--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S04-V2--A_BARE_LLM",
+        "caseId": "VB-S04-V2",
+        "arm": "A_BARE_LLM",
+        "order": 70,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S04-V2--A_BARE_LLM--conversation-first"
+      },
+      {
+        "executionId": "foundry-value-benchmark-1.0.0-live-01--VB-S04-V2--C_FULL_FOUNDRY",
+        "caseId": "VB-S04-V2",
+        "arm": "C_FULL_FOUNDRY",
+        "order": 71,
+        "conversationId": "foundry-value-benchmark-1.0.0-live-01--VB-S04-V2--C_FULL_FOUNDRY--conversation-first"
+      }
+    ],
+    "caseCompositions": [
+      {
+        "caseId": "VB-S01-V1",
+        "executionPlanHash": "e834f373ae65056fa4e379924f93b217098aa0244885587175021900b4ee7cc3",
+        "contextSelectionHash": "49707dfc1979bb0e6931a39de4525e6025505919fc373cf1b17586c487941226",
+        "selectedProviderMessagesHash": "cd7ee32fc5add2bfc5f277c8057d14402d7f3b0397b176ed0dd49ed9dee1ab21",
+        "policyOnlySystemPromptHash": "777f921bd82ef52706d62c0713ed1922ff112b93ffb020f4c44fc07cc85a028e",
+        "authoritativeSystemPromptHash": "100d4ca421af6b62bb975cc082482088d3dd049ccccd18cab13eb4d1a22cf70f"
+      },
+      {
+        "caseId": "VB-S01-V2",
+        "executionPlanHash": "e834f373ae65056fa4e379924f93b217098aa0244885587175021900b4ee7cc3",
+        "contextSelectionHash": "49707dfc1979bb0e6931a39de4525e6025505919fc373cf1b17586c487941226",
+        "selectedProviderMessagesHash": "bb94dbc6f86e2b89795a0141e54e2c85c7524cdfb335065c8b9d92663789c3c8",
+        "policyOnlySystemPromptHash": "777f921bd82ef52706d62c0713ed1922ff112b93ffb020f4c44fc07cc85a028e",
+        "authoritativeSystemPromptHash": "100d4ca421af6b62bb975cc082482088d3dd049ccccd18cab13eb4d1a22cf70f"
+      },
+      {
+        "caseId": "VB-S01-V3",
+        "executionPlanHash": "e834f373ae65056fa4e379924f93b217098aa0244885587175021900b4ee7cc3",
+        "contextSelectionHash": "49707dfc1979bb0e6931a39de4525e6025505919fc373cf1b17586c487941226",
+        "selectedProviderMessagesHash": "3138770d085ed0226b257fe2fa00fa6d4bc43b44fc40e2eef054c7c30adadbf3",
+        "policyOnlySystemPromptHash": "777f921bd82ef52706d62c0713ed1922ff112b93ffb020f4c44fc07cc85a028e",
+        "authoritativeSystemPromptHash": "100d4ca421af6b62bb975cc082482088d3dd049ccccd18cab13eb4d1a22cf70f"
+      },
+      {
+        "caseId": "VB-S02-V1",
+        "executionPlanHash": "e834f373ae65056fa4e379924f93b217098aa0244885587175021900b4ee7cc3",
+        "contextSelectionHash": "49707dfc1979bb0e6931a39de4525e6025505919fc373cf1b17586c487941226",
+        "selectedProviderMessagesHash": "fe068f183aed36b5c0d0fd868ab15fe7101d93a58fa6f2b142f5d899260d43d5",
+        "policyOnlySystemPromptHash": "777f921bd82ef52706d62c0713ed1922ff112b93ffb020f4c44fc07cc85a028e",
+        "authoritativeSystemPromptHash": "100d4ca421af6b62bb975cc082482088d3dd049ccccd18cab13eb4d1a22cf70f"
+      },
+      {
+        "caseId": "VB-S02-V2",
+        "executionPlanHash": "e834f373ae65056fa4e379924f93b217098aa0244885587175021900b4ee7cc3",
+        "contextSelectionHash": "49707dfc1979bb0e6931a39de4525e6025505919fc373cf1b17586c487941226",
+        "selectedProviderMessagesHash": "6cca0e4ddb20ec55843cf6119a71af7fe8887e8fc7c1cea5e12b8cb8df065e83",
+        "policyOnlySystemPromptHash": "777f921bd82ef52706d62c0713ed1922ff112b93ffb020f4c44fc07cc85a028e",
+        "authoritativeSystemPromptHash": "100d4ca421af6b62bb975cc082482088d3dd049ccccd18cab13eb4d1a22cf70f"
+      },
+      {
+        "caseId": "VB-S02-V3",
+        "executionPlanHash": "e834f373ae65056fa4e379924f93b217098aa0244885587175021900b4ee7cc3",
+        "contextSelectionHash": "49707dfc1979bb0e6931a39de4525e6025505919fc373cf1b17586c487941226",
+        "selectedProviderMessagesHash": "9d93d649718c84862d7b25241bca46bf15f1e34297b14d7db3e6da852970b852",
+        "policyOnlySystemPromptHash": "777f921bd82ef52706d62c0713ed1922ff112b93ffb020f4c44fc07cc85a028e",
+        "authoritativeSystemPromptHash": "100d4ca421af6b62bb975cc082482088d3dd049ccccd18cab13eb4d1a22cf70f"
+      },
+      {
+        "caseId": "VB-S03-V1",
+        "executionPlanHash": "9adb176b368851c13514a9da910e69fcad456910599731fe6465ddad12f8f058",
+        "contextSelectionHash": "49707dfc1979bb0e6931a39de4525e6025505919fc373cf1b17586c487941226",
+        "selectedProviderMessagesHash": "2ef7755fc5486e79e547ad1cb81208bb7410f9cb4c9edfafa94e19395aec74ee",
+        "policyOnlySystemPromptHash": "6e721609179fc85c980a3291f12189f398a427ee9bd75a853e91208a07bb82e0",
+        "authoritativeSystemPromptHash": "686ec4ad54124397c33263a257b2f06898f2cd5a850757338e31f3ba471b2d8a"
+      },
+      {
+        "caseId": "VB-S03-V2",
+        "executionPlanHash": "9adb176b368851c13514a9da910e69fcad456910599731fe6465ddad12f8f058",
+        "contextSelectionHash": "49707dfc1979bb0e6931a39de4525e6025505919fc373cf1b17586c487941226",
+        "selectedProviderMessagesHash": "150cd58babb26aa17d4e7b1facaae415099dc7fdddfa580fddefab3a7805c24f",
+        "policyOnlySystemPromptHash": "6e721609179fc85c980a3291f12189f398a427ee9bd75a853e91208a07bb82e0",
+        "authoritativeSystemPromptHash": "686ec4ad54124397c33263a257b2f06898f2cd5a850757338e31f3ba471b2d8a"
+      },
+      {
+        "caseId": "VB-S03-V3",
+        "executionPlanHash": "9adb176b368851c13514a9da910e69fcad456910599731fe6465ddad12f8f058",
+        "contextSelectionHash": "49707dfc1979bb0e6931a39de4525e6025505919fc373cf1b17586c487941226",
+        "selectedProviderMessagesHash": "f10ac9bba265ab6cf023b50ef497c5c11770a889b92a3896c3be78b334854152",
+        "policyOnlySystemPromptHash": "6e721609179fc85c980a3291f12189f398a427ee9bd75a853e91208a07bb82e0",
+        "authoritativeSystemPromptHash": "686ec4ad54124397c33263a257b2f06898f2cd5a850757338e31f3ba471b2d8a"
+      },
+      {
+        "caseId": "VB-S04-V1",
+        "executionPlanHash": "546ffafe21e127190ffc4c28ccb8a51007e0faa85367ab54471be15bfd7b1f92",
+        "contextSelectionHash": "566352107708a31c41f43a2caf39123b4570cc4b0d9098d55ebe885feac5f6f2",
+        "selectedProviderMessagesHash": "3347fb310371fc670629d23a3cbc4193d4d83f6b1f8e12a4a76c0ee5f2cd9c59",
+        "policyOnlySystemPromptHash": "31bc45bd8aa3d39090f243a065ee2868f762c84471c65f856a3e773fd0142037",
+        "authoritativeSystemPromptHash": "686ec4ad54124397c33263a257b2f06898f2cd5a850757338e31f3ba471b2d8a"
+      },
+      {
+        "caseId": "VB-S04-V2",
+        "executionPlanHash": "97cb63e4f1675dc29415edfd950ca614e3b2a30667d767239d618776f89a498f",
+        "contextSelectionHash": "cc39e42752b5c7406376012e099ec23c1bfd47de568bba9521384ac1d4c3ff32",
+        "selectedProviderMessagesHash": "3907c178a05060c3056935afcbb76426f3ba02eca8ad355ab8757c580fc2e161",
+        "policyOnlySystemPromptHash": "61a2bf0109aa7a50df701d47e953dc4473076272f96d8fe01ee1d9dac42ee26e",
+        "authoritativeSystemPromptHash": "686ec4ad54124397c33263a257b2f06898f2cd5a850757338e31f3ba471b2d8a"
+      },
+      {
+        "caseId": "VB-S04-V3",
+        "executionPlanHash": "75be9bc6790baf7f20fe0be893290cd81e47190e821a4eb2a5995b5dcaaf800c",
+        "contextSelectionHash": "732bb8f91255a0387a8a67288ae9b1a2286cf53475c7fe4c6634231ef29052b0",
+        "selectedProviderMessagesHash": "aaadb35c344314d2c06d9174838b70e371cfd0d8a7d2268f9b1ae136e088be6f",
+        "policyOnlySystemPromptHash": "fe846e4d2d350c05a4e46bf24b8dc68f38b7bae2b7418f88e1cc710c5ddb7f69",
+        "authoritativeSystemPromptHash": "686ec4ad54124397c33263a257b2f06898f2cd5a850757338e31f3ba471b2d8a"
+      },
+      {
+        "caseId": "VB-S05-V1",
+        "executionPlanHash": "64f9ba4dca92d02e3fc5f57478858da1e1913bd2b0f3d5649e9822ae468946ee",
+        "contextSelectionHash": "efba4105988e8f5af72d07a679ad3ce6219bbe1dbb51b93b45da96548b108df5",
+        "selectedProviderMessagesHash": "d0f6b62cc24a5d34b5a78820351f7325089a53882fba4438a7fc72f9d6f323ad",
+        "policyOnlySystemPromptHash": "249677ddaf97c43dcac991dcde0aecff601243684291dd9b74ce4f44e0d54bb7",
+        "authoritativeSystemPromptHash": "686ec4ad54124397c33263a257b2f06898f2cd5a850757338e31f3ba471b2d8a"
+      },
+      {
+        "caseId": "VB-S05-V2",
+        "executionPlanHash": "fd466a8880d6301d35fa1d3304032daf6b6d60ee496af65d788376b27c188ed5",
+        "contextSelectionHash": "346cda13fe797508c9b6d0791db8c29d1285ea16a1442a462cbaf4d933e35b0a",
+        "selectedProviderMessagesHash": "2998c4b94dda4623dc838cef68cc3e4f368d46a12d032c87ebc9d6d31af64593",
+        "policyOnlySystemPromptHash": "1da165bd4409dc156130e286a9ac09104f9973bc4a2cb90dda7f051475279e6c",
+        "authoritativeSystemPromptHash": "686ec4ad54124397c33263a257b2f06898f2cd5a850757338e31f3ba471b2d8a"
+      },
+      {
+        "caseId": "VB-S05-V3",
+        "executionPlanHash": "bc8335283c95cc2b7360a021439a6f9048db203b775591c94ea4a1a749295979",
+        "contextSelectionHash": "64ea7a58dac36e51647fd2c0b1f40182567f83e759797c2faf6dc4d83b8ae462",
+        "selectedProviderMessagesHash": "5d2370ef119d3288ac9631033f69696deb53d5a04db3352f7597b78381d741d9",
+        "policyOnlySystemPromptHash": "02562bb51dfc2b365cf43b0f470b3843faa6d1b5c73976340e4151b31dfa02f5",
+        "authoritativeSystemPromptHash": "686ec4ad54124397c33263a257b2f06898f2cd5a850757338e31f3ba471b2d8a"
+      },
+      {
+        "caseId": "VB-S06-V1",
+        "executionPlanHash": "b028b1f0d8d345737af8c674b22d03215dbb5e9801a65f8ebfdb96074f77cf4f",
+        "contextSelectionHash": "49707dfc1979bb0e6931a39de4525e6025505919fc373cf1b17586c487941226",
+        "selectedProviderMessagesHash": "2260eb1ef693f99a8cfcfcf125553dd3bb7ab8f95cdf20ea81f67375b9cb6155",
+        "policyOnlySystemPromptHash": "b49f66f4eb25eafe043a3af45d2d1362b144200d32613cea61ed01b41a3fb3cf",
+        "authoritativeSystemPromptHash": "fdee7229b456e1333b5bbc7645e1289aa8706bb81f175099f06e0b7bb66819e6"
+      },
+      {
+        "caseId": "VB-S06-V2",
+        "executionPlanHash": "b028b1f0d8d345737af8c674b22d03215dbb5e9801a65f8ebfdb96074f77cf4f",
+        "contextSelectionHash": "49707dfc1979bb0e6931a39de4525e6025505919fc373cf1b17586c487941226",
+        "selectedProviderMessagesHash": "6a09ce9845dccf418d478df6554921cbf1e35abefec0668237e520c0f7bcbfcb",
+        "policyOnlySystemPromptHash": "b49f66f4eb25eafe043a3af45d2d1362b144200d32613cea61ed01b41a3fb3cf",
+        "authoritativeSystemPromptHash": "fdee7229b456e1333b5bbc7645e1289aa8706bb81f175099f06e0b7bb66819e6"
+      },
+      {
+        "caseId": "VB-S06-V3",
+        "executionPlanHash": "b028b1f0d8d345737af8c674b22d03215dbb5e9801a65f8ebfdb96074f77cf4f",
+        "contextSelectionHash": "49707dfc1979bb0e6931a39de4525e6025505919fc373cf1b17586c487941226",
+        "selectedProviderMessagesHash": "1e0fdb3166ddf084d9753b1f38d793a344979e75e063c139c764343924a9ad66",
+        "policyOnlySystemPromptHash": "b49f66f4eb25eafe043a3af45d2d1362b144200d32613cea61ed01b41a3fb3cf",
+        "authoritativeSystemPromptHash": "fdee7229b456e1333b5bbc7645e1289aa8706bb81f175099f06e0b7bb66819e6"
+      },
+      {
+        "caseId": "VB-S07-V1",
+        "executionPlanHash": "885da0bc3230f26f0b886f4044b42674d898a1be4d6615a6558f8320c28deacd",
+        "contextSelectionHash": "49707dfc1979bb0e6931a39de4525e6025505919fc373cf1b17586c487941226",
+        "selectedProviderMessagesHash": "d006d508cee82ba46934310e576c3cc92608ec416ff55b46921f0290bb26f5d5",
+        "policyOnlySystemPromptHash": "4a9396ac871cee8b24067b0eafd088dabb97ea6abf7e25c96fcf703bd50ed6e1",
+        "authoritativeSystemPromptHash": "52db991355d03a521ff4750949bed95a66423a82748f670e74a8765df35ef30c"
+      },
+      {
+        "caseId": "VB-S07-V2",
+        "executionPlanHash": "9adb176b368851c13514a9da910e69fcad456910599731fe6465ddad12f8f058",
+        "contextSelectionHash": "49707dfc1979bb0e6931a39de4525e6025505919fc373cf1b17586c487941226",
+        "selectedProviderMessagesHash": "caff0ed7e1ca76b40749f84955327da917559aa76cb46a1faaac37828add9ccf",
+        "policyOnlySystemPromptHash": "6e721609179fc85c980a3291f12189f398a427ee9bd75a853e91208a07bb82e0",
+        "authoritativeSystemPromptHash": "686ec4ad54124397c33263a257b2f06898f2cd5a850757338e31f3ba471b2d8a"
+      },
+      {
+        "caseId": "VB-S07-V3",
+        "executionPlanHash": "9adb176b368851c13514a9da910e69fcad456910599731fe6465ddad12f8f058",
+        "contextSelectionHash": "49707dfc1979bb0e6931a39de4525e6025505919fc373cf1b17586c487941226",
+        "selectedProviderMessagesHash": "0df3f6cd3f4d03bf788b08f7be8bacb3cf82a46219019ddd07ba44fa2f069e08",
+        "policyOnlySystemPromptHash": "6e721609179fc85c980a3291f12189f398a427ee9bd75a853e91208a07bb82e0",
+        "authoritativeSystemPromptHash": "686ec4ad54124397c33263a257b2f06898f2cd5a850757338e31f3ba471b2d8a"
+      },
+      {
+        "caseId": "VB-S08-V1",
+        "executionPlanHash": "af0ea915ae4b0fb3e82bed2926d09dcd9989d63d9fcf5021d0635512672f9112",
+        "contextSelectionHash": "49707dfc1979bb0e6931a39de4525e6025505919fc373cf1b17586c487941226",
+        "selectedProviderMessagesHash": "bffdbbd5cd0f7cb3a1ac03ec1ce50c5a56a016b775c67e091f7bf5cc677602a8",
+        "policyOnlySystemPromptHash": "e3a08e035d0799c618bd4370b29fffd14f4a501315642705434a8668a32e63f1",
+        "authoritativeSystemPromptHash": "8bf868c40f2fb30917d87fbdbaa0e2c1820613178bd4dd43b5bec091325a8f67"
+      },
+      {
+        "caseId": "VB-S08-V2",
+        "executionPlanHash": "af0ea915ae4b0fb3e82bed2926d09dcd9989d63d9fcf5021d0635512672f9112",
+        "contextSelectionHash": "49707dfc1979bb0e6931a39de4525e6025505919fc373cf1b17586c487941226",
+        "selectedProviderMessagesHash": "3d6b9441ce1aaeec83a290c7fc66c9db1074459a59fa42d5e5aea1262f7fcef4",
+        "policyOnlySystemPromptHash": "e3a08e035d0799c618bd4370b29fffd14f4a501315642705434a8668a32e63f1",
+        "authoritativeSystemPromptHash": "8bf868c40f2fb30917d87fbdbaa0e2c1820613178bd4dd43b5bec091325a8f67"
+      },
+      {
+        "caseId": "VB-S08-V3",
+        "executionPlanHash": "9adb176b368851c13514a9da910e69fcad456910599731fe6465ddad12f8f058",
+        "contextSelectionHash": "49707dfc1979bb0e6931a39de4525e6025505919fc373cf1b17586c487941226",
+        "selectedProviderMessagesHash": "bed0192897ffe7731698555389779c3d5af182667d817aa36de54b3985da8956",
+        "policyOnlySystemPromptHash": "6e721609179fc85c980a3291f12189f398a427ee9bd75a853e91208a07bb82e0",
+        "authoritativeSystemPromptHash": "686ec4ad54124397c33263a257b2f06898f2cd5a850757338e31f3ba471b2d8a"
+      }
+    ]
+  },
+  "policySnapshots": {
+    "agentInstructions": "config/agent/instructions.md@sha256:b074582b43912167c666922a885f3b1e7665da51da9d6d98f8ff8f922f3dbc2b",
+    "responsePolicy": "config/agent/response-policy.json@sha256:a890bcde7615042bc73cd128264916a5781678b48d512e7ef9ad1ef932adee9b",
+    "toolDefinitions": "config/tools/tool-descriptions.json@sha256:d2398f11bfee4cdc18226c3f50fe46e171179a44580cbd372fa65d1c730500dd",
+    "corpusDeliveryPolicy": "config/corpus/delivery-policy.json@sha256:8b3f8d46acf6ea52330d7b9397b5d33d74631f89d28e87e479e03fdfb830f22c",
+    "capabilityRegistry": "src/reference-packs/registry.ts@sha256:ca09a6001093ee3f5b3cb2b9a112d47f15cecc87c4b585f3668d55a88a1401b5",
+    "routePolicy": "src/agent/route-policy.ts@sha256:a8d69be3610682396bce677c7e18ad558603b77de772b2a4db171d4bff51f351",
+    "pricing": "agent-eval/pricing.json@sha256:d575ad5abcbee3726abdc8c95e5b8c4e20771ca882fe066ee623b446a3b58837",
+    "agentEvalCases": "agent-eval/cases.jsonl@sha256:0c421e183ee35a968931c2e4ff6ef291005d9000dcc821b26d0a8e422bc157fb",
+    "governedCorpusIndex": "REQUIRED_LIVE_PREFLIGHT",
+    "externalReviewerAuthorization": "REQUIRED_BEFORE_PACKET_DELIVERY",
+    "rawArtifacts": ".value-benchmark-results/ (mode 0600, ignored)"
+  },
+  "livePolicy": {
+    "automaticRetry": false,
+    "infrastructureReplacementRequiresExplicitCommand": true,
+    "modelQualityResampling": false,
+    "permittedInfrastructureReplacements": [
+      "NETWORK_TRANSPORT",
+      "TIMEOUT",
+      "HTTP_408",
+      "HTTP_429",
+      "HTTP_5XX",
+      "REQUIRED_LOCAL_SERVICE_UNAVAILABLE"
+    ],
+    "requiredEnvironmentGates": [
+      "DEEPSEEK_API_KEY",
+      "AGENT_GATEWAY_HEALTH_MATCH",
+      "GOVERNED_CORPUS_READY",
+      "AGENT_EVAL_DELIVERY_AUTHORIZED",
+      "PROVIDER_SEED_DISPOSITION_ACCEPTED"
+    ]
+  }
+}
