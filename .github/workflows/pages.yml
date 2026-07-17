@@ -24,6 +24,13 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: Generate candidate package lock
+        run: npm install --package-lock-only --ignore-scripts
+      - name: Upload candidate package lock
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-sdk-package-lock
+          path: package-lock.json
       - run: npm ci
       - run: npm run check
       - run: npm test
