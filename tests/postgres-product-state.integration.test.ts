@@ -21,6 +21,7 @@ describeWithDatabase("Postgres canonical Product State", () => {
   beforeAll(async () => {
     await pool.query("DROP SCHEMA IF EXISTS product_state CASCADE");
     await runProductStateMigrations(pool);
+    await runProductStateMigrations(pool);
   });
 
   afterAll(async () => {
