@@ -34,9 +34,46 @@ describe("real agent orchestration contract", () => {
 
     expect(trace.toolCalls).toEqual([{ name: "search_learning_resources", arguments: { query: "coefficients" }, resultRef: "search-result-1", status: "SUCCEEDED" }]);
     expect(trace).toMatchObject({ initialRoute: "COURSE_EXPLANATION", route: "COURSE_EXPLANATION" });
+    expect(trace.executionPlan).toMatchObject({ schemaVersion: "1.0.0", intent: "OPEN_EXPLANATION", execution: { mode: "BOUNDED_AGENT" } });
+    expect(trace.contextSelection).toMatchObject({ selectedMessageIndexes: [0], excludedContextItems: [] });
+    expect(trace.budgetConsumption).toContainEqual({ toolId: "search_learning_resources", consumed: 1, maximum: 2 });
+    expect(trace.evidenceAssessments).toContainEqual(expect.objectContaining({ outcome: "SUFFICIENT_EVIDENCE", toolId: "search_learning_resources" }));
+    expect(trace.stopReason).toBe("Execution Plan requirements satisfied.");
     expect(trace.finalResponse.sourceRefs).toEqual(["TN-001", "CAIE-SOURCE-1"]);
     expect(trace.tokenUsage?.totalTokens).toBe(38);
     expect(JSON.stringify(trace)).not.toMatch(/api.?key|authorization|reasoning_content/i);
+  });
+
+  it("stops with NEEDS_MORE_EVIDENCE when retrieval returns no educational Evidence", async () => {
+    const modelClient = client([
+      { message: { role: "assistant", content: null, tool_calls: [{ id: "empty-search", type: "function", function: { name: "search_learning_resources", arguments: '{"query":"missing topic"}' } }] } },
+      { message: { role: "assistant", content: JSON.stringify({ status: "NEEDS_MORE_EVIDENCE", learnerMessage: "No governed Evidence was found, so I cannot ground an answer.", sourceRefs: [], evidenceRefs: ["empty-result"] }) } },
+    ]);
+    const trace = await runAgent({ ...base, toolDefinitions: [{ type: "function", function: { name: "search_learning_resources" } }], modelClient, tools: { execute: async () => ({ resultRef: "empty-result", data: { results: [] }, evidenceRefs: ["empty-result"] }) } });
+
+    expect(trace.finalResponse.status).toBe("NEEDS_MORE_EVIDENCE");
+    expect(trace.evidenceAssessments).toContainEqual(expect.objectContaining({ outcome: "NO_RESULTS", anotherCallJustified: false }));
+    expect(trace.stopReason).toContain("retrieval returned no Evidence");
+  });
+
+  it("permits exactly one materially different search tied to a missing aspect", async () => {
+    const modelClient = client([
+      { message: { role: "assistant", content: null, tool_calls: [{ id: "first-search", type: "function", function: { name: "search_learning_resources", arguments: '{"query":"official relationship"}' } }] } },
+      { message: { role: "assistant", content: null, tool_calls: [{ id: "second-search", type: "function", function: { name: "search_learning_resources", arguments: JSON.stringify({ query: "particle scaling teaching explanation", retrievalJustification: { priorAssessmentId: "evidence-assessment-1", missingAspect: "pedagogical explanation", expectedCoverageGain: "add teaching rationale" } }) } }] } },
+      { message: { role: "assistant", content: JSON.stringify({ status: "ANSWERED", learnerMessage: "The governed source and teaching note jointly support the explanation.", sourceRefs: ["teacher-note"], evidenceRefs: ["first-result", "second-result"] }) } },
+    ]);
+    let call = 0;
+    const tools: AgentToolExecutor = { execute: async () => {
+      call += 1;
+      return call === 1
+        ? { resultRef: "first-result", data: { results: [{ sourceId: "official", sourceType: "OFFICIAL_SYLLABUS", score: 3, page: 1 }], missingAspects: ["pedagogical explanation"] }, sourceRefs: ["official"], evidenceRefs: ["first-result"] }
+        : { resultRef: "second-result", data: { results: [{ sourceId: "teacher-note", sourceType: "TEACHER_NOTE", score: 5, section: "explanation" }] }, sourceRefs: ["teacher-note"], evidenceRefs: ["second-result"] };
+    } };
+    const trace = await runAgent({ ...base, toolDefinitions: [{ type: "function", function: { name: "search_learning_resources" } }], modelClient, tools });
+
+    expect(trace.toolCalls).toHaveLength(2);
+    expect(trace.evidenceAssessments?.map((item) => item.outcome)).toEqual(["PARTIAL_COVERAGE", "SUFFICIENT_EVIDENCE"]);
+    expect(trace.budgetConsumption).toContainEqual({ toolId: "search_learning_resources", consumed: 2, maximum: 2 });
   });
 
   it("prioritizes an official syllabus result for an explicit course-source request", async () => {

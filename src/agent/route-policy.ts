@@ -1,6 +1,8 @@
 import type { AgentExecutionPlan, AgentObligations, AgentResponseEnvelope, AgentRoute, AgentRunRequest, AgentToolCallRecord } from "./types";
 import { ContextCompiler } from "./control-plane/context-compiler";
 import { ExecutionPlanner } from "./control-plane/execution-planner";
+import type { EvidenceSufficiencyAssessment, ToolBudgetConsumption } from "./control-plane/observability";
+import type { ExecutionPlanV1 } from "./control-plane/execution-plan";
 
 interface SuccessfulToolResult { readonly name: string; readonly data: unknown }
 
@@ -82,17 +84,26 @@ export function enforceRoutePolicy(
   successfulToolResults: readonly SuccessfulToolResult[],
   initialRoute: AgentRoute = classifyAgentRoute(request),
   obligations: AgentObligations = resolveAgentExecutionPlan(request).obligations,
+  evidenceAssessments: readonly EvidenceSufficiencyAssessment[] = [],
+  executionPlan: ExecutionPlanV1 = resolveAgentExecutionPlan(request),
+  budgetConsumption: readonly ToolBudgetConsumption[] = [],
 ): AgentRoute {
   const route = initialRoute;
   const successfulCalls = toolCalls.filter((call) => call.status === "SUCCEEDED");
 
-  if (route === "COURSE_EXPLANATION" && response.status !== "ANSWERED") {
-    throw new RoutePolicyError(route, "A course explanation with governed retrieval must return ANSWERED, not change application route from model output.");
-  }
-
   if (route === "COURSE_EXPLANATION") {
     const retrievalCalls = successfulCalls.filter((call) => call.name === "search_learning_resources");
-    if (retrievalCalls.length === 0 || !searchHasGovernedSource(successfulToolResults) || response.sourceRefs.length === 0 || !retrievalCalls.some((call) => response.evidenceRefs?.includes(call.resultRef))) {
+    const latestAssessment = [...evidenceAssessments].reverse().find((item) => item.toolId === "search_learning_resources");
+    const sufficient = latestAssessment ? latestAssessment.outcome === "SUFFICIENT_EVIDENCE" : searchHasGovernedSource(successfulToolResults);
+    const retrievalBudget = budgetConsumption.find((item) => item.toolId === "search_learning_resources");
+    const shouldContinue = Boolean(latestAssessment?.anotherCallJustified && retrievalBudget && retrievalBudget.consumed < retrievalBudget.maximum);
+    if (shouldContinue) throw new RoutePolicyError(route, "Evidence assessment requires one justified, materially different retrieval before stopping.");
+    if (!sufficient) {
+      if (response.status !== "NEEDS_MORE_EVIDENCE") throw new RoutePolicyError(route, "Insufficient governed Evidence must return NEEDS_MORE_EVIDENCE, never an unsupported ANSWERED response.");
+    } else if (response.status !== "ANSWERED") {
+      throw new RoutePolicyError(route, "Sufficient governed Evidence means the route must return ANSWERED.");
+    }
+    if (sufficient && (retrievalCalls.length === 0 || response.sourceRefs.length === 0 || !retrievalCalls.some((call) => response.evidenceRefs?.includes(call.resultRef)))) {
       throw new RoutePolicyError(route, "ANSWERED requires successful retrieval of at least one curriculum or Teacher Note source.");
     }
   }

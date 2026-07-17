@@ -12,6 +12,16 @@
             "query": {
               "type": "string"
             },
+            "retrievalJustification": {
+              "type": "object",
+              "properties": {
+                "priorAssessmentId": { "type": "string" },
+                "missingAspect": { "type": "string" },
+                "expectedCoverageGain": { "type": "string" }
+              },
+              "required": ["priorAssessmentId", "missingAspect", "expectedCoverageGain"],
+              "additionalProperties": false
+            },
             "examBoard": {
               "type": "string",
               "enum": ["CAIE"]

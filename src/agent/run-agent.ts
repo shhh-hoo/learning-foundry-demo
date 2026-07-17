@@ -1,13 +1,18 @@
-import { agentResponseEnvelopeSchema, type AgentObligations, type AgentRoute, type AgentRunRequest, type AgentTrace, type TokenUsage } from "./types";
+import { agentResponseEnvelopeSchema, type AgentExecutionPlan, type AgentObligations, type AgentRoute, type AgentRunRequest, type AgentTrace, type TokenUsage } from "./types";
 import type { AgentModelClient, ModelMessage } from "./deepseek-client";
 import { ZodError } from "zod";
 import { enforceRoutePolicy, resolveAgentExecutionPlan, routeInstruction, RoutePolicyError } from "./route-policy";
+import { EvidenceSufficiencyAssessor } from "./control-plane/evidence-sufficiency";
+import { ToolExecutionGovernor } from "./control-plane/tool-execution-governor";
+import { DiagnosisWorkflow } from "./control-plane/diagnosis-workflow";
+import type { EvidenceSufficiencyAssessment } from "./control-plane/observability";
 
 export interface AgentToolResult { readonly resultRef: string; readonly data: unknown; readonly evidenceData?: unknown; readonly executedArguments?: unknown; readonly sourceRefs?: readonly string[]; readonly evidenceRefs?: readonly string[]; readonly claimRefs?: readonly string[] }
 export interface AgentToolExecutor { execute(name: string, argumentsValue: unknown): Promise<AgentToolResult> }
 
 interface RunAgentOptions {
   readonly request: AgentRunRequest;
+  readonly executionPlan?: AgentExecutionPlan;
   readonly initialRoute?: AgentRoute;
   readonly initialObligations?: AgentObligations;
   readonly model: string;
@@ -88,21 +93,25 @@ function matchingToolDefinitions(definitions: readonly unknown[], names: readonl
   return definitions.filter((definition) => names.includes(toolName(definition) ?? ""));
 }
 
-function providerToolsForRoute(route: AgentRoute, obligations: AgentObligations, definitions: readonly unknown[], records: AgentTrace["toolCalls"]): readonly unknown[] {
+function providerToolsForPlan(plan: AgentExecutionPlan, definitions: readonly unknown[], records: AgentTrace["toolCalls"], assessments: readonly EvidenceSufficiencyAssessment[], governor: ToolExecutionGovernor, diagnosisWorkflow: DiagnosisWorkflow): readonly unknown[] {
+  const route = plan.route;
+  const obligations = plan.obligations;
+  const permittedDefinitions = matchingToolDefinitions(definitions, plan.toolPolicy.permitted);
+  if (plan.execution.mode === "GOVERNED_WORKFLOW") {
+    const nextTool = diagnosisWorkflow.nextTool(records);
+    return nextTool ? matchingToolDefinitions(permittedDefinitions, [nextTool]) : [];
+  }
   const listSucceeded = records.some((record) => record.name === "list_capabilities" && record.status === "SUCCEEDED");
-  if (obligations.capabilityInspectionRequired && !listSucceeded) return matchingToolDefinitions(definitions, ["list_capabilities"]);
+  if (obligations.capabilityInspectionRequired && !listSucceeded) return matchingToolDefinitions(permittedDefinitions, ["list_capabilities"]);
   if (route === "COURSE_EXPLANATION") {
-    const searchSucceeded = records.some((record) => record.name === "search_learning_resources" && record.status === "SUCCEEDED");
-    return searchSucceeded ? [] : matchingToolDefinitions(definitions, ["search_learning_resources"]);
+    const latest = [...assessments].reverse().find((item) => item.toolId === "search_learning_resources");
+    const budget = governor.snapshot().find((item) => item.toolId === "search_learning_resources");
+    const searchAvailable = !latest || Boolean(latest.anotherCallJustified && budget && budget.consumed < budget.maximum);
+    return searchAvailable ? matchingToolDefinitions(permittedDefinitions, ["search_learning_resources"]) : [];
   }
   if (obligations.capabilityInspectionRequired && !obligations.diagnosisRequired && (route === "LEARNER_DIAGNOSIS_INCOMPLETE" || route === "SOLVE_WITH_CHECKS")) return [];
-  if (route === "CAPABILITY_GAP") return matchingToolDefinitions(definitions, ["record_capability_gap"]);
-  if (route !== "LEARNER_DIAGNOSIS_COMPLETE") return definitions;
-  const succeeded = records.filter((record) => record.status === "SUCCEEDED").map((record) => record.name);
-  if (!succeeded.includes("list_capabilities")) return matchingToolDefinitions(definitions, ["list_capabilities"]);
-  if (!succeeded.includes("get_capability")) return matchingToolDefinitions(definitions, ["get_capability"]);
-  if (!succeeded.includes("run_learner_diagnosis")) return matchingToolDefinitions(definitions, ["run_learner_diagnosis"]);
-  return [];
+  if (route === "CAPABILITY_GAP") return matchingToolDefinitions(permittedDefinitions, ["record_capability_gap"]);
+  return permittedDefinitions;
 }
 
 function canonicalizeRouteOwnedReferences(
@@ -138,13 +147,13 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentTrace> {
   if (!options.request.messages.length) throw new AgentRunError("INVALID_AGENT_REQUEST", "At least one conversation message is required.");
   const start = options.now?.() ?? new Date();
   const traceId = options.createId?.() ?? `agent-trace-${globalThis.crypto?.randomUUID?.() ?? Date.now().toString(36)}`;
-  const resolvedPlan = resolveAgentExecutionPlan(options.request);
+  const resolvedPlan = options.executionPlan ?? resolveAgentExecutionPlan(options.request);
   const initialRoute = options.initialRoute ?? resolvedPlan.route;
   const obligations = options.initialObligations ?? resolvedPlan.obligations;
   const currentUserMessage = [...options.request.messages].reverse().find((message) => message.role === "user")?.content ?? "";
   const messages: ModelMessage[] = [
     { role: "system", content: buildAgentSystemPrompt(options.systemPrompt, initialRoute, obligations) },
-    ...options.request.messages,
+    ...resolvedPlan.contextSelection.selectedMessageIndexes.map((index) => options.request.messages[index]).filter((message): message is AgentRunRequest["messages"][number] => Boolean(message)),
   ];
   const records: AgentTrace["toolCalls"][number][] = [];
   const availableSourceRefs = new Set<string>();
@@ -152,9 +161,13 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentTrace> {
   const successfulToolResults: { readonly name: string; readonly data: unknown }[] = [];
   let tokenUsage: TokenUsage | undefined;
   let malformedRetries = 0;
+  const evidenceAssessments: EvidenceSufficiencyAssessment[] = [];
+  const evidenceAssessor = new EvidenceSufficiencyAssessor();
+  const governor = new ToolExecutionGovernor(resolvedPlan);
+  const diagnosisWorkflow = new DiagnosisWorkflow();
 
-  for (let round = 0; round < 6; round += 1) {
-    const providerTools = providerToolsForRoute(initialRoute, obligations, options.toolDefinitions, records);
+  for (let round = 0; round < resolvedPlan.toolPolicy.maximumModelSteps; round += 1) {
+    const providerTools = providerToolsForPlan(resolvedPlan, options.toolDefinitions, records, evidenceAssessments, governor, diagnosisWorkflow);
     const requiredToolName = (initialRoute === "COURSE_EXPLANATION" || initialRoute === "LEARNER_DIAGNOSIS_COMPLETE" || obligations.capabilityInspectionRequired) && providerTools.length === 1
       ? toolName(providerTools[0]) ?? undefined
       : undefined;
@@ -164,7 +177,7 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentTrace> {
     const assistant = result.message;
     messages.push(assistant);
     if (assistant.tool_calls?.length) {
-      if (round === 5) throw new AgentRunError("AGENT_TOOL_LOOP_LIMIT_EXCEEDED", "The model requested tools after six rounds.");
+      if (round === resolvedPlan.toolPolicy.maximumModelSteps - 1) throw new AgentRunError("AGENT_TOOL_LOOP_LIMIT_EXCEEDED", resolvedPlan.toolPolicy.maximumModelSteps === 6 ? "The model requested tools after six rounds." : `The model requested tools after ${resolvedPlan.toolPolicy.maximumModelSteps} rounds.`);
       for (const call of assistant.tool_calls) {
         const availableToolNames = new Set(providerTools.map((definition) => toolName(definition)).filter((name): name is string => Boolean(name)));
         if (!availableToolNames.has(call.function.name)) {
@@ -185,6 +198,15 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentTrace> {
           messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify({ resultRef, error: `${structuredError.code}: ${structuredError.message}` }) });
           continue;
         }
+        const authorization = governor.authorize(call.function.name, parsed, evidenceAssessments);
+        if (!authorization.allowed) {
+          const resultRef = `tool-error-${call.id}`;
+          const structuredError = { code: authorization.code, message: authorization.reason };
+          await options.onToolExecution?.({ name: call.function.name, arguments: parsed, resultRef, status: "FAILED", error: structuredError });
+          records.push({ name: call.function.name, arguments: parsed, resultRef, status: "FAILED" });
+          messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify({ resultRef, error: `${structuredError.code}: ${structuredError.message}` }) });
+          continue;
+        }
         try {
           const toolResult = await options.tools.execute(call.function.name, parsed);
           const evidenceData = toolResult.evidenceData ?? toolResult.data;
@@ -197,12 +219,15 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentTrace> {
           toolResult.evidenceRefs?.forEach((item) => availableEvidenceRefs.add(item));
           toolResult.claimRefs?.forEach((item) => availableSourceRefs.add(item));
           records.push({ name: call.function.name, arguments: executedArguments, resultRef: toolResult.resultRef, status: "SUCCEEDED" });
-          messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify({ resultRef: toolResult.resultRef, data: toolResult.data }) });
+          const assessment = evidenceAssessor.assess({ toolId: call.function.name, toolCallIndex: records.length - 1, status: "SUCCEEDED", result: evidenceData });
+          evidenceAssessments.push(assessment);
+          messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify({ resultRef: toolResult.resultRef, data: toolResult.data, evidenceAssessment: assessment }) });
         } catch (error) {
           const resultRef = `tool-error-${call.id}`;
           const structuredError = { code: error && typeof error === "object" && "code" in error && typeof error.code === "string" ? error.code : "TOOL_EXECUTION_FAILED", message: error instanceof Error ? error.message : String(error) };
           await options.onToolExecution?.({ name: call.function.name, arguments: parsed, resultRef, status: "FAILED", error: structuredError });
           records.push({ name: call.function.name, arguments: parsed, resultRef, status: "FAILED" });
+          evidenceAssessments.push(evidenceAssessor.assess({ toolId: call.function.name, toolCallIndex: records.length - 1, status: "FAILED" }));
           messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify({ resultRef, error: error instanceof Error ? error.message : String(error) }) });
         }
       }
@@ -212,8 +237,13 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentTrace> {
       const parsedResponse = agentResponseEnvelopeSchema.parse(JSON.parse(assistant.content ?? ""));
       const response = canonicalizeRouteOwnedReferences(parsedResponse, initialRoute, currentUserMessage, successfulToolResults, availableEvidenceRefs);
       validateClaims(response, availableSourceRefs, availableEvidenceRefs, successfulToolResults);
-      const route = enforceRoutePolicy(options.request, response, records, successfulToolResults, initialRoute, obligations);
+      const budgetConsumption = governor.snapshot();
+      const route = enforceRoutePolicy(options.request, response, records, successfulToolResults, initialRoute, obligations, evidenceAssessments, resolvedPlan, budgetConsumption);
       const completed = options.now?.() ?? new Date();
+      const latestEvidence = [...evidenceAssessments].reverse().find((item) => item.toolId === "search_learning_resources");
+      const stopReason = response.status === "NEEDS_MORE_EVIDENCE" && latestEvidence
+        ? latestEvidence.continueOrStopReason
+        : resolvedPlan.execution.mode === "GOVERNED_WORKFLOW" ? "Governed workflow completed in its application-owned order." : "Execution Plan requirements satisfied.";
       return {
         traceId,
         conversationId: options.request.conversationId,
@@ -222,6 +252,12 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentTrace> {
         initialRoute,
         route,
         obligations,
+        executionPlan: resolvedPlan,
+        contextSelection: resolvedPlan.contextSelection,
+        budgetConsumption,
+        evidenceAssessments,
+        stopReason,
+        ...(resolvedPlan.execution.mode === "GOVERNED_WORKFLOW" ? { governedWorkflow: diagnosisWorkflow.trace(records, true) } : {}),
         provider: "deepseek",
         model: options.model,
         thinkingMode: options.thinkingMode,
@@ -246,5 +282,5 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentTrace> {
       round -= 1;
     }
   }
-  throw new AgentRunError("AGENT_TOOL_LOOP_LIMIT_EXCEEDED", "The model did not finish within six tool rounds.");
+  throw new AgentRunError("AGENT_TOOL_LOOP_LIMIT_EXCEEDED", `The model did not finish within ${resolvedPlan.toolPolicy.maximumModelSteps} tool rounds.`);
 }
