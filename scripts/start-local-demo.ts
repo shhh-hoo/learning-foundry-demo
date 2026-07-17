@@ -61,4 +61,18 @@ start("Learning Foundry", foundryRoot, ["run", "dev", "--", "--host", "127.0.0.1
 start("Standard Trainer", trainerRoot, ["run", "dev", "--", "--host", "127.0.0.1", "--port", "4174", "--strictPort"], { VITE_DEMO_REGISTRY_URL: "http://127.0.0.1:4175", VITE_FOUNDRY_ORIGIN: "http://127.0.0.1:4173" });
 
 await waitForServices();
-console.log(`\nLearning Foundry local system\n\nDemo Shell:             http://127.0.0.1:4173/?view=demo\nLearner Workspace:      http://127.0.0.1:4173/?view=learner\nFoundry Studio:         http://127.0.0.1:4173/?view=studio\nEngineering Inspector: http://127.0.0.1:4173/?view=inspector\nStandard Trainer:       http://127.0.0.1:4174/\nComponent Registry:     http://127.0.0.1:4175/health\nDeepSeek Agent Gateway: http://127.0.0.1:4176/health\nTrainer Diagnosis API:  http://127.0.0.1:4177/health\n\nPress Ctrl+C to stop all five processes.\n`);
+console.log(`
+Learning Foundry local system
+
+Demo Shell:             http://127.0.0.1:4173/?view=demo
+Learner Workspace:      http://127.0.0.1:4173/?view=learner
+External Components:    http://127.0.0.1:4173/?view=components
+Foundry Studio:         http://127.0.0.1:4173/?view=studio
+Engineering Inspector: http://127.0.0.1:4173/?view=inspector
+Standard Trainer:       http://127.0.0.1:4174/
+Component Registry:     http://127.0.0.1:4175/health
+DeepSeek Agent Gateway: http://127.0.0.1:4176/health
+Trainer Diagnosis API:  http://127.0.0.1:4177/health
+
+Press Ctrl+C to stop all five processes.
+`);
