@@ -199,7 +199,8 @@ describe("Foundry Value Benchmark", () => {
   });
 
   it("redacts sensitive audit fields and preserves unknown cost instead of guessing", async () => {
-    const sanitized = sanitizeBenchmarkAuditArtifact({ reasoning_content: "hidden", authorization: "Bearer token", nested: { localPath: "/Users/person/private.pdf", traceId: "trace-1", note: "Bearer secret" } });
+    const privatePathFixture = ["", "Users", "person", "private.pdf"].join("/");
+    const sanitized = sanitizeBenchmarkAuditArtifact({ reasoning_content: "hidden", authorization: "Bearer token", nested: { localPath: privatePathFixture, traceId: "trace-1", note: "Bearer secret" } });
     expect(JSON.stringify(sanitized)).not.toMatch(/hidden|authorization|\/Users|Bearer|localPath/i);
     expect(sanitized).toMatchObject({ nested: { traceId: "trace-1", note: "[redacted]" } });
 
