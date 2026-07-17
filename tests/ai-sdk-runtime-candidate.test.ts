@@ -96,6 +96,43 @@ describe("AI SDK 7 RuntimeExecutor candidate", () => {
     expect(normalizedInput).not.toHaveProperty("productState");
   });
 
+  it("keeps the structured response contract when a non-required tool remains available", async () => {
+    const capabilityRequest = {
+      conversationId: "ai-sdk-optional-tool-case",
+      inputOrigin: "PRESET_INPUT",
+      runPurpose: "AGENT_EVAL",
+      messages: [{ role: "user", content: "This arbitrary target is unsupported by the current capability set." }],
+    } as const;
+    const input = { ...normalizedInput, request: capabilityRequest, executionPlan: resolveAgentExecutionPlan(capabilityRequest) };
+    const calls: Record<string, unknown>[] = [];
+    const executor = createAiSdkRuntimeExecutor({
+      model: {} as never,
+      modelId: "deepseek-chat",
+      thinkingMode: "disabled",
+      timeoutMs: 30_000,
+      systemPrompt: "Foundry policy",
+      toolDefinitions: [
+        { type: "function", function: { name: "list_capabilities", parameters: { type: "object", properties: {}, additionalProperties: false } } },
+        { type: "function", function: { name: "record_capability_gap", parameters: { type: "object", properties: { target: { type: "string" } }, required: ["target"], additionalProperties: false } } },
+      ],
+      createTools: () => ({ execute: async () => ({ resultRef: "capability-list", data: [{ id: "registered-capability" }], evidenceRefs: ["capability-list"] }) }),
+      generateText: async (options: Record<string, unknown>) => {
+        calls.push(options);
+        return calls.length === 1
+          ? { text: "", output: undefined, toolCalls: [{ toolCallId: "list-1", toolName: "list_capabilities", input: {} }] }
+          : { text: "", output: { status: "NEEDS_MORE_EVIDENCE", learnerMessage: "No governed capability supports this target.", sourceRefs: [], evidenceRefs: ["capability-list"] }, toolCalls: [] };
+      },
+    });
+
+    const result = await executor.execute(input, new AbortController().signal);
+
+    expect(input.executionPlan.route).toBe("CAPABILITY_GAP");
+    expect(calls[1]).toMatchObject({ toolChoice: "auto" });
+    expect(calls[1]?.tools).toHaveProperty("record_capability_gap");
+    expect(calls[1]?.output).toBeDefined();
+    expect(result.trace.finalResponse.status).toBe("NEEDS_MORE_EVIDENCE");
+  });
+
   it("propagates cooperative cancellation through the model boundary", async () => {
     let receivedSignal: AbortSignal | undefined;
     let markModelStarted!: () => void;

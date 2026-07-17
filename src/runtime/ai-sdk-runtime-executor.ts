@@ -193,9 +193,8 @@ function createAiSdkModelClient(options: {
         ...(hasTools ? {
           tools,
           toolChoice: request.requiredToolName ? { type: "tool", toolName: request.requiredToolName } : "auto",
-        } : {
-          output: Output.object({ schema: agentResponseEnvelopeSchema }),
-        }),
+        } : {}),
+        output: Output.object({ schema: agentResponseEnvelopeSchema }),
         providerOptions,
         abortSignal: options.signal,
         timeout: { totalMs: options.timeoutMs },
