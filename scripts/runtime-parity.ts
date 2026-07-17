@@ -5,7 +5,7 @@ import { AGENT_EVAL_SUITE_VERSION, gradeAgentCase, type AgentEvalCase } from "..
 import { buildAgentEvalCheckpoint } from "../src/agent/agenteval-checkpoint.ts";
 import { parseAgentEvalDimension, parseAgentEvalLayer, selectAgentEvalBaseline, selectAgentEvalDimension, selectAgentEvalLayer, type AgentEvalBehaviorContract, type AgentEvalSelection } from "../src/agent/agenteval-suite.ts";
 import type { AgentTrace } from "../src/agent/types.ts";
-import { compareRuntimeParityCase, createRuntimeParityPlan, createRuntimeParityReport, type RuntimeParityExecution } from "../src/runtime/runtime-parity.ts";
+import { compareRuntimeParityCase, createRuntimeParityPlan, createRuntimeParityReport, decideRuntimeParityCommand, type RuntimeParityExecution } from "../src/runtime/runtime-parity.ts";
 import type { RuntimeExecutionRecord } from "../src/runtime/runtime-shadow.ts";
 import { AgentEvalRepository } from "./lib/agent-eval-repository.ts";
 import { RoleSeparatedFileRuntimeExecutionRecorder } from "./lib/runtime-execution-recorder.ts";
@@ -117,15 +117,15 @@ async function main(): Promise<void> {
   const report = createRuntimeParityReport(reportId, plan, results, timestamp, selfComparison ? "LEGACY_SELF_COMPARISON" : "CANDIDATE_SHADOW");
   const directory = await new RuntimeParityArtifactRepository(artifactRoot).save(report);
   console.log(`Runtime parity report ${reportId} (${report.comparisonMode}) written to ${directory}.`);
-  console.log(`Coverage ${report.coverage.status}: ${report.coverage.executedCases}/${report.coverage.plannedCases}; exact=${report.counts.EXACT_MATCH}, documented=${report.counts.ACCEPTABLE_DOCUMENTED_DIFFERENCE}, regression=${report.counts.REGRESSION}, notExecuted=${report.counts.NOT_EXECUTED}, infrastructure=${report.counts.INFRASTRUCTURE_FAILURE}.`);
+  console.log(`Coverage ${report.coverage.status}: ${report.coverage.executedCases}/${report.coverage.plannedCases}; exact=${report.counts.EXACT_MATCH}, reviewRequired=${report.counts.REVIEW_REQUIRED}, regression=${report.counts.REGRESSION}, notExecuted=${report.counts.NOT_EXECUTED}, infrastructure=${report.counts.INFRASTRUCTURE_FAILURE}.`);
+  console.log(`Quality: match=${report.qualityCounts.QUALITY_MATCH}, improvement=${report.qualityCounts.CANDIDATE_IMPROVEMENT}, candidateRegression=${report.qualityCounts.CANDIDATE_REGRESSION}, sharedFailure=${report.qualityCounts.SHARED_QUALITY_FAILURE}, notEvaluated=${report.qualityCounts.NOT_EVALUATED}.`);
+  console.log(`Operational: match=${report.operationalCounts.OPERATIONAL_MATCH}, difference=${report.operationalCounts.OPERATIONAL_DIFFERENCE}, notEvaluated=${report.operationalCounts.NOT_EVALUATED}.`);
 
   const authoritativeAvailable = results.some((result) => result.authoritative !== null);
   const candidateAvailable = results.some((result) => result.candidate !== null);
-  if (!authoritativeAvailable) { console.error("AUTHORITATIVE_EVIDENCE_UNAVAILABLE"); process.exitCode = 3; return; }
-  if (!selfComparison && !candidateAvailable) { console.error("CANDIDATE_RUNTIME_UNAVAILABLE"); process.exitCode = 2; return; }
-  if (report.counts.INFRASTRUCTURE_FAILURE > 0) { console.error("RUNTIME_PARITY_INFRASTRUCTURE_FAILURE"); process.exitCode = 4; return; }
-  if (report.counts.REGRESSION > 0 || report.counts.NOT_EXECUTED > 0) { console.error("RUNTIME_PARITY_REGRESSION"); process.exitCode = 1; return; }
-  console.log(selfComparison ? "LEGACY_SELF_COMPARISON_PASS (harness validation only; not candidate parity)." : "RUNTIME_PARITY_PASS");
+  const decision = decideRuntimeParityCommand(report, { authoritativeAvailable, candidateAvailable, selfComparison });
+  if (decision.exitCode === 0) console.log(decision.message);
+  else { console.error(decision.message); process.exitCode = decision.exitCode; }
 }
 
 main().catch((error) => { console.error(error instanceof Error ? error.message : String(error)); process.exitCode = 5; });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compareRuntimeParityCase, createRuntimeParityPlan, createRuntimeParityReport, summarizeRuntimeParityCoverage, type RuntimeParityCase, type RuntimeParityExecution, type RuntimeParityPlan } from "../src/runtime/runtime-parity";
+import { compareRuntimeParityCase, createRuntimeParityPlan, createRuntimeParityReport, decideRuntimeParityCommand, summarizeRuntimeParityCoverage, type RuntimeParityCase, type RuntimeParityExecution, type RuntimeParityPlan } from "../src/runtime/runtime-parity";
 import type { RuntimeExecutionRecord, RuntimeExecutionRole } from "../src/runtime/runtime-shadow";
 
 function record(role: RuntimeExecutionRole, overrides: Partial<RuntimeExecutionRecord> = {}): RuntimeExecutionRecord {
@@ -69,11 +69,39 @@ describe("case-level runtime parity", () => {
     });
   });
 
+  it("normalizes execution-local Evidence and Diagnosis identifiers before comparison", () => {
+    const authoritativeRecord = record("AUTHORITATIVE", {
+      toolCalls: record("AUTHORITATIVE").toolCalls.map((call) => ({ ...call, resultRef: `authoritative-${call.order}` })),
+      evidenceRefs: ["authoritative-2"],
+      diagnosisTraceId: "trainer-trace-authoritative",
+    });
+    const candidateRecord = record("SHADOW", {
+      toolCalls: record("SHADOW").toolCalls.map((call) => ({ ...call, resultRef: `candidate-${call.order}` })),
+      evidenceRefs: ["candidate-2"],
+      diagnosisTraceId: "trainer-trace-candidate",
+    });
+    const governedDiagnosis = {
+      componentId: "stoichiometric-product-mass",
+      componentVersion: "1.0.0",
+      diagnosis: { decision: "DIAGNOSED", failureCode: "WRONG_STOICHIOMETRIC_RATIO", firstPedagogicalIssue: { stage: "MOLE_RATIO", code: "WRONG_RATIO" } },
+      recommendedSupport: { kind: "HINT", stage: "MOLE_RATIO" },
+    };
+
+    const result = compareRuntimeParityCase(
+      parityCase,
+      execution("AUTHORITATIVE", { record: authoritativeRecord, diagnosisResult: { ...governedDiagnosis, traceId: "trainer-trace-authoritative", executionId: "diagnosis-authoritative" } }),
+      execution("SHADOW", { record: candidateRecord, diagnosisResult: { ...governedDiagnosis, traceId: "trainer-trace-candidate", executionId: "diagnosis-candidate" } }),
+    );
+
+    expect(result.classification).toBe("EXACT_MATCH");
+    expect(result.differences).toEqual([]);
+  });
+
   it.each([
     ["route", { route: "CAPABILITY_GAP" }],
     ["obligations", { obligations: { retrievalRequired: true, capabilityInspectionRequired: true, diagnosisRequired: true } }],
     ["sourceRefs", { sourceRefs: ["different-source"] }],
-    ["evidenceRefs", { evidenceRefs: ["different-evidence"] }],
+    ["evidenceLineage", { evidenceRefs: ["different-evidence"] }],
     ["finalResponseStatus", { finalResponseStatus: "CAPABILITY_GAP" }],
     ["completeness", { completeness: { trace: true, finalResponse: false, toolEvidence: true } }],
   ] as const)("classifies a %s mismatch as a regression", (field, recordOverrides) => {
@@ -84,16 +112,16 @@ describe("case-level runtime parity", () => {
 
   it("detects missing required tools", () => {
     const toolCalls = record("SHADOW").toolCalls.slice(0, 2);
-    const result = compareRuntimeParityCase(parityCase, execution("AUTHORITATIVE"), execution("SHADOW", { record: record("SHADOW", { toolCalls }) }));
+    const result = compareRuntimeParityCase(parityCase, execution("AUTHORITATIVE"), execution("SHADOW", { record: record("SHADOW", { toolCalls }), graderChecks: { requiredTools: false, diagnosisFidelity: true } }));
     expect(result.classification).toBe("REGRESSION");
-    expect(result.differences.map((difference) => difference.field)).toContain("requiredTools");
+    expect(result.governedQuality).toMatchObject({ classification: "CANDIDATE_REGRESSION", checks: { requiredTools: { classification: "CANDIDATE_REGRESSION" } } });
   });
 
   it("detects forbidden tools", () => {
     const toolCalls = [...record("SHADOW").toolCalls, { order: 3, name: "record_capability_gap", arguments: {}, resultRef: "gap-1", status: "SUCCEEDED" as const }];
-    const result = compareRuntimeParityCase(parityCase, execution("AUTHORITATIVE"), execution("SHADOW", { record: record("SHADOW", { toolCalls }) }));
+    const result = compareRuntimeParityCase(parityCase, execution("AUTHORITATIVE"), execution("SHADOW", { record: record("SHADOW", { toolCalls }), graderChecks: { requiredTools: true, forbiddenTools: false, diagnosisFidelity: true } }));
     expect(result.classification).toBe("REGRESSION");
-    expect(result.differences.map((difference) => difference.field)).toContain("forbiddenTools");
+    expect(result.governedQuality).toMatchObject({ classification: "CANDIDATE_REGRESSION", checks: { forbiddenTools: { classification: "CANDIDATE_REGRESSION" } } });
   });
 
   it("detects tool order and status changes", () => {
@@ -109,17 +137,81 @@ describe("case-level runtime parity", () => {
       graderChecks: { requiredTools: true, diagnosisFidelity: false },
     }));
     expect(result.classification).toBe("REGRESSION");
-    expect(result.differences.map((difference) => difference.field)).toEqual(expect.arrayContaining(["diagnosisResult", "graderChecks"]));
+    expect(result.differences.map((difference) => difference.field)).toContain("diagnosisResult");
+    expect(result.governedQuality).toMatchObject({ classification: "CANDIDATE_REGRESSION", checks: { diagnosisFidelity: { classification: "CANDIDATE_REGRESSION" } } });
+  });
+
+  it("recognizes a candidate quality improvement without requiring bug-for-bug equivalence", () => {
+    const result = compareRuntimeParityCase(
+      parityCase,
+      execution("AUTHORITATIVE", { graderChecks: { requiredTools: true, diagnosisFidelity: false } }),
+      execution("SHADOW", { graderChecks: { requiredTools: true, diagnosisFidelity: true } }),
+    );
+
+    expect(result).toMatchObject({
+      classification: "REVIEW_REQUIRED",
+      behavioralEquivalence: "EXACT_MATCH",
+      governedQuality: {
+        classification: "CANDIDATE_IMPROVEMENT",
+        checks: {
+          requiredTools: { classification: "QUALITY_MATCH" },
+          diagnosisFidelity: { classification: "CANDIDATE_IMPROVEMENT" },
+        },
+      },
+      operationalImpact: { classification: "OPERATIONAL_MATCH" },
+      reviewRequired: true,
+    });
+    expect(result.differences.map((difference) => difference.field)).not.toContain("graderChecks");
+  });
+
+  it("treats a candidate repair of a Legacy required-tool failure as reviewable improvement", () => {
+    const legacyToolCalls = record("AUTHORITATIVE").toolCalls.slice(0, 2);
+    const result = compareRuntimeParityCase(
+      parityCase,
+      execution("AUTHORITATIVE", { record: record("AUTHORITATIVE", { toolCalls: legacyToolCalls }), graderChecks: { requiredTools: false, diagnosisFidelity: true } }),
+      execution("SHADOW", { graderChecks: { requiredTools: true, diagnosisFidelity: true } }),
+    );
+
+    expect(result).toMatchObject({
+      classification: "REVIEW_REQUIRED",
+      behavioralEquivalence: "BEHAVIORAL_DIFFERENCE",
+      governedQuality: { classification: "CANDIDATE_IMPROVEMENT", checks: { requiredTools: { classification: "CANDIDATE_IMPROVEMENT" } } },
+      reviewRequired: true,
+    });
+    expect(result.differences.map((difference) => difference.field)).not.toContain("requiredTools");
+  });
+
+  it("keeps a shared governed quality failure separate from behavioral equivalence", () => {
+    const sharedFailure = { requiredTools: true, diagnosisFidelity: false };
+    const result = compareRuntimeParityCase(
+      parityCase,
+      execution("AUTHORITATIVE", { graderChecks: sharedFailure }),
+      execution("SHADOW", { graderChecks: sharedFailure }),
+    );
+
+    expect(result).toMatchObject({
+      classification: "REVIEW_REQUIRED",
+      behavioralEquivalence: "EXACT_MATCH",
+      governedQuality: { classification: "SHARED_QUALITY_FAILURE", checks: { diagnosisFidelity: { classification: "SHARED_QUALITY_FAILURE" } } },
+      operationalImpact: { classification: "OPERATIONAL_MATCH" },
+      reviewRequired: true,
+    });
   });
 
   it.each([
     ["latencyMs", { latencyMs: 250 }],
     ["tokenUsage", { tokenUsage: undefined }],
     ["estimatedCostUsd", { estimatedCostUsd: undefined }],
-  ] as const)("documents an operational %s difference without calling it exact", (field, recordOverrides) => {
+  ] as const)("requires review for an operational %s difference without auto-accepting it", (field, recordOverrides) => {
     const result = compareRuntimeParityCase(parityCase, execution("AUTHORITATIVE"), execution("SHADOW", { record: record("SHADOW", recordOverrides) }));
-    expect(result.classification).toBe("ACCEPTABLE_DOCUMENTED_DIFFERENCE");
-    expect(result.differences).toContainEqual(expect.objectContaining({ field, severity: "DOCUMENTED" }));
+    expect(result).toMatchObject({
+      classification: "REVIEW_REQUIRED",
+      behavioralEquivalence: "EXACT_MATCH",
+      governedQuality: { classification: "QUALITY_MATCH" },
+      operationalImpact: { classification: "OPERATIONAL_DIFFERENCE" },
+      reviewRequired: true,
+    });
+    expect(result.differences).toContainEqual(expect.objectContaining({ field, severity: "OPERATIONAL" }));
   });
 
   it("does not call a missing candidate parity", () => {
@@ -175,6 +267,25 @@ describe("runtime parity reporting", () => {
     const fullPlan = { ...plan, selection: { mode: "FULL" as const }, cases: [{ ...parityCase, caseId: "case-a" }] };
     const result = compareRuntimeParityCase(fullPlan.cases[0], execution("AUTHORITATIVE"), execution("SHADOW"));
     expect(createRuntimeParityReport("report-2", fullPlan, [result]).fullSuiteCoverageComplete).toBe(true);
+  });
+
+  it("exits non-zero for review-required operational impact instead of emitting parity pass", () => {
+    const operational = compareRuntimeParityCase(
+      { ...parityCase, caseId: "case-a" },
+      execution("AUTHORITATIVE"),
+      execution("SHADOW", { record: record("SHADOW", { latencyMs: 100_000 }) }),
+    );
+    const report = createRuntimeParityReport("report-review", { ...plan, cases: [{ ...parityCase, caseId: "case-a" }] }, [operational]);
+
+    expect(report).toMatchObject({
+      counts: { REVIEW_REQUIRED: 1 },
+      operationalCounts: { OPERATIONAL_DIFFERENCE: 1 },
+      reviewRequiredCases: 1,
+    });
+    expect(decideRuntimeParityCommand(report, { authoritativeAvailable: true, candidateAvailable: true, selfComparison: false })).toEqual({
+      exitCode: 6,
+      message: "RUNTIME_PARITY_REVIEW_REQUIRED",
+    });
   });
 
   it.each(["CHECKPOINT", "BASELINE", "LAYER", "DIMENSION"] as const)("builds a %s plan from the existing AgentEval selection contract", (mode) => {
