@@ -78,12 +78,15 @@ const executors = createValueBenchmarkExecutors({
 const pricingConfig = JSON.parse(await text("agent-eval/pricing.json")) as { readonly source: string; readonly perMillionTokens: Readonly<Record<string, { readonly cacheHitInput: number; readonly cacheMissInput: number; readonly output: number }>> };
 const price = pricingConfig.perMillionTokens[loaded.manifest.execution.model];
 const pricing: BenchmarkPricingSnapshot | null = price ? { cacheHitInputPerMillion: price.cacheHitInput, cacheMissInputPerMillion: price.cacheMissInput, outputPerMillion: price.output, currency: "USD", source: pricingConfig.source } : null;
-const run: BenchmarkRunSnapshot = {
+const repository = new FileBenchmarkEvidenceRepository(resolve(root, ".value-benchmark-results"));
+const existingRun = await repository.getRun(loaded.manifest.runId);
+const proposedRun: BenchmarkRunSnapshot = {
   schemaVersion: "1.0.0", runId: loaded.manifest.runId, experimentVersion: loaded.manifest.experimentVersion, experimentManifestHash: sha256(loaded.manifestBytes), caseFileHash: loaded.manifest.assets.cases.sha256,
   scheduleSeed: loaded.manifest.execution.scheduleSeed, providerSeed: loaded.manifest.execution.providerSeed, provider: loaded.manifest.execution.provider, model: loaded.manifest.execution.model,
   thinkingMode: loaded.manifest.execution.thinkingMode, sampling: loaded.manifest.execution.sampling, pricing, startedAt: new Date().toISOString(),
 };
-const repository = new FileBenchmarkEvidenceRepository(resolve(root, ".value-benchmark-results"));
+const run = existingRun ?? proposedRun;
+if (existingRun && (existingRun.experimentManifestHash !== proposedRun.experimentManifestHash || existingRun.caseFileHash !== proposedRun.caseFileHash || existingRun.model !== proposedRun.model || JSON.stringify(existingRun.sampling) !== JSON.stringify(proposedRun.sampling))) throw new Error("BENCHMARK_EXISTING_RUN_CONTRACT_MISMATCH");
 
 if (command === "run") {
   const records = await executeBenchmarkFirstAttempts({ run, cases: loaded.cases, repository, executors });
@@ -96,4 +99,3 @@ if (command === "run") {
 } else {
   throw new Error(`BENCHMARK_COMMAND_UNKNOWN: ${command}`);
 }
-
