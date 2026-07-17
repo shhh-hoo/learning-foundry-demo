@@ -10,34 +10,31 @@ ALTER TABLE product_state.import_decision
 
 ALTER TABLE product_state.import_decision
   ADD COLUMN scope text;
-UPDATE product_state.import_decision SET scope = environment WHERE scope IS NULL;
-UPDATE product_state.import_decision
-SET evidence = evidence || jsonb_build_object('environment', environment, 'scope', environment);
-ALTER TABLE product_state.import_decision
-  ALTER COLUMN scope SET NOT NULL;
 ALTER TABLE product_state.import_decision
   ADD COLUMN legacy_import_receipt_id text;
-UPDATE product_state.import_decision
-SET legacy_import_receipt_id = NULLIF(btrim(evidence ->> 'legacyImportReceiptId'), '')
-WHERE decision = 'IMPORT_COMPLETED';
 ALTER TABLE product_state.import_decision
   ADD CONSTRAINT import_decision_legacy_receipt_fk
   FOREIGN KEY (legacy_import_receipt_id) REFERENCES product_state.legacy_import_receipt(id);
 ALTER TABLE product_state.import_decision
   ADD CONSTRAINT import_decision_scope_check
   CHECK (
-    length(btrim(environment)) > 0
-    AND length(btrim(scope)) > 0
-    AND scope = environment
-    AND evidence ->> 'environment' IS NOT NULL
-    AND evidence ->> 'environment' = environment
-    AND evidence ->> 'scope' IS NOT NULL
-    AND evidence ->> 'scope' = scope
+    (schema_version = '1.0.0' AND scope IS NULL AND legacy_import_receipt_id IS NULL)
+    OR (
+      schema_version = '1.1.0'
+      AND length(btrim(environment)) > 0
+      AND length(btrim(scope)) > 0
+      AND scope = environment
+      AND evidence ->> 'environment' IS NOT NULL
+      AND evidence ->> 'environment' = environment
+      AND evidence ->> 'scope' IS NOT NULL
+      AND evidence ->> 'scope' = scope
+    )
   );
 ALTER TABLE product_state.import_decision
   ADD CONSTRAINT import_decision_receipt_check
   CHECK (
-    (decision = 'IMPORT_COMPLETED' AND legacy_import_receipt_id IS NOT NULL)
+    schema_version = '1.0.0'
+    OR (decision = 'IMPORT_COMPLETED' AND legacy_import_receipt_id IS NOT NULL)
     OR (decision = 'NO_IMPORT_REQUIRED' AND legacy_import_receipt_id IS NULL)
   );
 
@@ -50,6 +47,9 @@ DECLARE
   expected_event_count integer;
   actual_event_count integer;
 BEGIN
+  IF NEW.schema_version <> '1.1.0' THEN
+    RAISE EXCEPTION 'new import decisions require schema 1.1.0' USING ERRCODE = '23514';
+  END IF;
   IF NEW.decision = 'NO_IMPORT_REQUIRED' THEN
     RETURN NEW;
   END IF;
@@ -270,6 +270,7 @@ RETURNS trigger
 LANGUAGE plpgsql
 AS $$
 DECLARE
+  decision_schema_version text;
   decision_environment text;
   decision_scope text;
   decision_value text;
@@ -278,11 +279,12 @@ DECLARE
   expected_event_count integer;
   actual_event_count integer;
 BEGIN
-  SELECT environment, scope, decision, legacy_import_receipt_id
-  INTO decision_environment, decision_scope, decision_value, receipt_id
+  SELECT schema_version, environment, scope, decision, legacy_import_receipt_id
+  INTO decision_schema_version, decision_environment, decision_scope, decision_value, receipt_id
   FROM product_state.import_decision
   WHERE id = NEW.importer_decision_id;
   IF NOT FOUND
+    OR decision_schema_version <> '1.1.0'
     OR decision_environment <> NEW.environment
     OR decision_scope <> NEW.environment THEN
     RAISE EXCEPTION 'cutover import decision scope mismatch' USING ERRCODE = '23514';

@@ -119,4 +119,26 @@ describe("explicit per-environment canonical cutover", () => {
       notes: "No canonical cutover yet.",
     })).rejects.toThrow("POSTGRES_CANONICAL_MODE_REQUIRED");
   });
+
+  it("does not let a preserved schema 1.0 decision authorize a new cutover", async () => {
+    const repository = new TestProductStateRepository();
+    repository.importDecisions.set("legacy-environment", {
+      schemaVersion: "1.0.0",
+      id: "legacy-import-decision",
+      environment: "legacy-environment",
+      scope: "legacy-environment",
+      decision: "NO_IMPORT_REQUIRED",
+      decidedAt: "2026-07-17T00:00:00.000Z",
+      decidedBy: "legacy-operator",
+      evidence: { environment: "legacy-environment", scope: "legacy-environment" },
+    });
+    const service = new ProductStateCutoverService(repository, { now: () => "2026-07-18T12:00:00.000Z" });
+
+    await expect(service.accept(actor, {
+      acceptanceId: "legacy-decision-acceptance",
+      environment: "legacy-environment",
+      mode: "POSTGRES_CANONICAL",
+      notes: "A schema 1.1 decision is required.",
+    })).rejects.toThrow("IMPORT_DECISION_SCOPE_MISMATCH");
+  });
 });

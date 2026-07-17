@@ -96,6 +96,11 @@ Versioned migrations live under `migrations/product-state/`:
    environment-scope evidence, current-leaf Review/Retry guards, same-scope
    Attempt supersession and database protections for concurrent chains.
 
+Migration `0003` does not rewrite pre-existing append-only schema 1.0 import
+decisions. It preserves them as historical governance evidence; only a new
+schema 1.1 decision with normalized scope and receipt fields can authorize a
+cutover.
+
 The migration runner verifies immutable migration hashes and serializes
 concurrent migration attempts with a Postgres advisory lock.
 

@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Pool } from "pg";
-import { runProductStateMigrations } from "../scripts/lib/product-state-migrations";
+import { loadProductStateMigrations, runProductStateMigrations } from "../scripts/lib/product-state-migrations";
 import { PostgresProductStateRepository } from "../src/product-state/postgres-product-state-repository";
 import { LegacyExperienceImporter } from "../src/product-state/legacy-experience-importer";
 import { ProductStateCutoverService } from "../src/product-state/product-state-cutover";
@@ -303,6 +303,37 @@ describeWithDatabase("Postgres canonical Product State", () => {
         (id, schema_version, environment, scope, decision, decided_at, decided_by, evidence)
        VALUES ('missing-scope-evidence-pg', '1.1.0', 'other-env', 'other-env', 'NO_IMPORT_REQUIRED',
          $1, 'operator', '{}'::jsonb)`,
+      [at],
+    )).rejects.toMatchObject({ code: "23514" });
+  });
+
+  it("upgrades schema 1.0 import decisions without rewriting append-only records", async () => {
+    await pool.query("DROP SCHEMA IF EXISTS product_state CASCADE");
+    const migrations = await loadProductStateMigrations();
+    await pool.query(migrations[0]!.sql);
+    await pool.query(migrations[1]!.sql);
+    await pool.query(
+      `INSERT INTO product_state.import_decision
+        (id, schema_version, environment, decision, decided_at, decided_by, evidence)
+       VALUES ('legacy-schema-decision', '1.0.0', 'legacy-environment', 'NO_IMPORT_REQUIRED', $1, 'legacy-operator', '{"reason":"pre-0003"}'::jsonb)`,
+      [at],
+    );
+
+    await pool.query(migrations[2]!.sql);
+
+    const preserved = await pool.query(
+      "SELECT schema_version, scope, legacy_import_receipt_id, evidence FROM product_state.import_decision WHERE id = 'legacy-schema-decision'",
+    );
+    expect(preserved.rows[0]).toEqual({
+      schema_version: "1.0.0",
+      scope: null,
+      legacy_import_receipt_id: null,
+      evidence: { reason: "pre-0003" },
+    });
+    await expect(pool.query(
+      `INSERT INTO product_state.import_decision
+        (id, schema_version, environment, decision, decided_at, decided_by, evidence)
+       VALUES ('new-legacy-schema-decision', '1.0.0', 'legacy-environment', 'NO_IMPORT_REQUIRED', $1, 'legacy-operator', '{}'::jsonb)`,
       [at],
     )).rejects.toMatchObject({ code: "23514" });
   });

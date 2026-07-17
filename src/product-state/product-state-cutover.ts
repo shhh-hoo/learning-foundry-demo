@@ -111,7 +111,8 @@ export class ProductStateCutoverService {
     }
     const importDecision = await this.repository.getImportDecision(environment);
     if (!importDecision) throw new Error("IMPORT_DECISION_REQUIRED");
-    if (importDecision.environment !== environment
+    if (importDecision.schemaVersion !== PRODUCT_STATE_IMPORT_DECISION_SCHEMA_VERSION
+      || importDecision.environment !== environment
       || importDecision.scope !== environment
       || importDecision.evidence.environment !== environment
       || importDecision.evidence.scope !== environment) {
