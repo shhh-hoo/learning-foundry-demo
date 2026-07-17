@@ -6,6 +6,8 @@ Stacked base: `codex/runtime-boundary-program@df0aaa062128a2657e28c862b16b18a024
 
 Shadow implementation checkpoint: `2e20731d58019ac05928975ff5452bd9742c1dc3`
 
+Isolation correction checkpoint: `9a9e5801cf7ca9864a8c7b5d74ea8e1b05eb0519`
+
 ## Problem addressed
 
 PR #7 establishes replaceable current-runtime boundaries, but it intentionally has no mechanism for running a future candidate without affecting the authoritative product path. This stacked change adds the smallest candidate-neutral, default-off shadow coordinator and comparison record needed for a later adapter.
@@ -14,7 +16,7 @@ No candidate framework or candidate runtime is included.
 
 ## Contracts and current entrypoint
 
-`NormalizedRuntimeExecutionRequest` carries one Foundry-owned request, Execution Plan and versioned policy snapshot. `RuntimeExecutor` consumes that normalized input and emits an Agent trace plus ordered tool results. `RuntimeExecutionRecord` schema `1.0.0` preserves comparison-relevant observable evidence without provider-specific types.
+`NormalizedRuntimeExecutionRequest` carries one Foundry-owned request, Execution Plan and versioned policy snapshot. `RuntimeExecutor` consumes that normalized input with an `AbortSignal` and emits an Agent trace plus ordered tool results. Candidate adapters must propagate that signal through their model, tool and write transports. `RuntimeExecutionRecord` schema `1.0.0` preserves comparison-relevant observable evidence without provider-specific types.
 
 The Agent Gateway is the real caller. It resolves route and obligations once, builds one policy snapshot, invokes `legacy-deepseek-agent@1.0.0` as the authoritative executor, and returns only that result. The current product path therefore remains Legacy authoritative by construction.
 
@@ -29,6 +31,8 @@ The coordinator guarantees:
 - candidate failure and timeout are recorded but isolated;
 - authoritative failure remains authoritative;
 - both executors receive the same route, obligations and policy snapshot;
+- each executor receives its own recursively frozen structured snapshot, so synchronous candidate mutation cannot alter authoritative input;
+- shadow timeout aborts the candidate signal before recording `TIMED_OUT`; cooperative candidate transports must stop before later model, tool or write boundaries;
 - candidate input exposes no canonical Product State or authoritative trace writer;
 - normalized tool order, source references, internal evidence references and Diagnosis trace references remain distinct;
 - comparison-recorder failure cannot change the authoritative result.
@@ -43,11 +47,12 @@ It does not include model hidden reasoning, authorization headers, secrets, priv
 
 ## Automated validation
 
-- `npm test` — 30 files, 172 tests passed;
+- `npm test` — 30 files, 174 tests passed;
 - `npm run check` — passed;
 - `npm run build` — passed;
 - `git diff --check` — passed;
-- focused shadow coordinator and role-separated recorder tests — 11 passed.
+- focused shadow coordinator tests — 12 passed, including nested mutation and post-timeout boundary cancellation;
+- focused role-separated recorder tests — passed.
 
 ## Live validation
 
