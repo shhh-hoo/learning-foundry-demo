@@ -4,14 +4,16 @@ import { dispatchProductEvent } from "./demo/events";
 import { createExperienceRepository } from "./experience/repository";
 import { loadPersistedLearningEvidence } from "./experience/persisted-evidence";
 import type { ExperienceState, FoundryCandidateHandoff } from "./experience/types";
+import { ComponentCatalogView } from "./surfaces/ComponentCatalogView";
 import { InspectorView } from "./surfaces/InspectorView";
 import { LearnerView } from "./surfaces/LearnerView";
 import { StudioView } from "./surfaces/StudioView";
 
-type ProductView = "learner" | "studio" | "inspector" | "demo";
+type ProductView = "learner" | "components" | "studio" | "inspector" | "demo";
 
 function viewFromLocation(): ProductView {
   const value = new URLSearchParams(window.location.search).get("view");
+  if (value === "components") return "components";
   if (value === "studio" || value === "governance") return "studio";
   if (value === "inspector") return "inspector";
   if (value === "demo") return "demo";
@@ -65,6 +67,7 @@ export default function App() {
   }, [state.eventLog, view]);
 
   if (view === "demo") return <DemoShell />;
+  if (view === "components") return <ComponentCatalogView />;
   if (view === "studio") return <StudioView state={state} handoff={handoff} onChange={setState} onHandoffChange={setHandoff} initialSection={studioSection()} />;
   if (view === "inspector") return <InspectorView state={state} handoff={handoff} onEvidenceCleared={() => setState((current) => ({ ...current, agentTraces: [], diagnoses: [] }))} />;
   return <LearnerView state={state} onChange={setState} initialSection={learnerSection()} />;
