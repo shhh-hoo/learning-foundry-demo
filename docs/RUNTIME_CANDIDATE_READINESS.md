@@ -2,7 +2,7 @@
 
 Docs authority: `learning-foundry-docs@e6ec2408d18fc6850e92c996b36712dbd5be9df5`
 
-Assessment basis: parity implementation `c0de6fa8a4861c342d7060ce40be3e15035f9e8f` stacked on shadow foundation `808f0c0b1e4f0d4659b44a73f68f28fefccb35d4`.
+Assessment basis: parity implementation `9ea9e78ee190a965a3d319462ad4f1388caec052` stacked on shadow foundation `21b1208e8b520c62696b71dba0902c5c76851453`.
 
 ## Decision
 
@@ -14,9 +14,11 @@ The Foundry-owned harness is ready to receive one candidate `RuntimeExecutor` ad
 - Shadow mode is explicit, default-off and fail-closed.
 - Authoritative and candidate receive the same normalized request, Execution Plan and versioned policy snapshot.
 - Candidate failure, timeout and recorder failure are isolated from the product result.
+- Shadow lifecycle records and bounded polling distinguish absent, pending, timed-out and failed candidate evidence.
 - Runtime records preserve case/trace linkage, route, obligations, ordered tools, source/evidence references, Diagnosis outcome, final status, grader inputs, latency, usage, cost, completeness and terminal failure.
 - AgentEval cases, selection and `gradeAgentCase` remain the source of grading policy.
 - Case-level parity separately reports behavioral equivalence, directional governed quality and operational impact.
+- Diagnosis Evidence must link to the declared trace; unresolved references fail integrity checks, while execution-local IDs are normalized through lineage.
 - Operational differences, candidate improvements and shared quality failures require explicit review and cannot auto-pass.
 - Role evidence and generated reports are physically separated, gitignored and redacted.
 - Real Legacy checkpoint and baseline evidence can be ingested; self-comparison validates mapping without claiming candidate parity.
