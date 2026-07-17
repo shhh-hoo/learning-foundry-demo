@@ -49,7 +49,12 @@ export async function runProductStateMigrations(pool: Pool, directory = defaultD
       const applied = exists.rows[0];
       if (applied?.content_hash === migration.contentHash) continue;
       if (applied) throw new Error(`PRODUCT_STATE_MIGRATION_HASH_MISMATCH: ${migration.filename}`);
-      await client.query(migration.sql);
+      try {
+        await client.query(migration.sql);
+      } catch (error) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        throw error;
+      }
     }
     return migrations;
   } finally {

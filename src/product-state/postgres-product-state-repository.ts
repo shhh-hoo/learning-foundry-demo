@@ -12,7 +12,11 @@ import type {
 } from "../core/domain/learning";
 import type {
   LearningLoopView,
+  LegacyImportReceipt,
+  LegacyProductStateBundle,
+  ProductStateCutoverAcceptance,
   ProductStateHealth,
+  ProductStateImportDecision,
   ProductStateRepository,
   ProductStateWrite,
 } from "../core/ports/product-state-repository";
@@ -32,6 +36,7 @@ function optionalJson<T>(value: T | null): T | undefined {
 function taskFrom(row: QueryResultRow): LearningTask {
   return {
     id: row.id as string,
+    learnerId: row.learner_id as string,
     status: row.status as LearningTask["status"],
     goal: row.goal as string,
     createdAt: iso(row.created_at as string | Date),
@@ -339,17 +344,211 @@ export class PostgresProductStateRepository implements ProductStateRepository {
 
   async health(): Promise<ProductStateHealth> {
     try {
-      const result = await this.pool.query(
-        "SELECT version FROM product_state.schema_migration ORDER BY version DESC LIMIT 1",
-      );
+      const [result, readOnlyResult] = await Promise.all([
+        this.pool.query("SELECT version FROM product_state.schema_migration ORDER BY version DESC LIMIT 1"),
+        this.pool.query("SHOW transaction_read_only"),
+      ]);
+      const readOnly = readOnlyResult.rows[0]?.transaction_read_only === "on";
       return {
-        ready: result.rows[0]?.version === "0002",
+        ready: result.rows[0]?.version === "0002" && !readOnly,
         schemaVersion: (result.rows[0]?.version as string | undefined) ?? null,
-        readOnly: false,
+        readOnly,
       };
     } catch {
       return { ready: false, schemaVersion: null, readOnly: false };
     }
+  }
+
+  async getLegacyImportReceipt(sourceSystem: "LEGACY_SHOWCASE", sourceKey: string): Promise<LegacyImportReceipt | null> {
+    const result = await this.pool.query(
+      `SELECT * FROM product_state.legacy_import_receipt
+       WHERE source_system = $1 AND source_key = $2`,
+      [sourceSystem, sourceKey],
+    );
+    const row = result.rows[0];
+    if (!row) return null;
+    return {
+      schemaVersion: row.schema_version,
+      id: row.id,
+      sourceSystem: row.source_system,
+      sourceKey: row.source_key,
+      sourceHash: row.source_hash,
+      importedAt: iso(row.imported_at),
+      importedBy: row.imported_by,
+      taskId: row.task_id,
+      details: row.details,
+    } as LegacyImportReceipt;
+  }
+
+  async importLegacyBundle(bundle: LegacyProductStateBundle): Promise<void> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        `INSERT INTO product_state.learning_task
+          (id, learner_id, status, goal, material_refs, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7)`,
+        [bundle.task.id, bundle.task.learnerId, bundle.task.status, bundle.task.goal, json(bundle.task.materialRefs), bundle.task.createdAt, bundle.task.updatedAt],
+      );
+      await client.query(
+        `INSERT INTO product_state.learning_episode
+          (id, task_id, status, started_at, completed_at)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [bundle.episode.id, bundle.episode.taskId, bundle.episode.status, bundle.episode.startedAt, bundle.episode.completedAt ?? null],
+      );
+      for (const event of bundle.conversationEvents) {
+        await client.query(
+          `INSERT INTO product_state.conversation_event
+            (id, task_id, episode_id, sequence, occurred_at, actor, kind, payload, artifact_refs, source_refs, evidence_refs)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10::jsonb, $11::jsonb)`,
+          [
+            event.id,
+            event.taskId,
+            event.episodeId,
+            event.sequence,
+            event.occurredAt,
+            event.actor,
+            event.kind,
+            json(event.payload),
+            json(event.artifactRefs),
+            json(event.sourceRefs),
+            json(event.evidenceRefs),
+          ],
+        );
+      }
+      await client.query(
+        `INSERT INTO product_state.legacy_import_receipt
+          (id, schema_version, source_system, source_key, source_hash, imported_at, imported_by, task_id, details)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)`,
+        [
+          bundle.receipt.id,
+          bundle.receipt.schemaVersion,
+          bundle.receipt.sourceSystem,
+          bundle.receipt.sourceKey,
+          bundle.receipt.sourceHash,
+          bundle.receipt.importedAt,
+          bundle.receipt.importedBy,
+          bundle.receipt.taskId,
+          json(bundle.receipt.details),
+        ],
+      );
+      await client.query(
+        `INSERT INTO product_state.product_state_decision
+          (id, schema_version, event_type, actor_id, actor_role, aggregate_type, aggregate_id, occurred_at, details)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)`,
+        [
+          bundle.decision.id,
+          bundle.decision.schemaVersion,
+          bundle.decision.eventType,
+          bundle.decision.actor.actorId,
+          bundle.decision.actor.role,
+          bundle.decision.aggregateType,
+          bundle.decision.aggregateId,
+          bundle.decision.occurredAt,
+          json(bundle.decision.details),
+        ],
+      );
+      await client.query(
+        `INSERT INTO product_state.outbox_message
+          (id, schema_version, event_type, aggregate_type, aggregate_id, occurred_at, payload)
+         VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)`,
+        [
+          bundle.outbox.id,
+          bundle.outbox.schemaVersion,
+          bundle.outbox.eventType,
+          bundle.outbox.aggregateType,
+          bundle.outbox.aggregateId,
+          bundle.outbox.occurredAt,
+          json(bundle.outbox.payload),
+        ],
+      );
+      await client.query("COMMIT");
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async recordImportDecision(decision: ProductStateImportDecision): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO product_state.import_decision
+        (id, schema_version, environment, decision, decided_at, decided_by, evidence)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)`,
+      [
+        decision.id,
+        decision.schemaVersion,
+        decision.environment,
+        decision.decision,
+        decision.decidedAt,
+        decision.decidedBy,
+        json(decision.evidence),
+      ],
+    );
+  }
+
+  async getImportDecision(environment: string): Promise<ProductStateImportDecision | null> {
+    const result = await this.pool.query(
+      `SELECT * FROM product_state.import_decision
+       WHERE environment = $1 ORDER BY decided_at DESC, id DESC LIMIT 1`,
+      [environment],
+    );
+    const row = result.rows[0];
+    if (!row) return null;
+    return {
+      schemaVersion: row.schema_version,
+      id: row.id,
+      environment: row.environment,
+      decision: row.decision,
+      decidedAt: iso(row.decided_at),
+      decidedBy: row.decided_by,
+      evidence: row.evidence,
+    } as ProductStateImportDecision;
+  }
+
+  async recordCutoverAcceptance(acceptance: ProductStateCutoverAcceptance): Promise<void> {
+    await this.pool.query(
+      `INSERT INTO product_state.cutover_acceptance
+        (id, schema_version, environment, mode, accepted_at, accepted_by, migration_version,
+         database_ready, importer_decision_id, dual_write, notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+      [
+        acceptance.id,
+        acceptance.schemaVersion,
+        acceptance.environment,
+        acceptance.mode,
+        acceptance.acceptedAt,
+        acceptance.acceptedBy,
+        acceptance.migrationVersion,
+        acceptance.databaseReady,
+        acceptance.importerDecisionId,
+        acceptance.dualWrite,
+        acceptance.notes,
+      ],
+    );
+  }
+
+  async getCutoverAcceptance(environment: string): Promise<ProductStateCutoverAcceptance | null> {
+    const result = await this.pool.query(
+      "SELECT * FROM product_state.cutover_acceptance WHERE environment = $1 AND mode = 'POSTGRES_CANONICAL'",
+      [environment],
+    );
+    const row = result.rows[0];
+    if (!row) return null;
+    return {
+      schemaVersion: row.schema_version,
+      id: row.id,
+      environment: row.environment,
+      mode: row.mode,
+      acceptedAt: iso(row.accepted_at),
+      acceptedBy: row.accepted_by,
+      migrationVersion: row.migration_version,
+      databaseReady: row.database_ready,
+      importerDecisionId: row.importer_decision_id,
+      dualWrite: row.dual_write,
+      notes: row.notes,
+    } as ProductStateCutoverAcceptance;
   }
 
   private async applyMutation(client: PoolClient, write: ProductStateWrite): Promise<void> {
@@ -358,9 +557,9 @@ export class PostgresProductStateRepository implements ProductStateRepository {
       case "CREATE_TASK":
         await client.query(
           `INSERT INTO product_state.learning_task
-            (id, status, goal, material_refs, created_at, updated_at)
-           VALUES ($1, $2, $3, $4::jsonb, $5, $6)`,
-          [mutation.task.id, mutation.task.status, mutation.task.goal, json(mutation.task.materialRefs), mutation.task.createdAt, mutation.task.updatedAt],
+            (id, learner_id, status, goal, material_refs, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7)`,
+          [mutation.task.id, mutation.task.learnerId, mutation.task.status, mutation.task.goal, json(mutation.task.materialRefs), mutation.task.createdAt, mutation.task.updatedAt],
         );
         return;
       case "START_EPISODE":

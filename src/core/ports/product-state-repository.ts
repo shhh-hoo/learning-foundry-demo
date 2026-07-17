@@ -22,7 +22,8 @@ export type ProductStateEventType =
   | "RETRY_PLANNED"
   | "RETRY_SUBMITTED"
   | "RETRY_RESULT_RECORDED"
-  | "LEARNING_OUTCOME_RECORDED";
+  | "LEARNING_OUTCOME_RECORDED"
+  | "LEGACY_SNAPSHOT_IMPORTED";
 
 export interface ProductStateActor {
   readonly actorId: string;
@@ -97,6 +98,51 @@ export interface ProductStateHealth {
   readonly readOnly: boolean;
 }
 
+export interface LegacyImportReceipt {
+  readonly schemaVersion: typeof PRODUCT_STATE_SCHEMA_VERSION;
+  readonly id: string;
+  readonly sourceSystem: "LEGACY_SHOWCASE";
+  readonly sourceKey: string;
+  readonly sourceHash: string;
+  readonly importedAt: string;
+  readonly importedBy: string;
+  readonly taskId: string;
+  readonly details: Readonly<Record<string, unknown>>;
+}
+
+export interface LegacyProductStateBundle {
+  readonly task: LearningTask;
+  readonly episode: LearningEpisode;
+  readonly conversationEvents: readonly ConversationEvent[];
+  readonly receipt: LegacyImportReceipt;
+  readonly decision: ProductStateDecisionRecord;
+  readonly outbox: ProductStateOutboxMessage;
+}
+
+export interface ProductStateImportDecision {
+  readonly schemaVersion: typeof PRODUCT_STATE_SCHEMA_VERSION;
+  readonly id: string;
+  readonly environment: string;
+  readonly decision: "IMPORT_COMPLETED" | "NO_IMPORT_REQUIRED";
+  readonly decidedAt: string;
+  readonly decidedBy: string;
+  readonly evidence: Readonly<Record<string, unknown>>;
+}
+
+export interface ProductStateCutoverAcceptance {
+  readonly schemaVersion: typeof PRODUCT_STATE_SCHEMA_VERSION;
+  readonly id: string;
+  readonly environment: string;
+  readonly mode: "POSTGRES_CANONICAL";
+  readonly acceptedAt: string;
+  readonly acceptedBy: string;
+  readonly migrationVersion: string;
+  readonly databaseReady: true;
+  readonly importerDecisionId: string;
+  readonly dualWrite: false;
+  readonly notes: string;
+}
+
 /**
  * Async persistence port for the canonical learning bounded context.
  * Implementations atomically persist the mutation, append-only decision and
@@ -115,3 +161,14 @@ export interface ProductStateRepository {
   getLearningLoop(taskId: string): Promise<LearningLoopView | null>;
   health(): Promise<ProductStateHealth>;
 }
+
+export interface ProductStateAdministrationRepository {
+  getLegacyImportReceipt(sourceSystem: "LEGACY_SHOWCASE", sourceKey: string): Promise<LegacyImportReceipt | null>;
+  importLegacyBundle(bundle: LegacyProductStateBundle): Promise<void>;
+  recordImportDecision(decision: ProductStateImportDecision): Promise<void>;
+  getImportDecision(environment: string): Promise<ProductStateImportDecision | null>;
+  recordCutoverAcceptance(acceptance: ProductStateCutoverAcceptance): Promise<void>;
+  getCutoverAcceptance(environment: string): Promise<ProductStateCutoverAcceptance | null>;
+}
+
+export type CanonicalProductStateRepository = ProductStateRepository & ProductStateAdministrationRepository;

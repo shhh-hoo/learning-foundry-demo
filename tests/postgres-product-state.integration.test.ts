@@ -2,6 +2,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { Pool } from "pg";
 import { runProductStateMigrations } from "../scripts/lib/product-state-migrations";
 import { PostgresProductStateRepository } from "../src/product-state/postgres-product-state-repository";
+import { LegacyExperienceImporter } from "../src/product-state/legacy-experience-importer";
+import { ProductStateCutoverService } from "../src/product-state/product-state-cutover";
 import { ProductStateService } from "../src/product-state/product-state-service";
 
 const connectionString = process.env.PRODUCT_STATE_TEST_DATABASE_URL;
@@ -110,7 +112,7 @@ describeWithDatabase("Postgres canonical Product State", () => {
       evidenceRefs: [],
     });
 
-    const loop = await service.getLearningLoop("task-pg");
+    const loop = await service.getLearningLoop(learner, "task-pg");
     expect(loop.task.status).toBe("COMPLETED");
     expect(loop.episodes[0]?.status).toBe("COMPLETED");
     expect(loop.attempts).toHaveLength(2);
@@ -125,6 +127,68 @@ describeWithDatabase("Postgres canonical Product State", () => {
     expect(counts.rows[0]).toEqual({ decisions: 10, outbox: 10 });
     await expect(pool.query(
       "UPDATE product_state.teacher_review SET rationale = 'rewritten' WHERE id = 'review-pg'",
+    )).rejects.toMatchObject({ code: "55000" });
+  });
+
+  it("imports Legacy state idempotently and records explicit cutover acceptance", async () => {
+    const importer = new LegacyExperienceImporter(repository, { now: () => at });
+    const imported = await importer.import({
+      snapshot: {
+        conversationId: "legacy-pg",
+        messages: [{ id: "legacy-message-pg", role: "USER", content: "Imported raw message" }],
+        agentTraces: [{ traceId: "derived-trace" }],
+        diagnoses: [],
+        eventLog: [],
+        library: [],
+        schedule: [],
+        capabilityGaps: [],
+      },
+      goal: "Continue imported work",
+      learnerId: "learner-imported",
+      importedBy: "migration-operator",
+    });
+    const repeated = await importer.import({
+      snapshot: {
+        conversationId: "legacy-pg",
+        messages: [{ id: "legacy-message-pg", role: "USER", content: "Imported raw message" }],
+        agentTraces: [{ traceId: "derived-trace" }],
+        diagnoses: [],
+        eventLog: [],
+        library: [],
+        schedule: [],
+        capabilityGaps: [],
+      },
+      goal: "Continue imported work",
+      learnerId: "learner-imported",
+      importedBy: "migration-operator",
+    });
+    expect(imported.status).toBe("IMPORTED");
+    expect(repeated.status).toBe("ALREADY_IMPORTED");
+
+    const cutover = new ProductStateCutoverService(repository, { now: () => at });
+    const decision = await cutover.recordImportDecision(
+      { actorId: "deployment-owner", role: "SYSTEM" },
+      {
+        decisionId: "import-decision-pg",
+        environment: "canonical-integration",
+        decision: "IMPORT_COMPLETED",
+        evidence: { legacyImportReceiptId: imported.receipt.id },
+      },
+    );
+    const acceptance = await cutover.accept(
+      { actorId: "deployment-owner", role: "SYSTEM" },
+      {
+        acceptanceId: "cutover-pg",
+        environment: "canonical-integration",
+        mode: "POSTGRES_CANONICAL",
+        notes: "Isolated migration, health and importer verified.",
+      },
+    );
+    expect(acceptance.importerDecisionId).toBe(decision.id);
+    expect(await repository.getCutoverAcceptance("canonical-integration")).toEqual(acceptance);
+    await expect(pool.query(
+      "DELETE FROM product_state.legacy_import_receipt WHERE id = $1",
+      [imported.receipt.id],
     )).rejects.toMatchObject({ code: "55000" });
   });
 });

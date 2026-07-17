@@ -4,6 +4,13 @@ The current architecture is documented in [REAL_AGENT_ARCHITECTURE.md](REAL_AGEN
 
 Runtime replacement work is layered: [runtime boundaries](RUNTIME_BOUNDARY_ACCEPTANCE.md) retain Legacy authority, the [shadow foundation](RUNTIME_SHADOW_FOUNDATION_ACCEPTANCE.md) isolates a future candidate, and the [case-level parity harness](RUNTIME_PARITY_ACCEPTANCE.md) compares observable evidence using existing AgentEval cases and graders. None of these layers grants candidate authority or changes release policy.
 
+The [Canonical Product State vertical slice](PRODUCT_STATE_ACCEPTANCE.md)
+provides an explicit Postgres implementation for Task, Episode, Event,
+Attempt, Observation, Teacher Review, linked Retry and Outcome. Code
+availability and environment authority cutover remain separate decisions;
+the public showcase remains Legacy until an append-only environment
+acceptance is recorded.
+
 The current ownership model is:
 
 ```text

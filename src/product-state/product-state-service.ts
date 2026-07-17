@@ -26,7 +26,7 @@ interface Clock {
   now(): string;
 }
 
-type TaskInput = Pick<LearningTask, "goal" | "materialRefs"> & { readonly taskId: string };
+type TaskInput = Pick<LearningTask, "goal" | "materialRefs"> & { readonly taskId: string; readonly learnerId?: string };
 type EpisodeInput = { readonly episodeId: string; readonly taskId: string };
 type ConversationEventInput = Omit<ConversationEvent, "id" | "sequence" | "occurredAt" | "actor"> & {
   readonly eventId: string;
@@ -75,6 +75,10 @@ function requireRole(actor: ProductStateActor, role: ProductStateActor["role"]):
 
 function requireActiveTask(task: LearningTask | null): asserts task is LearningTask {
   if (!task || task.status !== "ACTIVE") throw new Error("ACTIVE_TASK_REQUIRED");
+}
+
+function requireTaskAccess(actor: ProductStateActor, task: LearningTask): void {
+  if (actor.role === "LEARNER" && actor.actorId !== task.learnerId) throw new Error("TASK_ACCESS_DENIED");
 }
 
 function requireActiveEpisode(episode: LearningEpisode | null, taskId: string): asserts episode is LearningEpisode {
@@ -128,6 +132,9 @@ export class ProductStateService {
     const now = this.clock.now();
     const task: LearningTask = {
       id: required(input.taskId, "taskId"),
+      learnerId: actor.role === "LEARNER"
+        ? actor.actorId
+        : required(input.learnerId ?? "", "learnerId"),
       status: "ACTIVE",
       goal: required(input.goal, "goal"),
       createdAt: now,
@@ -143,7 +150,9 @@ export class ProductStateService {
 
   async startEpisode(actor: ProductStateActor, input: EpisodeInput): Promise<LearningEpisode> {
     if (actor.role !== "LEARNER" && actor.role !== "TEACHER") throw new Error("LEARNER or TEACHER permission required.");
-    requireActiveTask(await this.repository.getTask(input.taskId));
+    const task = await this.repository.getTask(input.taskId);
+    requireActiveTask(task);
+    requireTaskAccess(actor, task);
     const now = this.clock.now();
     const episode: LearningEpisode = {
       id: required(input.episodeId, "episodeId"),
@@ -159,7 +168,9 @@ export class ProductStateService {
   }
 
   async appendConversationEvent(actor: ProductStateActor, input: ConversationEventInput): Promise<ConversationEvent> {
-    requireActiveTask(await this.repository.getTask(input.taskId));
+    const task = await this.repository.getTask(input.taskId);
+    requireActiveTask(task);
+    requireTaskAccess(actor, task);
     requireActiveEpisode(await this.repository.getEpisode(input.episodeId), input.taskId);
     const now = this.clock.now();
     const event: ConversationEvent = {
@@ -184,7 +195,9 @@ export class ProductStateService {
 
   async submitAttempt(actor: ProductStateActor, input: AttemptInput): Promise<LearnerAttempt> {
     requireRole(actor, "LEARNER");
-    requireActiveTask(await this.repository.getTask(input.taskId));
+    const task = await this.repository.getTask(input.taskId);
+    requireActiveTask(task);
+    requireTaskAccess(actor, task);
     requireActiveEpisode(await this.repository.getEpisode(input.episodeId), input.taskId);
     const now = this.clock.now();
     const attempt: LearnerAttempt = {
@@ -295,7 +308,9 @@ export class ProductStateService {
     requireRole(actor, "LEARNER");
     const retry = await this.repository.getRetry(input.retryAttemptId);
     if (!retry || retry.status !== "PLANNED") throw new Error("PLANNED_RETRY_REQUIRED");
-    requireActiveTask(await this.repository.getTask(retry.taskId));
+    const task = await this.repository.getTask(retry.taskId);
+    requireActiveTask(task);
+    requireTaskAccess(actor, task);
     requireActiveEpisode(await this.repository.getEpisode(retry.episodeId), retry.taskId);
     const now = this.clock.now();
     const attempt: LearnerAttempt = {
@@ -369,9 +384,10 @@ export class ProductStateService {
     return outcome;
   }
 
-  async getLearningLoop(taskId: string): Promise<LearningLoopView> {
+  async getLearningLoop(actor: ProductStateActor, taskId: string): Promise<LearningLoopView> {
     const loop = await this.repository.getLearningLoop(required(taskId, "taskId"));
     if (!loop) throw new Error("LEARNING_TASK_NOT_FOUND");
+    requireTaskAccess(actor, loop.task);
     return loop;
   }
 }

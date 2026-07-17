@@ -20,6 +20,7 @@ $$;
 CREATE TABLE product_state.learning_task (
   id text PRIMARY KEY,
   schema_version text NOT NULL DEFAULT '1.0.0' CHECK (schema_version = '1.0.0'),
+  learner_id text NOT NULL CHECK (length(btrim(learner_id)) > 0),
   status text NOT NULL CHECK (status IN ('ACTIVE', 'COMPLETED', 'CANCELLED')),
   goal text NOT NULL CHECK (length(btrim(goal)) > 0),
   material_refs jsonb NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(material_refs) = 'array'),

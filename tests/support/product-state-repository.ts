@@ -10,6 +10,10 @@ import type {
 } from "../../src/core/domain/learning";
 import type {
   LearningLoopView,
+  LegacyImportReceipt,
+  LegacyProductStateBundle,
+  ProductStateCutoverAcceptance,
+  ProductStateImportDecision,
   ProductStateOutboxMessage,
   ProductStateRepository,
   ProductStateWrite,
@@ -26,6 +30,9 @@ export class TestProductStateRepository implements ProductStateRepository {
   readonly outcomes = new Map<string, LearningOutcome>();
   readonly outbox: ProductStateOutboxMessage[] = [];
   readonly decisions: ProductStateWrite["decision"][] = [];
+  readonly importReceipts = new Map<string, LegacyImportReceipt>();
+  readonly importDecisions = new Map<string, ProductStateImportDecision>();
+  readonly cutoverAcceptances = new Map<string, ProductStateCutoverAcceptance>();
 
   async apply(write: ProductStateWrite): Promise<void> {
     const mutation = write.mutation;
@@ -119,7 +126,40 @@ export class TestProductStateRepository implements ProductStateRepository {
       outcomes: [...this.outcomes.values()].filter((item) => item.taskId === taskId),
     });
   }
-  async health() { return { ready: true, schemaVersion: "1.0.0", readOnly: false }; }
+  async health() { return { ready: true, schemaVersion: "0002", readOnly: false }; }
+
+  async getLegacyImportReceipt(sourceSystem: "LEGACY_SHOWCASE", sourceKey: string): Promise<LegacyImportReceipt | null> {
+    return this.clone(this.importReceipts.get(`${sourceSystem}:${sourceKey}`));
+  }
+
+  async importLegacyBundle(bundle: LegacyProductStateBundle): Promise<void> {
+    const key = `${bundle.receipt.sourceSystem}:${bundle.receipt.sourceKey}`;
+    if (this.importReceipts.has(key)) throw new Error("DUPLICATE_LEGACY_IMPORT");
+    this.insert(this.tasks, bundle.task);
+    this.insert(this.episodes, bundle.episode);
+    for (const event of bundle.conversationEvents) this.insert(this.events, event);
+    this.importReceipts.set(key, structuredClone(bundle.receipt));
+    this.decisions.push(structuredClone(bundle.decision));
+    this.outbox.push(structuredClone(bundle.outbox));
+  }
+
+  async recordImportDecision(decision: ProductStateImportDecision): Promise<void> {
+    if ([...this.importDecisions.values()].some((item) => item.id === decision.id)) throw new Error("DUPLICATE_IMPORT_DECISION");
+    this.importDecisions.set(decision.environment, structuredClone(decision));
+  }
+
+  async getImportDecision(environment: string): Promise<ProductStateImportDecision | null> {
+    return this.clone(this.importDecisions.get(environment));
+  }
+
+  async recordCutoverAcceptance(acceptance: ProductStateCutoverAcceptance): Promise<void> {
+    if (this.cutoverAcceptances.has(acceptance.environment)) throw new Error("CUTOVER_ALREADY_ACCEPTED");
+    this.cutoverAcceptances.set(acceptance.environment, structuredClone(acceptance));
+  }
+
+  async getCutoverAcceptance(environment: string): Promise<ProductStateCutoverAcceptance | null> {
+    return this.clone(this.cutoverAcceptances.get(environment));
+  }
 
   private insert<T extends { readonly id: string }>(map: Map<string, T>, value: T): void {
     if (map.has(value.id)) throw new Error("DUPLICATE_PRODUCT_STATE_RECORD");

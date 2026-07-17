@@ -115,7 +115,7 @@ describe("canonical Product State learning loop", () => {
       evidenceRefs: [evidenceRef],
     });
 
-    const loop = await service.getLearningLoop("task-1");
+    const loop = await service.getLearningLoop(learner, "task-1");
     expect(loop).toMatchObject({
       task: { id: "task-1" },
       episodes: [{ id: "episode-1" }],

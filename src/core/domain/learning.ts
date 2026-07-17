@@ -19,6 +19,7 @@ export interface DerivedRepresentation<T> {
 
 export interface LearningTask {
   readonly id: string;
+  readonly learnerId: string;
   readonly status: "ACTIVE" | "COMPLETED" | "CANCELLED";
   readonly goal: string;
   readonly createdAt: string;
