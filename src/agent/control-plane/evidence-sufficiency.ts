@@ -6,7 +6,6 @@ interface AssessmentInput {
   readonly status: "SUCCEEDED" | "FAILED";
   readonly result?: unknown;
 }
-
 interface AssessorOptions {
   readonly createId?: (toolCallIndex: number) => string;
 }
@@ -79,4 +78,3 @@ export class EvidenceSufficiencyAssessor {
     };
   }
 }
-

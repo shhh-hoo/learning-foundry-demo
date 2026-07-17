@@ -1,4 +1,4 @@
-import { agentResponseEnvelopeSchema, type AgentExecutionPlan, type AgentObligations, type AgentRoute, type AgentRunRequest, type AgentTrace, type TokenUsage } from "./types";
+import { agentResponseEnvelopeSchema, type AgentExecutionPlan, type AgentObligations, type AgentRoute, type AgentRunRequest, type AgentTrace, type TokenUsage, type ToolId } from "./types";
 import type { AgentModelClient, ModelMessage } from "./deepseek-client";
 import { ZodError } from "zod";
 import { enforceRoutePolicy, resolveAgentExecutionPlan, routeInstruction, RoutePolicyError } from "./route-policy";
@@ -168,9 +168,8 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentTrace> {
 
   for (let round = 0; round < resolvedPlan.toolPolicy.maximumModelSteps; round += 1) {
     const providerTools = providerToolsForPlan(resolvedPlan, options.toolDefinitions, records, evidenceAssessments, governor, diagnosisWorkflow);
-    const requiredToolName = (initialRoute === "COURSE_EXPLANATION" || initialRoute === "LEARNER_DIAGNOSIS_COMPLETE" || obligations.capabilityInspectionRequired) && providerTools.length === 1
-      ? toolName(providerTools[0]) ?? undefined
-      : undefined;
+    const onlyToolName = providerTools.length === 1 ? toolName(providerTools[0]) ?? undefined : undefined;
+    const requiredToolName = onlyToolName && resolvedPlan.toolPolicy.required.includes(onlyToolName as ToolId) ? onlyToolName : undefined;
     const result = await options.modelClient.call({ messages, tools: providerTools, ...(requiredToolName ? { requiredToolName } : {}) });
     await options.onModelResponse?.(result.message, result.usage);
     tokenUsage = addUsage(tokenUsage, result.usage);

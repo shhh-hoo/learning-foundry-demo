@@ -32,7 +32,9 @@ function obligations(route: AgentRoute, input: string): AgentObligations {
   };
 }
 
-function intent(route: AgentRoute): ExecutionIntent {
+function intent(route: AgentRoute, input: string): ExecutionIntent {
+  if (/\b(?:save|add)\b.{0,40}\blibrary\b|(?:保存|加入).{0,20}(?:资料库|学习库)/iu.test(input)
+    || /\b(?:schedule|plan)\b.{0,40}\b(?:follow[- ]?up|review)\b|(?:安排|计划).{0,20}(?:复习|跟进)/iu.test(input)) return "PRODUCT_ACTION";
   if (route === "COURSE_EXPLANATION") return "OPEN_EXPLANATION";
   if (route === "LEARNER_DIAGNOSIS_COMPLETE") return "COMPLETE_ATTEMPT_DIAGNOSIS";
   if (route === "LEARNER_DIAGNOSIS_INCOMPLETE") return "INCOMPLETE_ATTEMPT_DIAGNOSIS";
@@ -47,10 +49,14 @@ function directive(executionIntent: ExecutionIntent): ExecutionDirective {
   return { mode: "BOUNDED_AGENT" };
 }
 
-function policy(route: AgentRoute, routeObligations: AgentObligations) {
+function policy(route: AgentRoute, routeObligations: AgentObligations, executionIntent: ExecutionIntent, input: string) {
   let permitted: readonly ToolId[] = ALL_TOOLS;
   let required: readonly ToolId[] = [];
-  if (route === "COURSE_EXPLANATION") { permitted = ["search_learning_resources"]; required = ["search_learning_resources"]; }
+  if (executionIntent === "PRODUCT_ACTION") {
+    const tool: ToolId = /\b(?:schedule|plan)\b|(?:安排|计划)/iu.test(input) ? "propose_schedule_followup" : "propose_library_artifact";
+    permitted = [tool]; required = [tool];
+  }
+  else if (route === "COURSE_EXPLANATION") { permitted = ["search_learning_resources"]; required = ["search_learning_resources"]; }
   else if (route === "LEARNER_DIAGNOSIS_COMPLETE") { permitted = ["list_capabilities", "get_capability", "run_learner_diagnosis"]; required = permitted; }
   else if (route === "CAPABILITY_GAP") { permitted = ["list_capabilities", "record_capability_gap"]; required = ["list_capabilities"]; }
   else if (routeObligations.capabilityInspectionRequired) { permitted = ["list_capabilities"]; required = ["list_capabilities"]; }
@@ -78,7 +84,8 @@ export class ExecutionPlanner {
   plan(request: AgentRunRequest, contextSelection: ContextSelectionDecision): ExecutionPlanV1 {
     const route = classifyAgentRoute(request);
     const routeObligations = obligations(route, currentUserMessage(request));
-    const executionIntent = intent(route);
+    const input = currentUserMessage(request);
+    const executionIntent = intent(route, input);
     return immutablePlan({
       schemaVersion: "1.0.0" as const,
       intent: executionIntent,
@@ -86,7 +93,7 @@ export class ExecutionPlanner {
       route,
       obligations: routeObligations,
       contextSelection,
-      toolPolicy: policy(route, routeObligations),
+      toolPolicy: policy(route, routeObligations, executionIntent, input),
       terminalConditions: ["PLAN_REQUIREMENTS_SATISFIED", "EVIDENCE_INSUFFICIENT", "TOOL_BUDGET_EXHAUSTED", "GOVERNED_WORKFLOW_BLOCKED", "MODEL_STEP_BUDGET_EXHAUSTED"] as const,
       evidenceRequirements: evidenceRequirements(route, routeObligations),
     });

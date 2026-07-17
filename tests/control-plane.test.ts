@@ -124,4 +124,16 @@ describe("Foundry Control Plane", () => {
     });
     expect(workflow.nextTool([list, get, { name: "run_learner_diagnosis", arguments: {}, resultRef: "failed", status: "FAILED" }])).toBeNull();
   });
+
+  it("keeps product actions distinct from Agent and governed-workflow execution", () => {
+    const input = request([{ role: "user", content: "Please schedule a follow-up review in three days." }]);
+    const plan = new ExecutionPlanner().plan(input, new ContextCompiler().compile(input));
+
+    expect(plan).toMatchObject({
+      intent: "PRODUCT_ACTION",
+      execution: { mode: "PRODUCT_ACTION" },
+      route: "SOLVE_WITH_CHECKS",
+      toolPolicy: { permitted: ["propose_schedule_followup"], required: ["propose_schedule_followup"] },
+    });
+  });
 });

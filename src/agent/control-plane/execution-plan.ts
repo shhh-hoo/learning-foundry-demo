@@ -20,7 +20,6 @@ export interface GovernedWorkflowIdentity {
   readonly id: string;
   readonly version: string;
 }
-
 export type ExecutionDirective =
   | { readonly mode: "DIRECT_MODEL" }
   | { readonly mode: "BOUNDED_AGENT" }
@@ -89,4 +88,3 @@ export function immutablePlan<T extends object>(value: T): Readonly<T> {
   };
   return freeze(structuredClone(value)) as Readonly<T>;
 }
-

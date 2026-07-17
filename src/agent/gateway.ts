@@ -6,7 +6,13 @@ const requestSchema = z.object({
   inputOrigin: inputOriginSchema,
   runPurpose: runPurposeSchema,
   evalCaseId: z.string().min(1).optional(),
-  messages: z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().min(1) })).min(1),
+  activeTaskId: z.string().min(1).optional(),
+  activeEpisodeId: z.string().min(1).optional(),
+  messages: z.array(z.object({
+    role: z.enum(["user", "assistant"]),
+    content: z.string().min(1),
+    context: z.object({ taskId: z.string().min(1).optional(), episodeId: z.string().min(1).optional(), lifecycle: z.enum(["ACTIVE", "STALE", "SUPERSEDED"]).optional() }).strict().optional(),
+  }).strict()).min(1),
 }).strict().superRefine((request, context) => {
   if (request.evalCaseId && request.runPurpose !== "AGENT_EVAL") context.addIssue({ code: "custom", path: ["evalCaseId"], message: "evalCaseId is reserved for AGENT_EVAL requests." });
 });

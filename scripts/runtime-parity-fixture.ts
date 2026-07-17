@@ -8,7 +8,7 @@ const plan: RuntimeParityPlan = { schemaVersion: "1.0.0", planId: "fixture-plan"
 
 function record(role: RuntimeExecutionRole): RuntimeExecutionRecord {
   return {
-    schemaVersion: "1.1.0", executionId: `fixture-${role.toLowerCase()}`, ...(role === "SHADOW" ? { parentAuthoritativeExecutionId: "fixture-authoritative" } : {}), role,
+    schemaVersion: "1.2.0", executionId: `fixture-${role.toLowerCase()}`, ...(role === "SHADOW" ? { parentAuthoritativeExecutionId: "fixture-authoritative" } : {}), role,
     runPurpose: "AGENT_EVAL", conversationId: "fixture", caseId: testCase.caseId, agentTraceId: `fixture-${role.toLowerCase()}-trace`, runtimeAdapterId: role === "AUTHORITATIVE" ? "fixture-legacy" : "fixture-candidate", runtimeAdapterVersion: "1.0.0", providerId: "fixture", modelId: "fixture",
     route: "SOLVE_WITH_CHECKS", obligations: { retrievalRequired: false, capabilityInspectionRequired: false, diagnosisRequired: false },
     toolCalls: [{ order: 0, name: "fixture_tool", arguments: {}, resultRef: "fixture-result", status: "SUCCEEDED" }], sourceRefs: [], evidenceRefs: [],

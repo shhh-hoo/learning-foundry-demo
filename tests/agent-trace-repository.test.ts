@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -48,7 +48,24 @@ describe("AgentTraceRepository", () => {
     const reloaded = await new AgentTraceRepository(root).get("trace-1");
     expect(reloaded).toMatchObject({ status: "COMPLETED", traceId: "trace-1", initialRoute: "COURSE_EXPLANATION", route: "COURSE_EXPLANATION", finalResponse: { status: "ANSWERED" }, observableModelMessages: [{ role: "assistant", content: null }], toolExecutions: [{ result: [{ sourceId: "source-1" }] }] });
     const serialized = await readFile(join(root, "trace-1.json"), "utf8");
+    expect(JSON.parse(serialized)).toMatchObject({ schemaVersion: "1.1.0" });
     expect(serialized).not.toMatch(/must never persist|authorization|api.?key/i);
+  });
+
+  it("reads terminal 1.0.0 records but writes only the current trace schema", async () => {
+    const root = await directory();
+    const legacy = {
+      schemaVersion: "1.0.0",
+      traceId: "legacy-trace",
+      request: { conversationId: "legacy", inputOrigin: "USER_INPUT", runPurpose: "PRODUCT", messages: [{ role: "user", content: "legacy" }] },
+      provider: "deepseek", model: "legacy", thinkingMode: "disabled",
+      prompt: { version: "1", contentHash: "p" }, capabilityRegistry: { version: "1", contentHash: "c" }, toolDefinitions: { version: "1", contentHash: "t" },
+      startedAt: "2026-07-16T00:00:00.000Z", completedAt: "2026-07-16T00:00:01.000Z", updatedAt: "2026-07-16T00:00:01.000Z",
+      status: "COMPLETED", observableModelMessages: [], toolExecutions: [], finalResponse: { status: "ANSWERED", learnerMessage: "legacy", sourceRefs: [] },
+    };
+    await writeFile(join(root, "legacy-trace.json"), JSON.stringify(legacy), "utf8");
+
+    await expect(new AgentTraceRepository(root).get("legacy-trace")).resolves.toMatchObject({ schemaVersion: "1.0.0", traceId: "legacy-trace" });
   });
 
   it("persists partial failed runs and supports filtered queries", async () => {

@@ -215,6 +215,18 @@ describe("real agent orchestration contract", () => {
     expect(executedNames).toEqual(["list_capabilities", "get_capability", "run_learner_diagnosis"]);
     expect(trace.toolCalls.map((item) => [item.name, item.status])).toEqual([["list_capabilities", "SUCCEEDED"], ["get_capability", "SUCCEEDED"], ["search_learning_resources", "FAILED"], ["run_learner_diagnosis", "SUCCEEDED"]]);
     expect(trace.finalResponse).toMatchObject({ status: "ANSWERED", sourceRefs: [], evidenceRefs: ["capability-list", "capability", "diagnosis-result", "trainer-trace"], diagnosisTraceId: "trainer-trace" });
+    expect(trace.governedWorkflow).toMatchObject({
+      identity: { id: "LEARNER_DIAGNOSIS", version: "1.0.0" },
+      steps: [
+        { id: "INSPECT_CAPABILITY", status: "COMPLETED", evidenceRef: "capability-list" },
+        { id: "RESOLVE_CAPABILITY", status: "COMPLETED", evidenceRef: "capability" },
+        { id: "VALIDATE_PROBLEM_PROVENANCE", status: "COMPLETED", evidenceRef: "diagnosis-result" },
+        { id: "VALIDATE_ATTEMPT", status: "COMPLETED", evidenceRef: "diagnosis-result" },
+        { id: "EXECUTE_CAPABILITY", status: "COMPLETED", evidenceRef: "diagnosis-result" },
+        { id: "VALIDATE_PERSISTED_RESULT", status: "COMPLETED", evidenceRef: "diagnosis-result" },
+        { id: "COMPOSE_RESPONSE", status: "COMPLETED" },
+      ],
+    });
   });
 
   it("records malformed tool JSON and permits a bounded retry within the existing round limit", async () => {

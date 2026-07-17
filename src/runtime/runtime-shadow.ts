@@ -1,11 +1,12 @@
 import type { AgentExecutionPlan, AgentObligations, AgentResponseEnvelope, AgentRoute, AgentRunRequest, AgentToolCallRecord, AgentTrace, RunPurpose, TokenUsage } from "../agent/types";
+import type { EvidenceSufficiencyAssessment, GovernedWorkflowTrace, ToolBudgetConsumption } from "../agent/control-plane/observability";
 import type { VersionedHash } from "../agent/trace-store";
 
 export type RuntimeExecutionRole = "AUTHORITATIVE" | "SHADOW";
 export type RuntimeExecutionStatus = "RUNNING" | "COMPLETED" | "FAILED" | "TIMED_OUT" | "NOT_CONFIGURED";
 export type RuntimeFailureStage = "CONFIGURATION" | "EXECUTION" | "TIMEOUT";
-export const RUNTIME_EXECUTION_SCHEMA_VERSION = "1.1.0" as const;
-export type RuntimeExecutionSchemaVersion = "1.0.0" | typeof RUNTIME_EXECUTION_SCHEMA_VERSION;
+export const RUNTIME_EXECUTION_SCHEMA_VERSION = "1.2.0" as const;
+export type RuntimeExecutionSchemaVersion = "1.0.0" | "1.1.0" | typeof RUNTIME_EXECUTION_SCHEMA_VERSION;
 
 export interface RuntimePolicySnapshot {
   readonly prompt: VersionedHash;
@@ -57,6 +58,11 @@ export interface RuntimeExecutionRecord {
   readonly modelId: string;
   readonly route: AgentRoute;
   readonly obligations: AgentObligations;
+  readonly executionPlan?: AgentExecutionPlan;
+  readonly budgetConsumption?: readonly ToolBudgetConsumption[];
+  readonly evidenceAssessments?: readonly EvidenceSufficiencyAssessment[];
+  readonly stopReason?: string;
+  readonly governedWorkflow?: GovernedWorkflowTrace;
   readonly toolCalls: readonly NormalizedRuntimeToolCall[];
   readonly sourceRefs: readonly string[];
   readonly evidenceRefs: readonly string[];
@@ -137,6 +143,11 @@ function completedRecord(
     modelId: result.trace.model,
     route: result.trace.route ?? input.executionPlan.route,
     obligations: result.trace.obligations ?? input.executionPlan.obligations,
+    executionPlan: input.executionPlan,
+    ...(result.trace.budgetConsumption ? { budgetConsumption: result.trace.budgetConsumption } : {}),
+    ...(result.trace.evidenceAssessments ? { evidenceAssessments: result.trace.evidenceAssessments } : {}),
+    ...(result.trace.stopReason ? { stopReason: result.trace.stopReason } : {}),
+    ...(result.trace.governedWorkflow ? { governedWorkflow: result.trace.governedWorkflow } : {}),
     toolCalls: result.trace.toolCalls.map((toolCall, order) => ({ ...toolCall, order })),
     sourceRefs: result.trace.finalResponse.sourceRefs,
     evidenceRefs: result.trace.finalResponse.evidenceRefs ?? [],
@@ -180,6 +191,7 @@ function failedRecord(
     modelId: executor.identity.modelId,
     route: input.executionPlan.route,
     obligations: input.executionPlan.obligations,
+    executionPlan: input.executionPlan,
     toolCalls: [],
     sourceRefs: [],
     evidenceRefs: [],
@@ -213,6 +225,7 @@ function runningRecord(
     modelId: executor.identity.modelId,
     route: input.executionPlan.route,
     obligations: input.executionPlan.obligations,
+    executionPlan: input.executionPlan,
     toolCalls: [],
     sourceRefs: [],
     evidenceRefs: [],

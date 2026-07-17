@@ -24,6 +24,7 @@ function looksLikeIncompleteWorking(input: string): boolean {
 
 function looksLikeExplanation(input: string): boolean {
   return /^(?:why|how|explain|what evidence|which titres|find the course source|what does the syllabus)/iu.test(input.trim())
+    || /^(?:can|could|would)\s+you\s+explain\b/iu.test(input.trim())
     || /^(?:为什么|怎么|如何|解释|哪些证据|课程要求|大纲)/u.test(input.trim())
     || /\b(?:course explanation|course source|learning outcome)\b/iu.test(input);
 }
@@ -90,6 +91,9 @@ export function enforceRoutePolicy(
 ): AgentRoute {
   const route = initialRoute;
   const successfulCalls = toolCalls.filter((call) => call.status === "SUCCEEDED");
+  const successfulNames = new Set(successfulCalls.map((call) => call.name));
+  const missingRequiredTools = executionPlan.toolPolicy.required.filter((tool) => !successfulNames.has(tool));
+  if (executionPlan.execution.mode === "PRODUCT_ACTION" && missingRequiredTools.length > 0) throw new RoutePolicyError(route, `Execution Plan required tools did not succeed: ${missingRequiredTools.join(", ")}.`);
 
   if (route === "COURSE_EXPLANATION") {
     const retrievalCalls = successfulCalls.filter((call) => call.name === "search_learning_resources");

@@ -1,7 +1,7 @@
 import { mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import type { AgentResponseEnvelope, AgentRoute, RunPurpose, TokenUsage } from "../../src/agent/types";
-import type { AgentRunQuery, AgentRunStart, AgentTraceStore, ObservableAgentMessage, PersistedAgentRun, PersistedToolExecution } from "../../src/agent/trace-store";
+import { AGENT_RUN_SCHEMA_VERSION, type AgentRunQuery, type AgentRunStart, type AgentTraceStore, type ObservableAgentMessage, type PersistedAgentRun, type PersistedToolExecution } from "../../src/agent/trace-store";
 
 export type { AgentRunQuery, AgentRunStart, AgentTraceStore, ObservableAgentMessage, PersistedAgentRun, PersistedToolExecution } from "../../src/agent/trace-store";
 
@@ -26,22 +26,30 @@ export class FileAgentTraceStore implements AgentTraceStore {
     await writeFile(temporary, `${JSON.stringify(sanitize(record), null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
     await rename(temporary, target);
   }
-  async start(input: AgentRunStart): Promise<void> { await this.write({ ...input, schemaVersion: "1.0.0", status: "RUNNING", observableModelMessages: [], toolExecutions: [], updatedAt: input.startedAt }); }
-  async get(traceId: string): Promise<PersistedAgentRun | null> { try { return JSON.parse(await readFile(this.path(traceId), "utf8")) as PersistedAgentRun; } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return null; throw error; } }
+  async start(input: AgentRunStart): Promise<void> { await this.write({ ...input, schemaVersion: AGENT_RUN_SCHEMA_VERSION, status: "RUNNING", observableModelMessages: [], toolExecutions: [], updatedAt: input.startedAt }); }
+  async get(traceId: string): Promise<PersistedAgentRun | null> { try { return parseAgentRunRecord(JSON.parse(await readFile(this.path(traceId), "utf8"))); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return null; throw error; } }
   private async mutate(traceId: string, update: (record: PersistedAgentRun) => PersistedAgentRun): Promise<void> { const record = await this.get(traceId); if (!record) throw new Error(`TRACE_NOT_FOUND: ${traceId}`); await this.write(update(record)); }
   async appendModelResponse(traceId: string, message: ObservableAgentMessage, usage?: TokenUsage): Promise<void> { await this.mutate(traceId, (record) => ({ ...record, observableModelMessages: [...record.observableModelMessages, sanitize(message) as ObservableAgentMessage], tokenUsage: addUsage(record.tokenUsage, usage), updatedAt: new Date().toISOString() })); }
   async appendToolExecution(traceId: string, execution: PersistedToolExecution): Promise<void> { await this.mutate(traceId, (record) => ({ ...record, toolExecutions: [...record.toolExecutions, sanitize(execution) as PersistedToolExecution], updatedAt: new Date().toISOString() })); }
-  async complete(traceId: string, finalResponse: AgentResponseEnvelope, completedAt: string, route?: AgentRoute): Promise<void> { await this.mutate(traceId, (record) => ({ ...record, status: "COMPLETED", finalResponse, ...(route ? { route } : {}), completedAt, updatedAt: completedAt })); }
+  async complete(traceId: string, finalResponse: AgentResponseEnvelope, completedAt: string, route?: AgentRoute, observability: Parameters<AgentTraceStore["complete"]>[4] = {}): Promise<void> { await this.mutate(traceId, (record) => ({ ...record, status: "COMPLETED", finalResponse, ...(route ? { route } : {}), ...observability, completedAt, updatedAt: completedAt })); }
   async fail(traceId: string, terminalError: { readonly code: string; readonly message: string }, completedAt: string): Promise<void> { await this.mutate(traceId, (record) => ({ ...record, status: "FAILED", terminalError: sanitize(terminalError) as typeof terminalError, completedAt, updatedAt: completedAt })); }
   async query(query: AgentRunQuery = {}): Promise<readonly PersistedAgentRun[]> {
     await mkdir(this.directory, { recursive: true });
-    const records = await Promise.all((await readdir(this.directory)).filter((file) => file.endsWith(".json")).map(async (file) => JSON.parse(await readFile(join(this.directory, file), "utf8")) as PersistedAgentRun));
+    const records = await Promise.all((await readdir(this.directory)).filter((file) => file.endsWith(".json")).map(async (file) => parseAgentRunRecord(JSON.parse(await readFile(join(this.directory, file), "utf8")))));
     return records.filter((record) => (!query.conversationId || record.request.conversationId === query.conversationId) && (!query.status || record.status === query.status) && (!query.inputOrigin || record.request.inputOrigin === query.inputOrigin) && (!query.runPurpose || record.request.runPurpose === query.runPurpose) && (!query.startedFrom || record.startedAt >= query.startedFrom) && (!query.startedTo || record.startedAt <= query.startedTo)).sort((left, right) => right.startedAt.localeCompare(left.startedAt));
   }
   async clear(): Promise<void> {
     await mkdir(this.directory, { recursive: true });
     await Promise.all((await readdir(this.directory)).filter((file) => file.endsWith(".json")).map((file) => unlink(join(this.directory, file))));
   }
+}
+
+function parseAgentRunRecord(value: unknown): PersistedAgentRun {
+  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("INVALID_AGENT_RUN_RECORD");
+  const record = value as Partial<PersistedAgentRun>;
+  if (record.schemaVersion !== "1.0.0" && record.schemaVersion !== AGENT_RUN_SCHEMA_VERSION) throw new Error("UNSUPPORTED_AGENT_RUN_SCHEMA_VERSION");
+  if (!record.request || typeof record.traceId !== "string" || !["RUNNING", "COMPLETED", "FAILED"].includes(record.status ?? "")) throw new Error("INVALID_AGENT_RUN_RECORD");
+  return record as PersistedAgentRun;
 }
 
 export { FileAgentTraceStore as AgentTraceRepository };

@@ -4,7 +4,7 @@ import type { RuntimeExecutionRecord, RuntimeExecutionRole } from "../src/runtim
 
 function record(role: RuntimeExecutionRole, overrides: Partial<RuntimeExecutionRecord> = {}): RuntimeExecutionRecord {
   return {
-    schemaVersion: "1.1.0",
+    schemaVersion: "1.2.0",
     executionId: `${role.toLowerCase()}-execution`,
     role,
     runPurpose: "AGENT_EVAL",
