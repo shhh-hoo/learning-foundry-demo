@@ -84,7 +84,7 @@ export function resolveAgentExecutionPlan(request: AgentRunRequest): AgentExecut
 }
 
 export function routeInstruction(route: AgentRoute): string {
-  if (route === "COURSE_EXPLANATION") return "Application route: COURSE_EXPLANATION. You must call search_learning_resources exactly once and use the returned governed evidence before returning ANSWERED. If the evidence is incomplete or weak, state the limitation instead of issuing another search call. For coefficient-to-mole-ratio questions, distinguish the roles explicitly: balancing conserves atoms; coefficients encode the particle ratio; scaling every particle count by the same fixed Avogadro constant preserves that ratio and therefore gives the mole ratio.";
+  if (route === "COURSE_EXPLANATION") return "Application route: COURSE_EXPLANATION. You must call search_learning_resources exactly once. If the result contains governed course evidence, use it and return ANSWERED with sourceRefs and the retrieval evidenceRef. If the result is empty or does not contain a curriculum or Teacher Note source, return NEEDS_MORE_EVIDENCE with no sourceRefs and include the retrieval evidenceRef; do not issue another search call. For coefficient-to-mole-ratio questions, distinguish the roles explicitly: balancing conserves atoms; coefficients encode the particle ratio; scaling every particle count by the same fixed Avogadro constant preserves that ratio and therefore gives the mole ratio.";
   if (route === "SOLVE_WITH_CHECKS") return "Application route: SOLVE_WITH_CHECKS. Solve only from the evidenced problem. Use bounded arithmetic, unit, formula and precision checks when available. Generic course retrieval, capability inspection and Learner Diagnosis are not available unless the application selected an obligation for them. Do not present a Learner Diagnosis unless the learner supplied working and the route changes through governed policy.";
   if (route === "LEARNER_DIAGNOSIS_COMPLETE") return "Application route: LEARNER_DIAGNOSIS_COMPLETE. Do not replace the governed judgment with your own calculation. Call list_capabilities, then get_capability for a returned learner-facing ID, then run Learner Diagnosis. Reference the persisted Diagnosis trace before returning ANSWERED.";
   if (route === "LEARNER_DIAGNOSIS_INCOMPLETE") return "Application route: LEARNER_DIAGNOSIS_INCOMPLETE. Do not run Learner Diagnosis. Return NEEDS_MORE_EVIDENCE and name the missing problem or learner-working evidence.";
@@ -118,14 +118,18 @@ export function enforceRoutePolicy(
   const route = initialRoute;
   const successfulCalls = toolCalls.filter((call) => call.status === "SUCCEEDED");
 
-  if (route === "COURSE_EXPLANATION" && response.status !== "ANSWERED") {
-    throw new RoutePolicyError(route, "A course explanation with governed retrieval must return ANSWERED, not change application route from model output.");
-  }
-
   if (route === "COURSE_EXPLANATION") {
     const retrievalCalls = successfulCalls.filter((call) => call.name === "search_learning_resources");
-    if (retrievalCalls.length !== 1 || !searchHasGovernedSource(successfulToolResults) || response.sourceRefs.length === 0 || !retrievalCalls.some((call) => response.evidenceRefs?.includes(call.resultRef))) {
-      throw new RoutePolicyError(route, "ANSWERED requires exactly one successful retrieval containing at least one curriculum or Teacher Note source.");
+    if (retrievalCalls.length !== 1 || !retrievalCalls.some((call) => response.evidenceRefs?.includes(call.resultRef))) {
+      throw new RoutePolicyError(route, "A course explanation requires exactly one successful retrieval and its evidence reference.");
+    }
+    const hasGovernedSource = searchHasGovernedSource(successfulToolResults);
+    if (hasGovernedSource) {
+      if (response.status !== "ANSWERED" || response.sourceRefs.length === 0) {
+        throw new RoutePolicyError(route, "Governed course evidence requires ANSWERED with at least one source reference.");
+      }
+    } else if (response.status !== "NEEDS_MORE_EVIDENCE" || response.sourceRefs.length !== 0) {
+      throw new RoutePolicyError(route, "A completed retrieval without governed course evidence must return NEEDS_MORE_EVIDENCE with no source references.");
     }
   }
 
