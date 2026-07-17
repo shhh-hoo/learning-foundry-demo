@@ -2,8 +2,16 @@ import type { AgentExecutionPlan, AgentObligations, AgentResponseEnvelope, Agent
 
 interface SuccessfulToolResult { readonly name: string; readonly data: unknown }
 
+function userMessages(request: AgentRunRequest): readonly string[] {
+  return request.messages.filter((message) => message.role === "user").map((message) => message.content);
+}
+
 function currentUserMessage(request: AgentRunRequest): string {
-  return [...request.messages].reverse().find((message) => message.role === "user")?.content ?? "";
+  return userMessages(request).at(-1) ?? "";
+}
+
+function previousUserMessage(request: AgentRunRequest): string {
+  return userMessages(request).at(-2) ?? "";
 }
 
 function looksLikeCompleteCalculationAttempt(input: string): boolean {
@@ -18,10 +26,27 @@ function looksLikeIncompleteWorking(input: string): boolean {
   return incompleteSignal && !looksLikeCompleteCalculationAttempt(input);
 }
 
+function looksLikeConcreteCalculationProblem(input: string): boolean {
+  const hasTarget = /\b(?:calculate|find|determine|work out)\b|(?:计算|求出|算出|求)/iu.test(input);
+  const hasStructuredData = /(?:->|→|⇌|=)|\b(?:mol|kg|g|dm3|dm³|cm3|cm³|kpa|pa|kelvin|\bK\b|volts?|\bV\b)\b/iu.test(input);
+  return hasTarget && hasStructuredData && /\d/u.test(input);
+}
+
 function looksLikeExplanation(input: string): boolean {
-  return /^(?:why|how|explain|what evidence|which titres|find the course source|what does the syllabus)/iu.test(input.trim())
-    || /^(?:为什么|怎么|如何|解释|哪些证据|课程要求|大纲)/u.test(input.trim())
-    || /\b(?:course explanation|course source|learning outcome)\b/iu.test(input);
+  const trimmed = input.trim();
+  if (looksLikeConcreteCalculationProblem(trimmed)) return false;
+  const leadingQuestion = /^(?:why|how|explain|what evidence|which titres|find the course source|what does the syllabus)/iu.test(trimmed)
+    || /^(?:为什么|怎么|如何|解释|哪些证据|课程要求|大纲)/u.test(trimmed);
+  const explanatoryIntent = /\b(?:why|how|explain|overview|compare|difference|relationship|transition|course explanation|course source|learning outcome)\b/iu.test(trimmed)
+    || /(?:为什么|怎么|如何|解释|哪些|有什么|区别|关系|衔接|概览|范围|要求|难点)/u.test(trimmed);
+  const curriculumIntent = /\b(?:CAIE|9701|syllabus|curriculum|course|AS|A2|A[- ]?level)\b/iu.test(trimmed)
+    || /(?:课程|大纲|考纲|考试局|学习目标)/u.test(trimmed);
+  return leadingQuestion || explanatoryIntent || curriculumIntent;
+}
+
+function looksLikeContextDependentFollowUp(input: string): boolean {
+  const trimmed = input.trim();
+  return trimmed.length <= 80 && /^(?:\d+[.)、]?|yes\b|no\b|correct\b|direct(?:ly)?\b|continue\b|that one\b|the third\b|是的|不是|对|直接|继续|这个|那个|第三|第[一二三四五六七八九十])/iu.test(trimmed);
 }
 
 function explicitlyRequestsCapabilityGap(input: string): boolean {
@@ -40,6 +65,7 @@ export function classifyAgentRoute(request: AgentRunRequest, response?: AgentRes
   if (looksLikeCompleteCalculationAttempt(input)) return "LEARNER_DIAGNOSIS_COMPLETE";
   if (looksLikeIncompleteWorking(input)) return "LEARNER_DIAGNOSIS_INCOMPLETE";
   if (looksLikeExplanation(input)) return "COURSE_EXPLANATION";
+  if (looksLikeContextDependentFollowUp(input) && looksLikeExplanation(previousUserMessage(request))) return "COURSE_EXPLANATION";
   if (explicitlyRequestsCapabilityGap(input) || response?.status === "CAPABILITY_GAP") return "CAPABILITY_GAP";
   return "SOLVE_WITH_CHECKS";
 }
@@ -58,8 +84,8 @@ export function resolveAgentExecutionPlan(request: AgentRunRequest): AgentExecut
 }
 
 export function routeInstruction(route: AgentRoute): string {
-  if (route === "COURSE_EXPLANATION") return "Application route: COURSE_EXPLANATION. You must call search_learning_resources and cite governed learner-facing sources before returning ANSWERED. For coefficient-to-mole-ratio questions, distinguish the roles explicitly: balancing conserves atoms; coefficients encode the particle ratio; scaling every particle count by the same fixed Avogadro constant preserves that ratio and therefore gives the mole ratio.";
-  if (route === "SOLVE_WITH_CHECKS") return "Application route: SOLVE_WITH_CHECKS. Solve only from the evidenced problem. Use bounded arithmetic, unit, formula and precision checks when available. Do not present a Learner Diagnosis unless the learner supplied working and the route changes through governed policy.";
+  if (route === "COURSE_EXPLANATION") return "Application route: COURSE_EXPLANATION. You must call search_learning_resources exactly once and use the returned governed evidence before returning ANSWERED. If the evidence is incomplete or weak, state the limitation instead of issuing another search call. For coefficient-to-mole-ratio questions, distinguish the roles explicitly: balancing conserves atoms; coefficients encode the particle ratio; scaling every particle count by the same fixed Avogadro constant preserves that ratio and therefore gives the mole ratio.";
+  if (route === "SOLVE_WITH_CHECKS") return "Application route: SOLVE_WITH_CHECKS. Solve only from the evidenced problem. Use bounded arithmetic, unit, formula and precision checks when available. Generic course retrieval, capability inspection and Learner Diagnosis are not available unless the application selected an obligation for them. Do not present a Learner Diagnosis unless the learner supplied working and the route changes through governed policy.";
   if (route === "LEARNER_DIAGNOSIS_COMPLETE") return "Application route: LEARNER_DIAGNOSIS_COMPLETE. Do not replace the governed judgment with your own calculation. Call list_capabilities, then get_capability for a returned learner-facing ID, then run Learner Diagnosis. Reference the persisted Diagnosis trace before returning ANSWERED.";
   if (route === "LEARNER_DIAGNOSIS_INCOMPLETE") return "Application route: LEARNER_DIAGNOSIS_INCOMPLETE. Do not run Learner Diagnosis. Return NEEDS_MORE_EVIDENCE and name the missing problem or learner-working evidence.";
   return "Application route: CAPABILITY_GAP. Inspect the real Capability Registry before recording or returning a capability gap. Do not invent a capability or use registry metadata to fill missing problem facts.";
@@ -98,8 +124,8 @@ export function enforceRoutePolicy(
 
   if (route === "COURSE_EXPLANATION") {
     const retrievalCalls = successfulCalls.filter((call) => call.name === "search_learning_resources");
-    if (retrievalCalls.length === 0 || !searchHasGovernedSource(successfulToolResults) || response.sourceRefs.length === 0 || !retrievalCalls.some((call) => response.evidenceRefs?.includes(call.resultRef))) {
-      throw new RoutePolicyError(route, "ANSWERED requires successful retrieval of at least one curriculum or Teacher Note source.");
+    if (retrievalCalls.length !== 1 || !searchHasGovernedSource(successfulToolResults) || response.sourceRefs.length === 0 || !retrievalCalls.some((call) => response.evidenceRefs?.includes(call.resultRef))) {
+      throw new RoutePolicyError(route, "ANSWERED requires exactly one successful retrieval containing at least one curriculum or Teacher Note source.");
     }
   }
 
