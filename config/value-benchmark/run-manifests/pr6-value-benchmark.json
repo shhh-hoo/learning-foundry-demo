@@ -3,7 +3,7 @@
   "experimentId": "learning-foundry-value-benchmark",
   "experimentVersion": "1.0.0",
   "docsAuthority": "learning-foundry-docs@260747722e8040972deceed3290bce237676f225",
-  "implementationCommit": "8402b50b62619ccb79402ac832da8c479784248e",
+  "implementationCommit": "fdf6ad1fb6a88294b633b77121eb23553999b4fb",
   "runId": "foundry-value-benchmark-1.0.0-live-01",
   "encoding": {
     "charset": "UTF-8",
