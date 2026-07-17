@@ -4,7 +4,7 @@ Docs authority: `learning-foundry-docs@260747722e8040972deceed3290bce237676f225`
 
 Doc 17 sections: §§2, 8–9, 16B and 17–20.
 
-Decision date: 2026-07-18.
+Decision date: 2026-07-17.
 
 ## Decision
 
@@ -21,9 +21,11 @@ Legacy deletion authority: NOT GRANTED
 
 The implementation provides a real `RuntimeExecutor`, uses the stable
 Foundry request/Plan/tool/result contracts, preserves authoritative-first
-execution and propagates cooperative cancellation through model, tool and
-derived-write boundaries. Offline tests cover the installed official
-provider integration and candidate failure isolation.
+execution, keeps shadow retrieval and Diagnosis writes outside authoritative
+evidence stores, and propagates cooperative cancellation through model, tool
+and derived-write boundaries. Offline tests cover the installed official
+provider integration, Foundry-owned malformed-result correction and candidate
+failure isolation.
 
 The required live environment was unavailable. Therefore checkpoint,
 repeated-run reliability, baseline and case-level parity were not run. No

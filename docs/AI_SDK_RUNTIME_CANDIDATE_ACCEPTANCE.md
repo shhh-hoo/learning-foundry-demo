@@ -17,7 +17,10 @@ Legacy deletion authority: NOT GRANTED
 The Legacy DeepSeek executor remains the only authoritative learner-facing
 runtime. The candidate is default-off, starts only after authoritative
 success and returns no learner-facing result. It has no Product State or
-authoritative trace writer.
+authoritative trace writer. Candidate retrieval traces use a separate shadow
+namespace. Candidate Diagnosis fails closed unless
+`SHADOW_TRAINER_DIAGNOSIS_URL` names a separately persisted, non-authoritative
+Trainer endpoint distinct from the authoritative endpoint.
 
 ## Installed implementation facts
 
@@ -55,7 +58,7 @@ not use `WorkflowAgent` or `ToolLoopAgent`. It translates only:
 - the immutable Foundry `ExecutionPlan` and selected tool definitions;
 - provider-safe messages reconstructed from role/content/tool fields;
 - exact required-tool selection;
-- the Foundry final-response schema;
+- raw provider final text for validation by the Foundry response contract;
 - token and DeepSeek cache metadata.
 
 Foundry still owns route classification, obligations, Context selection,
@@ -69,14 +72,15 @@ AI SDK defaults to internal retries; this adapter explicitly uses
 recorded decision under the committed run manifest. It passes one
 `AbortSignal` through model calls, tool execution, retrieval trace writes
 and both Trainer request boundaries. Candidate timeout/failure remains
-isolated by the existing shadow coordinator.
+isolated by the existing shadow coordinator. The gateway keeps the SDK's
+inner timeout later than the coordinator deadline so an elapsed shadow run
+is recorded as `TIMED_OUT`, not as a generic candidate failure.
 
-The official provider currently emits a compatibility warning when the
-final Zod schema is used: DeepSeek JSON schema instructions are injected
-into the system instructions and the provider requests JSON-object mode.
-AI SDK parses the object and Foundry validates it again with the governed
-response schema. This is not treated as provider-native strict-schema
-guarantee.
+The adapter deliberately does not ask AI SDK to validate the final object.
+AI SDK schema failure would otherwise throw before the application-owned
+malformed-response correction loop. The Foundry loop parses, validates and,
+once, corrects malformed final text under its own governed contract. The
+structured `RuntimeExecutionResult` is produced only after that validation.
 
 ## Offline evidence
 
@@ -85,9 +89,11 @@ Focused tests exercise:
 - default-off candidate configuration;
 - real AI SDK v7 `generateText` with the installed official DeepSeek
   provider and an offline transport fixture;
-- tool and structured-result translation;
+- tool translation and Foundry-owned structured-result validation;
 - cache-token mapping;
-- model, retrieval, capability and derived-write cancellation;
+- an actual in-flight model abort and Trainer write abort;
+- signal propagation into retrieval and both Trainer boundaries;
+- shadow retrieval namespace and shadow Trainer endpoint isolation;
 - candidate failure isolation from the authoritative result;
 - provider-boundary removal of Context metadata.
 
@@ -110,7 +116,10 @@ policy separately authorizes DeepSeek for `AGENT_EVAL`,
 the technical environment does not. No missing case is classified and no
 parity conclusion is claimed before execution.
 
-When the environment is available, the manifest requires exactly three
+The committed manifest freezes `deepseek-chat`, disabled thinking,
+provider-default unsent sampling fields, the 1,800-token output ceiling and
+content hashes for the executable adapter boundary. When the environment is
+available, it requires exactly three
 checkpoint attempts and two baseline attempts. Every original attempt is
 retained; only a classified infrastructure failure may receive one linked
 replacement. The existing parity reporter preserves case-level behavior,
@@ -125,8 +134,10 @@ the existing purpose-and-role-separated runtime evidence namespace.
 Known limitations:
 
 - no live provider variance, latency, token, cost or parity evidence exists;
-- DeepSeek structured output is compatibility mode, not native strict JSON
-  schema enforcement;
+- structured final validation is Foundry-owned; provider-native strict JSON
+  schema enforcement is neither used nor claimed;
+- governed Diagnosis parity requires an explicitly isolated shadow Trainer
+  service and evidence store;
 - a configured candidate still does nothing unless the existing shadow
   switch is explicitly enabled;
 - a future authority review must be based on retained live attempts and a

@@ -56,8 +56,7 @@ describe("AI SDK 7 RuntimeExecutor candidate", () => {
         };
       }
       return {
-        text: "",
-        output: { status: "ANSWERED", learnerMessage: "Grounded explanation.", sourceRefs: ["source-1"], evidenceRefs: ["retrieval-1"] },
+        text: JSON.stringify({ status: "ANSWERED", learnerMessage: "Grounded explanation.", sourceRefs: ["source-1"], evidenceRefs: ["retrieval-1"] }),
         toolCalls: [],
         usage: { inputTokens: 12, outputTokens: 5, totalTokens: 17 },
         providerMetadata: { deepseek: { promptCacheHitTokens: 8, promptCacheMissTokens: 4 } },
@@ -89,7 +88,7 @@ describe("AI SDK 7 RuntimeExecutor candidate", () => {
     expect(calls[0]).toMatchObject({ abortSignal: signal, timeout: { totalMs: 30_000 }, toolChoice: { type: "tool", toolName: "search_learning_resources" } });
     expect(calls[0]?.tools).toHaveProperty("search_learning_resources");
     expect(calls[1]?.tools).toBeUndefined();
-    expect(calls[1]?.output).toBeDefined();
+    expect(calls[1]).not.toHaveProperty("output");
     expect(result.trace.finalResponse).toEqual({ status: "ANSWERED", learnerMessage: "Grounded explanation.", sourceRefs: ["source-1"], evidenceRefs: ["retrieval-1"] });
     expect(result.trace.tokenUsage).toEqual({ promptTokens: 22, completionTokens: 8, totalTokens: 30, promptCacheHitTokens: 15, promptCacheMissTokens: 7 });
     expect(result.toolResults).toEqual([{ name: "search_learning_resources", resultRef: "retrieval-1", data: { results: [{ sourceId: "source-1", sourceType: "TEACHER_NOTE", section: "one", score: 1 }] } }]);
@@ -120,7 +119,7 @@ describe("AI SDK 7 RuntimeExecutor candidate", () => {
         calls.push(options);
         return calls.length === 1
           ? { text: "", output: undefined, toolCalls: [{ toolCallId: "list-1", toolName: "list_capabilities", input: {} }] }
-          : { text: "", output: { status: "NEEDS_MORE_EVIDENCE", learnerMessage: "No governed capability supports this target.", sourceRefs: [], evidenceRefs: ["capability-list"] }, toolCalls: [] };
+          : { text: JSON.stringify({ status: "NEEDS_MORE_EVIDENCE", learnerMessage: "No governed capability supports this target.", sourceRefs: [], evidenceRefs: ["capability-list"] }), toolCalls: [] };
       },
     });
 
@@ -129,8 +128,34 @@ describe("AI SDK 7 RuntimeExecutor candidate", () => {
     expect(input.executionPlan.route).toBe("CAPABILITY_GAP");
     expect(calls[1]).toMatchObject({ toolChoice: "auto" });
     expect(calls[1]?.tools).toHaveProperty("record_capability_gap");
-    expect(calls[1]?.output).toBeDefined();
+    expect(calls[1]).not.toHaveProperty("output");
     expect(result.trace.finalResponse.status).toBe("NEEDS_MORE_EVIDENCE");
+  });
+
+  it("leaves malformed final-result correction under Foundry control", async () => {
+    const prompts: Record<string, unknown>[] = [];
+    const executor = createAiSdkRuntimeExecutor({
+      model: {} as never,
+      modelId: "deepseek-chat",
+      thinkingMode: "disabled",
+      timeoutMs: 30_000,
+      systemPrompt: "Foundry policy",
+      toolDefinitions: [],
+      createTools: () => ({ execute: async () => { throw new Error("unused"); } }),
+      generateText: async (options: Record<string, unknown>) => {
+        prompts.push(options);
+        return prompts.length === 1
+          ? { text: "not valid governed JSON", toolCalls: [] }
+          : { text: JSON.stringify({ status: "NEEDS_MORE_EVIDENCE", learnerMessage: "Corrected by the Foundry loop.", sourceRefs: [], evidenceRefs: [] }), toolCalls: [] };
+      },
+    });
+
+    const result = await executor.execute(normalizedInput, new AbortController().signal);
+
+    expect(prompts).toHaveLength(2);
+    expect(prompts.every((prompt) => !("output" in prompt))).toBe(true);
+    expect((prompts[1]?.messages as readonly { readonly content?: string }[]).at(-1)?.content).toMatch(/failed validation/iu);
+    expect(result.trace.finalResponse.learnerMessage).toBe("Corrected by the Foundry loop.");
   });
 
   it("propagates cooperative cancellation through the model boundary", async () => {
@@ -267,7 +292,8 @@ describe("AI SDK 7 RuntimeExecutor candidate", () => {
 
     expect(requestBodies).toHaveLength(2);
     expect(requestBodies[0]).toMatchObject({ model: "deepseek-chat", tool_choice: { type: "function", function: { name: "search_learning_resources" } }, thinking: { type: "disabled" } });
-    expect(requestBodies[1]).toMatchObject({ model: "deepseek-chat", response_format: { type: "json_object" }, thinking: { type: "disabled" } });
+    expect(requestBodies[1]).toMatchObject({ model: "deepseek-chat", thinking: { type: "disabled" } });
+    expect(requestBodies[1]).not.toHaveProperty("response_format");
     expect(result.trace.finalResponse.learnerMessage).toBe("Official provider path.");
     expect(result.trace.tokenUsage).toEqual({ promptTokens: 22, completionTokens: 6, totalTokens: 28, promptCacheHitTokens: 9, promptCacheMissTokens: 13 });
   });

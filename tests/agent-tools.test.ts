@@ -46,18 +46,21 @@ describe("agent tools", () => {
 
   it("propagates candidate cancellation through the retrieval boundary", async () => {
     let receivedSignal: AbortSignal | undefined;
+    let receivedContext: Record<string, unknown> | undefined;
     const recordingCorpus: CorpusSearchService = {
-      search: async (query, filters, _context, signal) => {
+      search: async (query, filters, context, signal) => {
         receivedSignal = signal;
+        receivedContext = context;
         return corpus().search(query, filters);
       },
     };
-    const tools = createAgentToolExecutor({ capabilities, corpus: recordingCorpus, corpusDeliveryPolicy, provider: "deepseek", runPurpose: "AGENT_EVAL" });
+    const tools = createAgentToolExecutor({ capabilities, corpus: recordingCorpus, corpusDeliveryPolicy, provider: "deepseek", runPurpose: "AGENT_EVAL", executionRole: "SHADOW" });
     const signal = new AbortController().signal;
 
     await tools.execute("search_learning_resources", { query: "governed evidence" }, signal);
 
     expect(receivedSignal).toBe(signal);
+    expect(receivedContext).toMatchObject({ executionRole: "SHADOW" });
   });
 
   it("returns the governed particle-to-mole explanation for coefficient-ratio questions", async () => {

@@ -29,6 +29,7 @@ const baseUrl = process.env.DEEPSEEK_BASE_URL?.trim() || "https://api.deepseek.c
 const thinkingMode = process.env.DEEPSEEK_THINKING_MODE === "enabled" ? "enabled" : "disabled";
 const port = Number(process.env.AGENT_GATEWAY_PORT ?? 4176);
 const diagnosisUrl = process.env.TRAINER_DIAGNOSIS_URL?.trim() || "http://127.0.0.1:4177/diagnose";
+const shadowDiagnosisUrl = process.env.SHADOW_TRAINER_DIAGNOSIS_URL?.trim() || "";
 const capabilities: { readonly version: string; readonly capabilities: readonly CapabilityRecord[] } = registeredAgentCapabilities;
 const toolConfig = await readJson<{ readonly version: string; readonly tools: readonly unknown[] }>("config/tools/tool-descriptions.json");
 const responsePolicy = await readText("config/agent/response-policy.json");
@@ -50,15 +51,21 @@ const aiSdkCandidateConfiguration = parseAiSdkCandidateConfiguration(process.env
 const configured = Boolean(apiKey && model);
 const client = configured ? createDeepSeekClient({ apiKey, model, baseUrl, thinkingMode }) : null;
 const capabilityRuntime = new LegacyTrainerCapabilityRuntime(diagnosisUrl);
-const createRuntimeTools = (request: AgentRunRequest) => {
+const shadowCapabilityRuntime = shadowDiagnosisUrl && shadowDiagnosisUrl !== diagnosisUrl
+  ? new LegacyTrainerCapabilityRuntime(shadowDiagnosisUrl)
+  : null;
+const createRuntimeTools = (request: AgentRunRequest, executionRole: "AUTHORITATIVE" | "SHADOW") => {
   const currentUserMessage = [...request.messages].reverse().find((message) => message.role === "user")?.content ?? "";
   return createAgentToolExecutor({
     capabilities: capabilities.capabilities,
     corpus,
     corpusDeliveryPolicy,
     provider: "deepseek",
-    capabilityRuntime,
+    ...(executionRole === "AUTHORITATIVE"
+      ? { capabilityRuntime }
+      : shadowCapabilityRuntime ? { capabilityRuntime: shadowCapabilityRuntime } : {}),
     runPurpose: request.runPurpose,
+    ...(executionRole === "SHADOW" ? { executionRole } : {}),
     conversationId: request.conversationId,
     conversationEvidenceHash: contentHash(currentUserMessage),
     currentUserMessage,
@@ -70,7 +77,7 @@ const legacyDeepSeekRuntimeExecutor: RuntimeExecutor | null = client ? {
     const toolResults: { readonly name: string; readonly resultRef: string; readonly data: unknown }[] = [];
     const traceRepository = traceRepositories.forPurpose(request.runPurpose);
     const initialRoute = executionPlan.route;
-    const tools = createRuntimeTools(request);
+    const tools = createRuntimeTools(request, "AUTHORITATIVE");
     const traceId = `agent-trace-${randomUUID()}`; const startedAt = new Date().toISOString();
     let latestControlPlaneState: AgentRunObservability | undefined;
     await traceRepository.start({ traceId, request, initialRoute, obligations: executionPlan.obligations, executionPlan, contextSelection: executionPlan.contextSelection, provider: "deepseek", model, thinkingMode, prompt: policy.prompt, capabilityRegistry: policy.capabilityRegistry, toolDefinitions: policy.toolDefinitions, startedAt });
@@ -94,10 +101,10 @@ const aiSdkCandidateRuntimeExecutor: RuntimeExecutor | null = aiSdkDeepSeekProvi
       model: aiSdkDeepSeekProvider(aiSdkCandidateConfiguration.modelId),
       modelId: aiSdkCandidateConfiguration.modelId,
       thinkingMode: aiSdkCandidateConfiguration.thinkingMode,
-      timeoutMs: aiSdkCandidateConfiguration.timeoutMs,
+      timeoutMs: Math.max(aiSdkCandidateConfiguration.timeoutMs, shadowConfiguration.timeoutMs + 1_000),
       systemPrompt,
       toolDefinitions: toolConfig.tools,
-      createTools: (input) => createRuntimeTools(input.request),
+      createTools: (input) => createRuntimeTools(input.request, "SHADOW"),
     })
   : null;
 const runtimeCoordinator = legacyDeepSeekRuntimeExecutor ? createRuntimeShadowCoordinator({
@@ -153,5 +160,6 @@ server.listen(port, "127.0.0.1", () => {
       ? `enabled; candidate=ai-sdk7-deepseek@${AI_SDK_CANDIDATE_ADAPTER_VERSION}; candidate authority NOT GRANTED`
       : "enabled; candidate unavailable"
     : "disabled; Legacy authoritative; AI SDK candidate default-off"}`);
+  console.log(`shadow Trainer: ${shadowCapabilityRuntime ? "isolated endpoint configured" : "not configured; candidate Diagnosis calls fail closed"}`);
   for (const [key, count] of Object.entries(corpusReport.chunkCounts).sort()) console.log(`chunks ${key}: ${count}`);
 });

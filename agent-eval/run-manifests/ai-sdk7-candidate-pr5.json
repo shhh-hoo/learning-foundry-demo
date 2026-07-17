@@ -2,7 +2,17 @@
   "schemaVersion": "1.0.0",
   "manifestId": "ai-sdk7-candidate-pr5-live-evidence",
   "docsAuthority": "learning-foundry-docs@260747722e8040972deceed3290bce237676f225",
-  "implementationRef": "PR_HEAD_AT_EXECUTION",
+  "implementationRef": "CONTENT_HASHED_SNAPSHOT",
+  "implementationFiles": {
+    "src/runtime/ai-sdk-runtime-executor.ts": "bac2c8283a936f7047dc82c6c7c1784d880108f6c46a82e7ba268d4cd1be7528",
+    "scripts/agent-gateway-server.ts": "727eab988949fae975c6606a13f88b215e14e3bb29470e697cb4de5bf106bc67",
+    "src/runtime/runtime-shadow.ts": "de2786bdd8e6cfe0a6a1a3693f2f7aa27cc798e0a870bca81631646a0c6ae0bb",
+    "src/agent/run-agent.ts": "27cb7260c5248ba35eb521efb7d23e7b70b4ab428739dcb49751fbbb8fd3bf44",
+    "src/agent/tool-executor.ts": "c28f1f6faebd55ef3fd2bc9b667df41e14ef7df38dc197a4e89fa7f1794ff57e",
+    "src/runtime/learning-capability-runtime.ts": "f02647c54aa68d17f38b438f9fb3921935af6b6b7ec8120159e73889675ab7dc",
+    "scripts/lib/corpus-repository.ts": "b848808b13eb359d960928f05a916df43c1045fbac1083b40d622671953c0cfc",
+    "package-lock.json": "7ccf213d9b9ec3e89801c88c5b9f1f9f809d7e2578b034c52919fbb3abd2910c"
+  },
   "status": "PLANNED_NOT_EXECUTED",
   "candidate": {
     "adapterId": "ai-sdk7-deepseek",
@@ -15,9 +25,14 @@
   },
   "modelConfiguration": {
     "provider": "deepseek",
-    "model": "DEEPSEEK_MODEL_FROM_SERVER_ENVIRONMENT",
-    "thinkingMode": "DEEPSEEK_THINKING_MODE_FROM_SERVER_ENVIRONMENT",
-    "sampling": "PROVIDER_CONFIGURATION_RECORDED_WITH_RUN",
+    "model": "deepseek-chat",
+    "thinkingMode": "disabled",
+    "sampling": {
+      "temperature": "PROVIDER_DEFAULT_NOT_SENT",
+      "topP": "PROVIDER_DEFAULT_NOT_SENT",
+      "seed": "UNSUPPORTED_NOT_SENT",
+      "maximumOutputTokens": 1800
+    },
     "aiSdkMaxRetries": 0
   },
   "preconditions": {
@@ -25,6 +40,7 @@
       "DEEPSEEK_API_KEY and DEEPSEEK_MODEL configured server-side",
       "governed corpus index available",
       "Component Registry and Trainer services healthy",
+      "SHADOW_TRAINER_DIAGNOSIS_URL points to a separately persisted non-authoritative Trainer endpoint",
       "RUNTIME_SHADOW_MODE=enabled"
     ],
     "deliveryAuthorization": [

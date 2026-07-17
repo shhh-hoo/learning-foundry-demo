@@ -93,7 +93,7 @@ export class LegacyLexicalEvidenceSearch implements CorpusSearchService {
     return new LegacyLexicalEvidenceSearch(root, manifest, JSON.parse(chunksText) as readonly CorpusChunk[]);
   }
 
-  async search(query: string, filters: CorpusSearchFilters, context: { readonly conversationId?: string; readonly conversationEvidenceHash?: string; readonly route?: string } = {}, signal?: AbortSignal): Promise<CorpusSearchResponse> {
+  async search(query: string, filters: CorpusSearchFilters, context: { readonly conversationId?: string; readonly conversationEvidenceHash?: string; readonly route?: string; readonly executionRole?: "AUTHORITATIVE" | "SHADOW" } = {}, signal?: AbortSignal): Promise<CorpusSearchResponse> {
     signal?.throwIfAborted();
     const candidates = this.chunks.filter((chunk) => matchesFilters(chunk, filters)).map((chunk) => scoreChunk(chunk, query, filters));
     const ranked = candidates.filter((candidate) => candidate.score > 0 || Boolean(filters.calculationFamilyId || filters.learningOutcomeId)).sort((left, right) => right.score - left.score || left.chunk.chunkId.localeCompare(right.chunk.chunkId));
@@ -119,7 +119,9 @@ export class LegacyLexicalEvidenceSearch implements CorpusSearchService {
         score,
       })),
     };
-    const traceDirectory = join(this.rootDirectory, ".local-data/corpus/retrieval-traces");
+    const traceDirectory = context.executionRole === "SHADOW"
+      ? join(this.rootDirectory, ".local-data/corpus/shadow-retrieval-traces")
+      : join(this.rootDirectory, ".local-data/corpus/retrieval-traces");
     await mkdir(traceDirectory, { recursive: true });
     signal?.throwIfAborted();
     const trace = {

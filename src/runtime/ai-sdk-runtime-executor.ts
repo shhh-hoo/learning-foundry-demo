@@ -1,5 +1,4 @@
 import {
-  Output,
   generateText,
   jsonSchema,
   tool,
@@ -8,7 +7,7 @@ import {
   type ToolSet,
 } from "ai";
 import type { DeepSeekLanguageModelOptions } from "@ai-sdk/deepseek";
-import { agentResponseEnvelopeSchema, type TokenUsage } from "../agent/types";
+import type { TokenUsage } from "../agent/types";
 import type { AgentModelClient, ModelCallResult, ModelMessage } from "../agent/deepseek-client";
 import { runAgent, type AgentToolExecutor } from "../agent/run-agent";
 import type {
@@ -44,7 +43,6 @@ interface AiSdkGenerationRequest extends Record<string, unknown> {
   readonly instructions?: string;
   readonly tools?: ToolSet;
   readonly toolChoice?: "auto" | { readonly type: "tool"; readonly toolName: string };
-  readonly output?: unknown;
   readonly abortSignal: AbortSignal;
   readonly timeout: { readonly totalMs: number };
   readonly maxRetries: 0;
@@ -52,7 +50,6 @@ interface AiSdkGenerationRequest extends Record<string, unknown> {
 
 interface AiSdkGenerationResult {
   readonly text: string;
-  readonly output?: unknown;
   readonly toolCalls: readonly {
     readonly toolCallId: string;
     readonly toolName: string;
@@ -194,7 +191,6 @@ function createAiSdkModelClient(options: {
           tools,
           toolChoice: request.requiredToolName ? { type: "tool", toolName: request.requiredToolName } : "auto",
         } : {}),
-        output: Output.object({ schema: agentResponseEnvelopeSchema }),
         providerOptions,
         abortSignal: options.signal,
         timeout: { totalMs: options.timeoutMs },
@@ -213,7 +209,7 @@ function createAiSdkModelClient(options: {
                 function: { name: call.toolName, arguments: JSON.stringify(call.input) },
               })),
             }
-          : { role: "assistant", content: JSON.stringify(agentResponseEnvelopeSchema.parse(result.output)) },
+          : { role: "assistant", content: result.text },
         ...(toTokenUsage(result) ? { usage: toTokenUsage(result) } : {}),
       };
     },

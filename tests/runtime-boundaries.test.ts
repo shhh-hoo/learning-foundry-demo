@@ -48,6 +48,25 @@ describe("replaceable runtime boundaries", () => {
     expect(payloads).toEqual([{ componentId: "unversioned-capability", learnerAttempt: "evidence", runPurpose: "AGENT_EVAL" }]);
   });
 
+  it("marks shadow capability evidence and cancels an in-flight Trainer write", async () => {
+    let payload: Record<string, unknown> | undefined;
+    let writeStarted!: () => void;
+    const started = new Promise<void>((resolve) => { writeStarted = resolve; });
+    const runtime = new LegacyTrainerCapabilityRuntime("http://127.0.0.1:4277/diagnose", async (_input, init) => {
+      payload = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      writeStarted();
+      await new Promise<void>((_resolve, reject) => init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true }));
+      throw new Error("unreachable");
+    });
+    const controller = new AbortController();
+    const execution = runtime.execute({ capabilityId: "capability", input: {}, runPurpose: "AGENT_EVAL", executionRole: "SHADOW" }, controller.signal);
+    await started;
+    controller.abort(new Error("shadow timeout"));
+
+    await expect(execution).rejects.toThrow("shadow timeout");
+    expect(payload).toMatchObject({ runPurpose: "AGENT_EVAL", executionRole: "SHADOW" });
+  });
+
   it("preserves the structured failure when a Legacy Trainer trace cannot be resolved", async () => {
     const runtime = new LegacyTrainerCapabilityRuntime("http://127.0.0.1:4177/diagnose", async (_input, init) => init?.method === "POST"
       ? Response.json({ ok: true, result: { traceId: "missing-trace" } })
