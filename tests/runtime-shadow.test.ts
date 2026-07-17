@@ -6,18 +6,17 @@ import {
   type RuntimeExecutionRecord,
   type RuntimeExecutor,
 } from "../src/runtime/runtime-shadow";
+import { resolveAgentExecutionPlan } from "../src/agent/route-policy";
 
-const normalizedRequest: NormalizedRuntimeExecutionRequest = {
-  request: {
+const shadowRequest = {
     conversationId: "shadow-case-1",
     inputOrigin: "PRESET_INPUT",
     runPurpose: "AGENT_EVAL",
     messages: [{ role: "user", content: "Explain the evidence." }],
-  },
-  executionPlan: {
-    route: "COURSE_EXPLANATION",
-    obligations: { retrievalRequired: true, capabilityInspectionRequired: false, diagnosisRequired: false },
-  },
+  } as const;
+const normalizedRequest: NormalizedRuntimeExecutionRequest = {
+  request: shadowRequest,
+  executionPlan: resolveAgentExecutionPlan(shadowRequest),
   policy: {
     prompt: { version: "1", contentHash: "prompt" },
     capabilityRegistry: { version: "1", contentHash: "capabilities" },

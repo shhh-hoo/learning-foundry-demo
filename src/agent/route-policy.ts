@@ -1,4 +1,6 @@
 import type { AgentExecutionPlan, AgentObligations, AgentResponseEnvelope, AgentRoute, AgentRunRequest, AgentToolCallRecord } from "./types";
+import { ContextCompiler } from "./control-plane/context-compiler";
+import { ExecutionPlanner } from "./control-plane/execution-planner";
 
 interface SuccessfulToolResult { readonly name: string; readonly data: unknown }
 
@@ -45,16 +47,8 @@ export function classifyAgentRoute(request: AgentRunRequest, response?: AgentRes
 }
 
 export function resolveAgentExecutionPlan(request: AgentRunRequest): AgentExecutionPlan {
-  const route = classifyAgentRoute(request);
-  const input = currentUserMessage(request);
-  return {
-    route,
-    obligations: {
-      retrievalRequired: route === "COURSE_EXPLANATION",
-      capabilityInspectionRequired: route === "LEARNER_DIAGNOSIS_COMPLETE" || route === "CAPABILITY_GAP" || requiresCapabilityInspection(input),
-      diagnosisRequired: route === "LEARNER_DIAGNOSIS_COMPLETE",
-    },
-  };
+  const context = new ContextCompiler().compile(request);
+  return new ExecutionPlanner().plan(request, context);
 }
 
 export function routeInstruction(route: AgentRoute): string {
