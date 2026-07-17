@@ -12,6 +12,8 @@ import { LegacyLexicalEvidenceSearch, inspectCorpus } from "./lib/corpus-reposit
 import type { CorpusSearchService } from "../src/corpus/types.ts";
 import { createCorpusDeliveryPolicyRuntime } from "../src/corpus/delivery-policy.ts";
 import { LegacyTrainerCapabilityRuntime } from "../src/runtime/learning-capability-runtime.ts";
+import { createRuntimeShadowCoordinator, parseRuntimeShadowConfiguration, type RuntimeExecutor } from "../src/runtime/runtime-shadow.ts";
+import { PurposeAndRoleSeparatedFileRuntimeExecutionRecorder } from "./lib/runtime-execution-recorder.ts";
 
 const root = new URL("../", import.meta.url);
 const readText = (path: string) => readFile(new URL(path, root), "utf8");
@@ -37,20 +39,21 @@ const traceRepositories = new PurposeSeparatedAgentTraceRepository(
   resolve(process.env.PRODUCT_TRACE_STORE_DIR ?? process.env.TRACE_STORE_DIR ?? ".local-data/product-agent-runs"),
   resolve(process.env.AGENT_EVAL_TRACE_STORE_DIR ?? ".local-data/agent-eval-agent-runs"),
 );
+const runtimeExecutionRecorder = new PurposeAndRoleSeparatedFileRuntimeExecutionRecorder(resolve(process.env.RUNTIME_EXECUTION_STORE_DIR ?? ".local-data/runtime-executions"));
+const shadowConfiguration = parseRuntimeShadowConfiguration(process.env.RUNTIME_SHADOW_MODE, process.env.RUNTIME_SHADOW_TIMEOUT_MS);
 const configured = Boolean(apiKey && model);
 const client = configured ? createDeepSeekClient({ apiKey, model, baseUrl, thinkingMode }) : null;
 const capabilityRuntime = new LegacyTrainerCapabilityRuntime(diagnosisUrl);
-const legacyDeepSeekAgentExecution: AgentExecution | null = client ? {
-  execute: async (request) => {
+const legacyDeepSeekRuntimeExecutor: RuntimeExecutor | null = client ? {
+  identity: { adapterId: "legacy-deepseek-agent", adapterVersion: "1.0.0", providerId: "deepseek", modelId: model },
+  execute: async ({ request, executionPlan, policy }) => {
     const toolResults: { readonly name: string; readonly resultRef: string; readonly data: unknown }[] = [];
     const traceRepository = traceRepositories.forPurpose(request.runPurpose);
     const currentUserMessage = [...request.messages].reverse().find((message) => message.role === "user")?.content ?? "";
-    const executionPlan = resolveAgentExecutionPlan(request);
     const initialRoute = executionPlan.route;
-    const observableSystemPrompt = buildAgentSystemPrompt(systemPrompt, initialRoute, executionPlan.obligations);
     const tools = createAgentToolExecutor({ capabilities: capabilities.capabilities, corpus, corpusDeliveryPolicy, provider: "deepseek", capabilityRuntime, runPurpose: request.runPurpose, conversationId: request.conversationId, conversationEvidenceHash: contentHash(currentUserMessage), currentUserMessage });
     const traceId = `agent-trace-${randomUUID()}`; const startedAt = new Date().toISOString();
-    await traceRepository.start({ traceId, request, initialRoute, obligations: executionPlan.obligations, provider: "deepseek", model, thinkingMode, prompt: { version: AGENT_PROMPT_VERSION, contentHash: contentHash(observableSystemPrompt) }, capabilityRegistry: { version: capabilities.version, contentHash: contentHash(JSON.stringify(capabilities)) }, toolDefinitions: { version: toolConfig.version, contentHash: contentHash(JSON.stringify(toolConfig)) }, startedAt });
+    await traceRepository.start({ traceId, request, initialRoute, obligations: executionPlan.obligations, provider: "deepseek", model, thinkingMode, prompt: policy.prompt, capabilityRegistry: policy.capabilityRegistry, toolDefinitions: policy.toolDefinitions, startedAt });
     try {
       const trace = await runAgent({ request, initialRoute, initialObligations: executionPlan.obligations, model, thinkingMode, systemPrompt, promptVersion: AGENT_PROMPT_VERSION, capabilityRegistryVersion: capabilities.version, toolDefinitions: toolConfig.tools, modelClient: client, tools, createId: () => traceId, onToolResult: (result) => toolResults.push(result), onModelResponse: (message, usage) => traceRepository.appendModelResponse(traceId, toObservableAgentMessage(message), usage), onToolExecution: (execution) => traceRepository.appendToolExecution(traceId, execution) });
       await traceRepository.complete(traceId, trace.finalResponse, trace.completedAt, trace.route);
@@ -60,6 +63,30 @@ const legacyDeepSeekAgentExecution: AgentExecution | null = client ? {
       await traceRepository.fail(traceId, { code, message: error instanceof Error ? error.message : String(error) }, new Date().toISOString());
       throw error;
     }
+  },
+} : null;
+const runtimeCoordinator = legacyDeepSeekRuntimeExecutor ? createRuntimeShadowCoordinator({
+  shadowEnabled: shadowConfiguration.enabled,
+  shadowTimeoutMs: shadowConfiguration.timeoutMs,
+  authoritativeExecutor: legacyDeepSeekRuntimeExecutor,
+  recorder: runtimeExecutionRecorder,
+  onRecorderError: (error, record) => { console.error(`Runtime comparison record failed for ${record.executionId}: ${error instanceof Error ? error.message : String(error)}`); },
+}) : null;
+const legacyDeepSeekAgentExecution: AgentExecution | null = runtimeCoordinator ? {
+  execute: async (request) => {
+    const executionPlan = resolveAgentExecutionPlan(request);
+    const observableSystemPrompt = buildAgentSystemPrompt(systemPrompt, executionPlan.route, executionPlan.obligations);
+    const execution = await runtimeCoordinator.execute({
+      request,
+      executionPlan,
+      policy: {
+        prompt: { version: AGENT_PROMPT_VERSION, contentHash: contentHash(observableSystemPrompt) },
+        capabilityRegistry: { version: capabilities.version, contentHash: contentHash(JSON.stringify(capabilities)) },
+        toolDefinitions: { version: toolConfig.version, contentHash: contentHash(JSON.stringify(toolConfig)) },
+      },
+    });
+    void execution.shadowCompletion;
+    return execution.authoritativeResult;
   },
 } : null;
 const gateway = createAgentGateway({
@@ -84,5 +111,6 @@ server.listen(port, "127.0.0.1", () => {
   for (const source of corpusReport.sources) console.log(`corpus source ${source.status === "REGISTERED" ? "registered" : "missing"}: ${source.sourceId}`);
   console.log(`index version: ${corpusReport.indexVersion ?? "missing"}`);
   console.log(`corpus delivery policy: ${corpusDeliveryPolicy.policy.version} (${corpusDeliveryPolicy.contentHash})`);
+  console.log(`runtime shadow: ${shadowConfiguration.enabled ? "enabled (candidate not configured)" : "disabled; Legacy authoritative"}`);
   for (const [key, count] of Object.entries(corpusReport.chunkCounts).sort()) console.log(`chunks ${key}: ${count}`);
 });
