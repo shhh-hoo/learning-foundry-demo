@@ -6,7 +6,7 @@ import { AGENT_EVAL_SUITE_VERSION, gradeAgentCase, type AgentEvalCase } from "..
 import { buildAgentEvalCheckpoint } from "../src/agent/agenteval-checkpoint.ts";
 import { parseAgentEvalDimension, parseAgentEvalLayer, selectAgentEvalBaseline, selectAgentEvalDimension, selectAgentEvalLayer, type AgentEvalBehaviorContract, type AgentEvalSelection } from "../src/agent/agenteval-suite.ts";
 import type { AgentTrace } from "../src/agent/types.ts";
-import { compareRuntimeParityCase, createRuntimeParityPlan, createRuntimeParityReport, decideRuntimeParityCommand, type RuntimeParityExecution } from "../src/runtime/runtime-parity.ts";
+import { compareRuntimeParityCase, createRuntimeParityPlan, createRuntimeParityReport, decideRuntimeParityCommand, findRuntimeExecutionForEvalCase, type RuntimeParityExecution } from "../src/runtime/runtime-parity.ts";
 import type { RuntimeExecutionRecord } from "../src/runtime/runtime-shadow.ts";
 import { AgentEvalRepository } from "./lib/agent-eval-repository.ts";
 import { RoleSeparatedFileRuntimeExecutionRecorder } from "./lib/runtime-execution-recorder.ts";
@@ -106,7 +106,7 @@ async function main(): Promise<void> {
   const contractCaseById = new Map(selected.cases.map((item) => [item.caseId, item]));
   const authoritativeByCaseId = new Map(plan.cases.map((testCase) => {
     const evalCase = evalCaseById.get(testCase.caseId);
-    const record = authoritativeRecords.find((candidate) => candidate.caseId === testCase.caseId && (!evalCase?.agentTraceId || candidate.agentTraceId === evalCase.agentTraceId)) ?? null;
+    const record = findRuntimeExecutionForEvalCase(authoritativeRecords, runId, testCase.caseId, evalCase?.agentTraceId);
     return [testCase.caseId, record] as const;
   }));
   const shadowWait = selfComparison

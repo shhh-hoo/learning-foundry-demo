@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compareRuntimeParityCase, createRuntimeParityPlan, createRuntimeParityReport, decideRuntimeParityCommand, summarizeRuntimeParityCoverage, type RuntimeParityCase, type RuntimeParityExecution, type RuntimeParityPlan } from "../src/runtime/runtime-parity";
+import { compareRuntimeParityCase, createRuntimeParityPlan, createRuntimeParityReport, decideRuntimeParityCommand, findRuntimeExecutionForEvalCase, summarizeRuntimeParityCoverage, type RuntimeParityCase, type RuntimeParityExecution, type RuntimeParityPlan } from "../src/runtime/runtime-parity";
 import type { RuntimeExecutionRecord, RuntimeExecutionRole } from "../src/runtime/runtime-shadow";
 
 function record(role: RuntimeExecutionRole, overrides: Partial<RuntimeExecutionRecord> = {}): RuntimeExecutionRecord {
@@ -346,5 +346,32 @@ describe("runtime parity reporting", () => {
 
   it("preserves the explicit empty layer/dimension selection failure", () => {
     expect(() => createRuntimeParityPlan("plan", "2.0.0", { mode: "DIMENSION", value: "PEDAGOGY" }, [])).toThrow("AGENT_EVAL_SELECTION_EMPTY: DIMENSION PEDAGOGY selected 0 cases");
+  });
+});
+
+describe("AgentEval runtime evidence joining", () => {
+  it("does not reuse a stale successful record when the current case has no trace id", () => {
+    const stale = record("AUTHORITATIVE", {
+      executionId: "stale-success",
+      conversationId: "agenteval-old-C-complete-registered-diagnosis",
+      caseId: "C-complete-registered-diagnosis",
+      status: "COMPLETED",
+    });
+    const currentFailure = record("AUTHORITATIVE", {
+      executionId: "current-failure",
+      conversationId: "agenteval-current-C-complete-registered-diagnosis",
+      caseId: "C-complete-registered-diagnosis",
+      agentTraceId: undefined,
+      status: "FAILED",
+      terminalError: { code: "INVALID_AGENT_RESPONSE", message: "invalid response" },
+      failureStage: "EXECUTION",
+    });
+
+    expect(findRuntimeExecutionForEvalCase(
+      [stale, currentFailure],
+      "agenteval-current",
+      "C-complete-registered-diagnosis",
+      undefined,
+    )).toBe(currentFailure);
   });
 });

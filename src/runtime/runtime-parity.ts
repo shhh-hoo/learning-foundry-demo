@@ -104,6 +104,18 @@ export interface RuntimeParityCommandDecision {
   readonly message: string;
 }
 
+export function findRuntimeExecutionForEvalCase(
+  records: readonly RuntimeExecutionRecord[],
+  evalRunId: string,
+  caseId: string,
+  agentTraceId: string | undefined,
+): RuntimeExecutionRecord | null {
+  const conversationId = `${evalRunId}-${caseId}`;
+  return records.find((record) => record.caseId === caseId
+    && record.conversationId === conversationId
+    && (!agentTraceId || record.agentTraceId === agentTraceId)) ?? null;
+}
+
 export function createRuntimeParityPlan(
   planId: string,
   suiteVersion: string,
