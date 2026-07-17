@@ -32,7 +32,7 @@
     "corpus:export:public": "tsx scripts/corpus-export-public.ts",
     "storyboard": "tsx scripts/capture-storyboard.ts",
     "check": "tsc -b --pretty false",
-    "test": "vitest run --reporter=dot",
+    "test": "vitest run",
     "build": "tsc -b && vite build",
     "export:components": "tsx scripts/export-components.ts",
     "sync:trainer": "tsx scripts/sync-trainer.ts"
