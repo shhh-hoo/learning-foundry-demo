@@ -156,7 +156,10 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentTrace> {
   const currentUserMessage = [...options.request.messages].reverse().find((message) => message.role === "user")?.content ?? "";
   const messages: ModelMessage[] = [
     { role: "system", content: buildAgentSystemPrompt(options.systemPrompt, initialRoute, obligations) },
-    ...resolvedPlan.contextSelection.selectedMessageIndexes.map((index) => options.request.messages[index]).filter((message): message is AgentRunRequest["messages"][number] => Boolean(message)),
+    ...resolvedPlan.contextSelection.selectedMessageIndexes
+      .map((index) => options.request.messages[index])
+      .filter((message): message is AgentRunRequest["messages"][number] => Boolean(message))
+      .map(({ role, content }) => ({ role, content })),
   ];
   const records: AgentTrace["toolCalls"][number][] = [];
   const availableSourceRefs = new Set<string>();
