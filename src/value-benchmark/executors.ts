@@ -54,17 +54,19 @@ export class DirectDeepSeekBenchmarkExecutor implements BenchmarkArmExecutor {
     private readonly systemPrompt: string,
     private readonly config: BenchmarkModelConfiguration,
     private readonly fetcher: typeof fetch = globalThis.fetch,
+    private readonly prepare?: (testCase: BenchmarkCase) => { readonly systemPrompt: string; readonly messages: readonly { readonly role: "user" | "assistant"; readonly content: string }[] },
   ) {}
 
   async execute({ testCase, signal }: { readonly testCase: BenchmarkCase; readonly execution: BenchmarkPlannedExecution | BenchmarkReplacementExecution; readonly signal: AbortSignal }): Promise<BenchmarkArmOutput> {
     const started = performance.now();
+    const prepared = this.prepare?.(testCase) ?? { systemPrompt: this.systemPrompt, messages: testCase.messages.map(({ role, content }) => ({ role, content })) };
     const response = await this.fetcher(`${this.config.baseUrl.replace(/\/$/u, "")}/chat/completions`, {
       method: "POST",
       headers: { authorization: `Bearer ${this.config.apiKey}`, "content-type": "application/json" },
       signal,
       body: JSON.stringify({
         model: this.config.model,
-        messages: [{ role: "system", content: this.systemPrompt }, ...testCase.messages.map(({ role, content }) => ({ role, content }))],
+        messages: [{ role: "system", content: prepared.systemPrompt }, ...prepared.messages],
         response_format: { type: "json_object" },
         thinking: { type: this.config.thinkingMode },
         max_tokens: this.config.maxTokens,
@@ -82,7 +84,7 @@ export class DirectDeepSeekBenchmarkExecutor implements BenchmarkArmExecutor {
     return {
       answer: parseAnswer(body.choices?.[0]?.message?.content), sourceRefs: [], evidenceRefs: [], toolTrajectory: [],
       ...(usage ? { tokenUsage: usage } : {}), ...(body.usage ? { providerUsage: { prompt_tokens: body.usage.prompt_tokens ?? 0, completion_tokens: body.usage.completion_tokens ?? 0, total_tokens: body.usage.total_tokens ?? 0, ...(body.usage.prompt_cache_hit_tokens === undefined ? {} : { prompt_cache_hit_tokens: body.usage.prompt_cache_hit_tokens }), ...(body.usage.prompt_cache_miss_tokens === undefined ? {} : { prompt_cache_miss_tokens: body.usage.prompt_cache_miss_tokens }) } } : {}),
-      systemPrompt: this.systemPrompt, rawClientLatencyMs: Math.max(0, performance.now() - started),
+      systemPrompt: prepared.systemPrompt, rawClientLatencyMs: Math.max(0, performance.now() - started),
     };
   }
 }
@@ -128,12 +130,12 @@ export function createValueBenchmarkExecutors(options: {
   readonly model: BenchmarkModelConfiguration;
   readonly target: AgentEvalTarget;
   readonly fullFoundrySystemPromptForCase: (testCase: BenchmarkCase) => string;
+  readonly policyOnlyPreparation?: (testCase: BenchmarkCase) => { readonly systemPrompt: string; readonly messages: readonly { readonly role: "user" | "assistant"; readonly content: string }[] };
   readonly fetcher?: typeof fetch;
 }) {
   return {
     A_BARE_LLM: new DirectDeepSeekBenchmarkExecutor(`${options.prompts.arms.A_BARE_LLM.systemPrompt}\n${options.prompts.directAnswerContract}`, options.model, options.fetcher),
-    B_FOUNDRY_POLICY_NO_TOOLS: new DirectDeepSeekBenchmarkExecutor(`${options.prompts.arms.B_FOUNDRY_POLICY_NO_TOOLS.systemPrompt}\n${options.prompts.directAnswerContract}`, options.model, options.fetcher),
+    B_FOUNDRY_POLICY_NO_TOOLS: new DirectDeepSeekBenchmarkExecutor(`${options.prompts.arms.B_FOUNDRY_POLICY_NO_TOOLS.systemPrompt}\n${options.prompts.directAnswerContract}`, options.model, options.fetcher, options.policyOnlyPreparation),
     C_FULL_FOUNDRY: new FullFoundryBenchmarkExecutor(options.target, options.fullFoundrySystemPromptForCase),
   } as const;
 }
-

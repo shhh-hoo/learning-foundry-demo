@@ -44,6 +44,7 @@ describe("value benchmark experiment manifest", () => {
         provider: "deepseek", model: "deepseek-chat", baseUrlOrigin: "https://api.deepseek.com", thinkingMode: "disabled",
         sampling: { temperature: null, topP: null, maxTokens: 1800, responseFormat: "json_object" }, runtimeAdapter: "LegacyGatewayAgentEvalTarget", firstAttemptCount: 72,
         plannedExecutions: buildBenchmarkExecutionPlan(runId, cases, scheduleSeed).map(({ executionId, caseId, arm, order, conversationId }) => ({ executionId, caseId, arm, order, conversationId })),
+        caseCompositions: cases.map((item) => ({ caseId: item.caseId, executionPlanHash: "plan", contextSelectionHash: "context", selectedProviderMessagesHash: "messages", policyOnlySystemPromptHash: "b-prompt", authoritativeSystemPromptHash: "c-prompt" })),
       },
       policySnapshots: { sourcePolicy: "sha256:test" },
       livePolicy: { automaticRetry: false, infrastructureReplacementRequiresExplicitCommand: true, modelQualityResampling: false },

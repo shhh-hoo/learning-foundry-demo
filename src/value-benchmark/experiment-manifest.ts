@@ -36,12 +36,22 @@ export interface ValueBenchmarkExperimentManifest {
     readonly runtimeAdapter: string;
     readonly firstAttemptCount: 72;
     readonly plannedExecutions: readonly { readonly executionId: string; readonly caseId: string; readonly arm: string; readonly order: number; readonly conversationId: string }[];
+    readonly caseCompositions: readonly {
+      readonly caseId: string;
+      readonly executionPlanHash: string;
+      readonly contextSelectionHash: string;
+      readonly selectedProviderMessagesHash: string;
+      readonly policyOnlySystemPromptHash: string;
+      readonly authoritativeSystemPromptHash: string;
+    }[];
   };
   readonly policySnapshots: Readonly<Record<string, string>>;
   readonly livePolicy: {
     readonly automaticRetry: false;
     readonly infrastructureReplacementRequiresExplicitCommand: true;
     readonly modelQualityResampling: false;
+    readonly permittedInfrastructureReplacements?: readonly string[];
+    readonly requiredEnvironmentGates?: readonly string[];
   };
 }
 
@@ -54,7 +64,7 @@ export function fingerprintFrozenAsset(path: string, bytes: Uint8Array): FrozenA
   const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   if (text.includes("\r")) throw new Error(`BENCHMARK_ASSET_LINE_ENDING_INVALID: ${path}`);
   if (!text.endsWith("\n")) throw new Error(`BENCHMARK_ASSET_FINAL_NEWLINE_REQUIRED: ${path}`);
-  const lineBytes = text.slice(0, -1).split("\n").map((line) => new TextEncoder().encode(line));
+  const lineBytes = text.slice(0, -1).split("\n").map((line) => new TextEncoder().encode(`${line}\n`));
   return { path, bytes: bytes.byteLength, sha256: sha256(bytes), lines: lineBytes.length, lineSha256: lineBytes.map(sha256) };
 }
 
@@ -98,6 +108,7 @@ export async function loadAndVerifyValueBenchmarkExperiment(root: string, manife
   JSON.parse(new TextDecoder().decode(promptBytes));
   const expectedPlan = buildBenchmarkExecutionPlan(manifest.runId, cases, manifest.execution.scheduleSeed).map(({ executionId, caseId, arm, order, conversationId }) => ({ executionId, caseId, arm, order, conversationId }));
   if (manifest.execution.firstAttemptCount !== 72 || JSON.stringify(expectedPlan) !== JSON.stringify(manifest.execution.plannedExecutions)) throw new Error("BENCHMARK_MANIFEST_EXECUTION_PLAN_MISMATCH");
+  if (manifest.execution.caseCompositions.length !== 24 || new Set(manifest.execution.caseCompositions.map((item) => item.caseId)).size !== 24 || cases.some((item) => !manifest.execution.caseCompositions.some((composition) => composition.caseId === item.caseId))) throw new Error("BENCHMARK_MANIFEST_CASE_COMPOSITIONS_INVALID");
   return { manifest, manifestBytes, cases };
 }
 
