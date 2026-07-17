@@ -40,7 +40,7 @@ The coordinator guarantees:
 - normalized tool order, source references, internal evidence references and Diagnosis trace references remain distinct;
 - comparison-recorder failure cannot change the authoritative result.
 
-`RoleSeparatedFileRuntimeExecutionRecorder` writes `AUTHORITATIVE` and `SHADOW` records to physically separate namespaces under the gitignored runtime-execution store. It removes hidden reasoning, credentials and private local paths before persistence. Existing Product and AgentEval trace stores remain unchanged and authoritative.
+`PurposeAndRoleSeparatedFileRuntimeExecutionRecorder` first writes `PRODUCT` and `AGENT_EVAL` records to physically separate `product/` and `agent-eval/` namespaces under the gitignored runtime-execution store, then separates `AUTHORITATIVE` and `SHADOW` beneath each purpose. Its purpose-explicit `list(runPurpose, role)` API cannot expose records from the other purpose. It removes hidden reasoning, credentials and private local paths before persistence. Existing Product and AgentEval trace stores remain unchanged and authoritative.
 
 ## Normalized record
 
@@ -55,7 +55,7 @@ It does not include model hidden reasoning, authorization headers, secrets, priv
 - `npm run build` — passed;
 - `git diff --check` — passed;
 - focused shadow coordinator tests — 12 passed, including nested mutation and post-timeout boundary cancellation;
-- focused role-separated recorder tests — passed.
+- focused purpose-and-role-separated recorder tests — passed, covering all four namespaces and cross-purpose read isolation.
 
 ## Live validation
 

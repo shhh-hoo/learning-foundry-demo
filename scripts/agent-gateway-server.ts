@@ -13,7 +13,7 @@ import type { CorpusSearchService } from "../src/corpus/types.ts";
 import { createCorpusDeliveryPolicyRuntime } from "../src/corpus/delivery-policy.ts";
 import { LegacyTrainerCapabilityRuntime } from "../src/runtime/learning-capability-runtime.ts";
 import { createRuntimeShadowCoordinator, parseRuntimeShadowConfiguration, type RuntimeExecutor } from "../src/runtime/runtime-shadow.ts";
-import { RoleSeparatedFileRuntimeExecutionRecorder } from "./lib/runtime-execution-recorder.ts";
+import { PurposeAndRoleSeparatedFileRuntimeExecutionRecorder } from "./lib/runtime-execution-recorder.ts";
 
 const root = new URL("../", import.meta.url);
 const readText = (path: string) => readFile(new URL(path, root), "utf8");
@@ -39,7 +39,7 @@ const traceRepositories = new PurposeSeparatedAgentTraceRepository(
   resolve(process.env.PRODUCT_TRACE_STORE_DIR ?? process.env.TRACE_STORE_DIR ?? ".local-data/product-agent-runs"),
   resolve(process.env.AGENT_EVAL_TRACE_STORE_DIR ?? ".local-data/agent-eval-agent-runs"),
 );
-const runtimeExecutionRecorder = new RoleSeparatedFileRuntimeExecutionRecorder(resolve(process.env.RUNTIME_EXECUTION_STORE_DIR ?? ".local-data/runtime-executions"));
+const runtimeExecutionRecorder = new PurposeAndRoleSeparatedFileRuntimeExecutionRecorder(resolve(process.env.RUNTIME_EXECUTION_STORE_DIR ?? ".local-data/runtime-executions"));
 const shadowConfiguration = parseRuntimeShadowConfiguration(process.env.RUNTIME_SHADOW_MODE, process.env.RUNTIME_SHADOW_TIMEOUT_MS);
 const configured = Boolean(apiKey && model);
 const client = configured ? createDeepSeekClient({ apiKey, model, baseUrl, thinkingMode }) : null;
