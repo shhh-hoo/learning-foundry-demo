@@ -91,8 +91,8 @@ describe("candidate-neutral runtime shadow coordination", () => {
     const candidate = executor("candidate", () => {});
     const coordinator = createRuntimeShadowCoordinator({
       shadowEnabled: true,
-      authoritativeExecutor: { ...authoritative, execute: async (input) => { receivedPlans.push(input.executionPlan); return authoritative.execute(input); } },
-      shadowExecutor: { ...candidate, execute: async (input) => { receivedPlans.push(input.executionPlan); return candidate.execute(input); } },
+      authoritativeExecutor: { ...authoritative, execute: async (input, signal) => { receivedPlans.push(input.executionPlan); return authoritative.execute(input, signal); } },
+      shadowExecutor: { ...candidate, execute: async (input, signal) => { receivedPlans.push(input.executionPlan); return candidate.execute(input, signal); } },
       recorder: { record: async (record) => { records.push(record); } },
       createId: (() => { const ids = ["authoritative-execution", "shadow-execution"]; return () => ids.shift()!; })(),
     });
@@ -106,6 +106,44 @@ describe("candidate-neutral runtime shadow coordination", () => {
       expect.objectContaining({ executionId: "authoritative-execution", role: "AUTHORITATIVE", runtimeAdapterId: "legacy" }),
       expect.objectContaining({ executionId: "shadow-execution", parentAuthoritativeExecutionId: "authoritative-execution", role: "SHADOW", runtimeAdapterId: "candidate" }),
     ]));
+  });
+
+  it("isolates the authoritative input from synchronous nested candidate mutation", async () => {
+    const authoritativeInputs: NormalizedRuntimeExecutionRequest[] = [];
+    const authoritative = executor("legacy", () => {});
+    const candidate = executor("candidate", () => {});
+    const coordinator = createRuntimeShadowCoordinator({
+      shadowEnabled: true,
+      authoritativeExecutor: {
+        ...authoritative,
+        execute: async (input, signal) => {
+          authoritativeInputs.push(input);
+          return authoritative.execute(input, signal);
+        },
+      },
+      shadowExecutor: {
+        ...candidate,
+        execute: async (input, signal) => {
+          try { (input.executionPlan as { route: string }).route = "CAPABILITY_GAP"; } catch { /* immutable snapshot */ }
+          try { (input.request.messages as { role: string; content: string }[])[0].content = "candidate mutation"; } catch { /* immutable snapshot */ }
+          try { (input.policy.prompt as { version: string }).version = "candidate-policy"; } catch { /* immutable snapshot */ }
+          return candidate.execute(input, signal);
+        },
+      },
+      recorder: { record: async () => {} },
+    });
+
+    const execution = await coordinator.execute(normalizedRequest);
+    await execution.shadowCompletion;
+
+    expect(authoritativeInputs).toHaveLength(1);
+    expect(authoritativeInputs[0]).toMatchObject({
+      request: { messages: [{ content: "Explain the evidence." }] },
+      executionPlan: { route: "COURSE_EXPLANATION" },
+      policy: { prompt: { version: "1" } },
+    });
+    expect(Object.isFrozen(authoritativeInputs[0].request.messages)).toBe(true);
+    expect(Object.isFrozen(authoritativeInputs[0].executionPlan.obligations)).toBe(true);
   });
 
   it("records and isolates a candidate failure from a successful authoritative execution", async () => {
@@ -141,7 +179,10 @@ describe("candidate-neutral runtime shadow coordination", () => {
       const records: RuntimeExecutionRecord[] = [];
       const slowCandidate: RuntimeExecutor = {
         identity: { adapterId: "candidate", adapterVersion: "1.0.0", providerId: "candidate-provider", modelId: "candidate-model" },
-        execute: async () => await new Promise((resolve) => setTimeout(() => resolve(executor("candidate", () => {}).execute(normalizedRequest)), 1000)),
+        execute: async (_input, signal) => await new Promise((resolve, reject) => {
+          const timer = setTimeout(() => resolve(executor("candidate", () => {}).execute(normalizedRequest, signal)), 1000);
+          signal.addEventListener("abort", () => { clearTimeout(timer); reject(signal.reason); }, { once: true });
+        }),
       };
       const coordinator = createRuntimeShadowCoordinator({
         shadowEnabled: true,
@@ -164,6 +205,42 @@ describe("candidate-neutral runtime shadow coordination", () => {
         failureStage: "TIMEOUT",
         terminalError: { code: "SHADOW_EXECUTION_TIMEOUT", message: "Shadow execution exceeded 10ms." },
       }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("aborts timed-out candidate work before it can cross a tool or write boundary", async () => {
+    vi.useFakeTimers();
+    try {
+      const records: RuntimeExecutionRecord[] = [];
+      let observedSignal: AbortSignal | undefined;
+      let boundaryCalls = 0;
+      const candidate: RuntimeExecutor = {
+        identity: { adapterId: "candidate", adapterVersion: "1.0.0", providerId: "candidate-provider", modelId: "candidate-model" },
+        execute: async (_input, signal) => {
+          observedSignal = signal;
+          await new Promise<void>((resolve) => signal.addEventListener("abort", () => resolve(), { once: true }));
+          if (!signal.aborted) boundaryCalls += 1;
+          throw Object.assign(new Error("candidate aborted"), { code: "CANDIDATE_ABORTED" });
+        },
+      };
+      const coordinator = createRuntimeShadowCoordinator({
+        shadowEnabled: true,
+        shadowTimeoutMs: 10,
+        authoritativeExecutor: executor("legacy", () => {}),
+        shadowExecutor: candidate,
+        recorder: { record: async (record) => { records.push(record); } },
+        createId: (() => { const ids = ["authoritative-execution", "shadow-execution"]; return () => ids.shift()!; })(),
+      });
+
+      const execution = await coordinator.execute(normalizedRequest);
+      await vi.advanceTimersByTimeAsync(10);
+      await execution.shadowCompletion;
+
+      expect(observedSignal?.aborted).toBe(true);
+      expect(boundaryCalls).toBe(0);
+      expect(records).toContainEqual(expect.objectContaining({ role: "SHADOW", status: "TIMED_OUT", failureStage: "TIMEOUT" }));
     } finally {
       vi.useRealTimers();
     }
@@ -223,8 +300,8 @@ describe("candidate-neutral runtime shadow coordination", () => {
     const baseCandidate = executor("candidate", () => {});
     const candidate: RuntimeExecutor = {
       ...baseCandidate,
-      execute: async (input) => {
-        const result = await baseCandidate.execute(input);
+      execute: async (input, signal) => {
+        const result = await baseCandidate.execute(input, signal);
         return {
           ...result,
           trace: {
@@ -271,12 +348,12 @@ describe("candidate-neutral runtime shadow coordination", () => {
       authoritativeExecutor: executor("legacy", () => {}),
       shadowExecutor: {
         ...candidate,
-        execute: async (input) => {
+        execute: async (input, signal) => {
           expect(input).not.toHaveProperty("productState");
           expect(input).not.toHaveProperty("writeProductState");
           expect(input).not.toHaveProperty("traceStore");
           expect(input).not.toHaveProperty("authoritativeTraceRepository");
-          return candidate.execute(input);
+          return candidate.execute(input, signal);
         },
       },
       recorder: { record: async () => {} },
