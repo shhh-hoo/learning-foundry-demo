@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -20,17 +20,26 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - name: Generate candidate package lock
         run: npm install --package-lock-only --ignore-scripts
-      - name: Upload candidate package lock
-        uses: actions/upload-artifact@v4
-        with:
-          name: ai-sdk-package-lock
-          path: package-lock.json
+      - name: Commit generated package lock
+        if: github.event_name == 'pull_request'
+        run: |
+          if git diff --quiet -- package-lock.json; then
+            echo "package-lock.json is already current"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          git commit -m "Lock AI SDK runtime candidate dependencies"
+          git push origin HEAD:${{ github.head_ref }}
       - run: npm ci
       - run: npm run check
       - run: npm test
