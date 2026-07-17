@@ -18,7 +18,7 @@ describe("External Component Catalog", () => {
     expect(screen.getAllByRole("button", { name: "Open governed link" })).toHaveLength(3);
     expect(screen.getAllByRole("button", { name: "Unavailable until review" })).toHaveLength(6);
     expect(screen.getByText("Balancing Chemical Equations")).toBeInTheDocument();
-    expect(screen.getByText("License review required", { selector: "strong" })).toBeInTheDocument();
+    expect(screen.getAllByText("License review required", { selector: "strong" })).toHaveLength(5);
   });
 
   it("records a launch before opening an approved external link", async () => {
