@@ -130,6 +130,7 @@ npm run core:leakage  2/2 passed; zero Core violations; allowlist 0/0
 npm test              35 files, 233 tests passed
 npm run check         passed
 npm run build         passed
+npm run export:components  passed; immutable export files unchanged
 git diff --check      passed
 ```
 
