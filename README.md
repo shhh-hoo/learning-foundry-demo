@@ -43,6 +43,7 @@ Ingestion validates every chunk against `corpus/04_RETRIEVAL_CHUNK_SCHEMA.json`,
 
 ```bash
 npm run policy:audit
+npm run core:leakage
 npm test
 npm run check
 npm run build
@@ -84,6 +85,8 @@ The case-level runtime parity harness consumes those role-separated records, reu
 - [Runtime shadow foundation acceptance](docs/RUNTIME_SHADOW_FOUNDATION_ACCEPTANCE.md)
 - [Runtime parity acceptance](docs/RUNTIME_PARITY_ACCEPTANCE.md)
 - [Runtime candidate readiness](docs/RUNTIME_CANDIDATE_READINESS.md)
+- [Core / Chemistry Pack acceptance](docs/CORE_CHEMISTRY_PACK_ACCEPTANCE.md)
+- [Chemistry Pack ownership](docs/CHEMISTRY_REFERENCE_PACK_OWNERSHIP.md)
 - [Data-origin policy](docs/DATA_ORIGIN_POLICY.md)
 - [Terminology](docs/TERMINOLOGY.md)
 - [Capability Registry](docs/CAPABILITY_REGISTRY.md)

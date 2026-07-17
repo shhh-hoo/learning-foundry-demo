@@ -7,6 +7,7 @@ import {
   registeredAgentCapabilities,
   registeredPublishedDiagnosticComponents,
 } from "../src/reference-packs/registry";
+import capabilityRegistrySnapshot from "../config/capabilities/registry.json";
 
 describe("Reference Pack registration", () => {
   it("registers the truthful Chemistry Pack manifest without claiming physical extraction", () => {
@@ -29,6 +30,10 @@ describe("Reference Pack registration", () => {
       { id: "kp-from-equilibrium-moles", version: "1.0.0" },
       { id: "stoichiometric-product-mass", version: "1.0.0" },
     ]);
+    expect(registry.listComponents("chemistry-caie-9701").map(({ profile }) => profile.contentHash)).toEqual([
+      "lfh1-a007587f",
+      "lfh1-65c2876d",
+    ]);
     expect(registry.listComponents("chemistry-caie-9701").map(({ implementation }) => implementation)).toEqual(
       publishedComponents,
     );
@@ -41,6 +46,7 @@ describe("Reference Pack registration", () => {
   it("drives the current export and capability entrypoints from the registered Pack", () => {
     expect(referencePackRegistry.listManifests().map((manifest) => manifest.id)).toEqual(["chemistry-caie-9701"]);
     expect(registeredPublishedDiagnosticComponents).toEqual(publishedComponents);
+    expect(registeredAgentCapabilities).toEqual(capabilityRegistrySnapshot);
     expect(registeredAgentCapabilities).toMatchObject({
       version: "1.0.0",
       capabilities: [

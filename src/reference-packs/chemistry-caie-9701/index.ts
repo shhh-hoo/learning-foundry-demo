@@ -78,7 +78,7 @@ export const chemistryCaie9701ReferencePack: ReferencePackRegistration = {
         kind: "EVALUATOR",
         status: "CURRENT_LEGACY",
         legacyPaths: ["src/governance/component-contract-checks.ts", "src/runtime/preview-adapter.ts", "agent-eval/cases.jsonl"],
-        removalTarget: "Pack-owned evaluator registrations using Foundry Eval infrastructure",
+        removalTarget: "Pack-owned evaluator registrations using Foundry grading infrastructure",
       },
       {
         id: "chemistry-activity-renderers",
