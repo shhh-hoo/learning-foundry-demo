@@ -73,6 +73,12 @@ describe("external component launch governance", () => {
     expect((await repository.list()).at(-1)?.type).toBe("POPUP_BLOCKED");
   });
 
+  it("records popup blocking when the browser opener throws", async () => {
+    const { repository, service } = createService(vi.fn(() => { throw new Error("browser denied"); }));
+    await expect(service.requestLaunch({ componentId: "reviewed-link", deploymentScope: "SYNTHETIC_TEST" })).resolves.toEqual({ status: "POPUP_BLOCKED", requestId: "request-1" });
+    expect((await repository.list()).map((event) => event.type)).toEqual(["LAUNCH_REQUESTED", "POPUP_BLOCKED"]);
+  });
+
   it("fails closed on corrupt history before opening a provider", async () => {
     window.localStorage.setItem("learning-foundry.external-launch-telemetry.v1", "not-json");
     const open = vi.fn(() => ({}) as Window);

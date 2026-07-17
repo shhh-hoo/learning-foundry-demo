@@ -116,6 +116,9 @@ export function deriveExternalComponentRegistry(
   const governed = components.map((component): GovernedExternalLearningComponent => {
     const history = historyByComponent.get(component.id) ?? [];
     const latestDecision = history.at(-1);
+    if (!latestDecision && (component.status.startsWith("APPROVED_") || component.status === "REJECTED")) {
+      throw new Error(`External resource ${component.id} requires a review decision for status ${component.status}.`);
+    }
     const currentStatus = latestDecision ? statusFromDecision(latestDecision) : component.status;
     const authorizedDeploymentScopes = latestDecision?.status.startsWith("APPROVED_")
       ? [latestDecision.deploymentScope]

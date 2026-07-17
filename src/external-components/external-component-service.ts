@@ -74,7 +74,12 @@ export class ExternalComponentService {
       type: "LAUNCH_REQUESTED",
     });
 
-    const opened = this.open(authorization.url, "_blank", "noopener,noreferrer");
+    let opened: Window | null = null;
+    try {
+      opened = this.open(authorization.url, "_blank", "noopener,noreferrer");
+    } catch {
+      opened = null;
+    }
     const status = opened ? "WINDOW_CREATED" : "POPUP_BLOCKED";
     await this.telemetryRepository.append({
       ...common,

@@ -116,4 +116,8 @@ describe("external component registry", () => {
     expect(registry.get("reviewed-link")?.latestDecision?.decisionId).toBe(revoked.decisionId);
     expect(registry.get("reviewed-link")?.authorizedDeploymentScopes).toEqual([]);
   });
+
+  it("does not accept an approval claim from the resource snapshot without a review decision", () => {
+    expect(() => deriveExternalComponentRegistry([{ ...reviewedLink(), status: "APPROVED_LINK_ONLY" }], [])).toThrow(/review decision/i);
+  });
 });
