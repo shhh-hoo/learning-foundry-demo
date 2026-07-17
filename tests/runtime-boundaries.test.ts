@@ -13,12 +13,13 @@ describe("replaceable runtime boundaries", () => {
         : Response.json({ ok: true, diagnosis: { traceId: "trainer-trace" } });
     });
 
+    const signal = new AbortController().signal;
     await expect(runtime.execute({
       capabilityId: "any-learning-capability",
       capabilityVersion: "1.0.0",
       input: { componentId: "any-learning-capability", componentVersion: "1.0.0", learnerAttempt: "evidenced input" },
       runPurpose: "PRODUCT",
-    })).resolves.toEqual({ traceId: "trainer-trace", result: { traceId: "trainer-trace", decision: "SOLVED" } });
+    }, signal)).resolves.toEqual({ traceId: "trainer-trace", result: { traceId: "trainer-trace", decision: "SOLVED" } });
     expect(requests.map((item) => [item.url, item.init?.method])).toEqual([
       ["http://127.0.0.1:4177/diagnose", "POST"],
       ["http://127.0.0.1:4177/diagnoses/trainer-trace", undefined],
@@ -29,6 +30,7 @@ describe("replaceable runtime boundaries", () => {
       componentVersion: "1.0.0",
       runPurpose: "PRODUCT",
     });
+    expect(requests.map((item) => item.init?.signal)).toEqual([signal, signal]);
   });
 
   it("preserves AGENT_EVAL purpose when the optional capability version is omitted", async () => {

@@ -93,7 +93,8 @@ export class LegacyLexicalEvidenceSearch implements CorpusSearchService {
     return new LegacyLexicalEvidenceSearch(root, manifest, JSON.parse(chunksText) as readonly CorpusChunk[]);
   }
 
-  async search(query: string, filters: CorpusSearchFilters, context: { readonly conversationId?: string; readonly conversationEvidenceHash?: string; readonly route?: string } = {}): Promise<CorpusSearchResponse> {
+  async search(query: string, filters: CorpusSearchFilters, context: { readonly conversationId?: string; readonly conversationEvidenceHash?: string; readonly route?: string } = {}, signal?: AbortSignal): Promise<CorpusSearchResponse> {
+    signal?.throwIfAborted();
     const candidates = this.chunks.filter((chunk) => matchesFilters(chunk, filters)).map((chunk) => scoreChunk(chunk, query, filters));
     const ranked = candidates.filter((candidate) => candidate.score > 0 || Boolean(filters.calculationFamilyId || filters.learningOutcomeId)).sort((left, right) => right.score - left.score || left.chunk.chunkId.localeCompare(right.chunk.chunkId));
     const selected = ranked.slice(0, 5);
@@ -120,6 +121,7 @@ export class LegacyLexicalEvidenceSearch implements CorpusSearchService {
     };
     const traceDirectory = join(this.rootDirectory, ".local-data/corpus/retrieval-traces");
     await mkdir(traceDirectory, { recursive: true });
+    signal?.throwIfAborted();
     const trace = {
       schemaVersion: "1.0.0",
       retrievalTraceId,
@@ -134,7 +136,8 @@ export class LegacyLexicalEvidenceSearch implements CorpusSearchService {
       selectedChunkIds: selected.map((candidate) => candidate.chunk.chunkId),
       rejected: candidates.filter((candidate) => !selected.includes(candidate)).map((candidate) => ({ chunkId: candidate.chunk.chunkId, reason: candidate.score <= 0 ? "NO_LEXICAL_OR_METADATA_MATCH" : "OUTSIDE_TOP_FIVE" })),
     };
-    await writeFile(join(traceDirectory, `${retrievalTraceId}.json`), `${JSON.stringify(sanitizeTraceValue(trace), null, 2)}\n`, { encoding: "utf8", flag: "wx" });
+    await writeFile(join(traceDirectory, `${retrievalTraceId}.json`), `${JSON.stringify(sanitizeTraceValue(trace), null, 2)}\n`, { encoding: "utf8", flag: "wx", ...(signal ? { signal } : {}) });
+    signal?.throwIfAborted();
     return result;
   }
 }

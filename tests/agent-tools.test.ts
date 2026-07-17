@@ -44,6 +44,22 @@ describe("agent tools", () => {
     await expect(tools.execute("get_capability", { id: "kp" })).rejects.toThrow("CAPABILITY_NOT_AVAILABLE");
   });
 
+  it("propagates candidate cancellation through the retrieval boundary", async () => {
+    let receivedSignal: AbortSignal | undefined;
+    const recordingCorpus: CorpusSearchService = {
+      search: async (query, filters, _context, signal) => {
+        receivedSignal = signal;
+        return corpus().search(query, filters);
+      },
+    };
+    const tools = createAgentToolExecutor({ capabilities, corpus: recordingCorpus, corpusDeliveryPolicy, provider: "deepseek", runPurpose: "AGENT_EVAL" });
+    const signal = new AbortController().signal;
+
+    await tools.execute("search_learning_resources", { query: "governed evidence" }, signal);
+
+    expect(receivedSignal).toBe(signal);
+  });
+
   it("returns the governed particle-to-mole explanation for coefficient-ratio questions", async () => {
     const tools = createAgentToolExecutor({ capabilities, corpus: corpus(), corpusDeliveryPolicy, provider: "deepseek", runPurpose: "PRODUCT", diagnosisUrl: "http://127.0.0.1:4177/diagnose", createId: () => "test" });
     const result = await tools.execute("search_learning_resources", { query: "coefficients particle mole ratio Avogadro", calculationFamilyId: "CORE-001" });

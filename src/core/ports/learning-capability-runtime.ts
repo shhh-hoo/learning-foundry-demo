@@ -13,5 +13,5 @@ export interface LearningCapabilityExecutionResult {
 }
 
 export interface LearningCapabilityRuntime {
-  execute(execution: LearningCapabilityExecution): Promise<LearningCapabilityExecutionResult>;
+  execute(execution: LearningCapabilityExecution, signal?: AbortSignal): Promise<LearningCapabilityExecutionResult>;
 }

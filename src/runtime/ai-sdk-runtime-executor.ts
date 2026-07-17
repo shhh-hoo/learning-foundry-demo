@@ -227,7 +227,6 @@ interface CreateAiSdkRuntimeExecutorOptions {
   readonly thinkingMode: "enabled" | "disabled";
   readonly timeoutMs: number;
   readonly systemPrompt: string;
-  readonly capabilityRegistryVersion: string;
   readonly toolDefinitions: readonly unknown[];
   readonly createTools: (input: NormalizedRuntimeExecutionRequest, signal: AbortSignal) => AgentToolExecutor;
   readonly generateText?: AiSdkGenerateText;
@@ -254,7 +253,7 @@ export function createAiSdkRuntimeExecutor(options: CreateAiSdkRuntimeExecutorOp
         thinkingMode: options.thinkingMode,
         systemPrompt: options.systemPrompt,
         promptVersion: input.policy.prompt.version,
-        capabilityRegistryVersion: input.policy.capabilityRegistry.version || options.capabilityRegistryVersion,
+        capabilityRegistryVersion: input.policy.capabilityRegistry.version,
         toolDefinitions: options.toolDefinitions,
         modelClient: createAiSdkModelClient({
           model: options.model,

@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createHash, randomUUID } from "node:crypto";
 import { resolve } from "node:path";
+import { createDeepSeek } from "@ai-sdk/deepseek";
 import { createDeepSeekClient, toObservableAgentMessage } from "../src/agent/deepseek-client.ts";
 import { createAgentGateway, type AgentExecution } from "../src/agent/gateway.ts";
 import { resolveAgentExecutionPlan } from "../src/agent/route-policy.ts";
@@ -9,11 +10,13 @@ import { AGENT_PROMPT_VERSION, buildAgentSystemPrompt, runAgent } from "../src/a
 import { createAgentToolExecutor, type CapabilityRecord } from "../src/agent/tool-executor.ts";
 import { PurposeSeparatedAgentTraceRepository } from "./lib/agent-trace-repository.ts";
 import type { AgentRunObservability } from "../src/agent/trace-store.ts";
+import type { AgentRunRequest } from "../src/agent/types.ts";
 import { LegacyLexicalEvidenceSearch, inspectCorpus } from "./lib/corpus-repository.ts";
 import type { CorpusSearchService } from "../src/corpus/types.ts";
 import { createCorpusDeliveryPolicyRuntime } from "../src/corpus/delivery-policy.ts";
 import { LegacyTrainerCapabilityRuntime } from "../src/runtime/learning-capability-runtime.ts";
 import { createRuntimeShadowCoordinator, parseRuntimeShadowConfiguration, type RuntimeExecutor } from "../src/runtime/runtime-shadow.ts";
+import { AI_SDK_CANDIDATE_ADAPTER_VERSION, createAiSdkRuntimeExecutor, parseAiSdkCandidateConfiguration } from "../src/runtime/ai-sdk-runtime-executor.ts";
 import { PurposeAndRoleSeparatedFileRuntimeExecutionRecorder } from "./lib/runtime-execution-recorder.ts";
 import { registeredAgentCapabilities } from "../src/reference-packs/registry.ts";
 
@@ -43,22 +46,36 @@ const traceRepositories = new PurposeSeparatedAgentTraceRepository(
 );
 const runtimeExecutionRecorder = new PurposeAndRoleSeparatedFileRuntimeExecutionRecorder(resolve(process.env.RUNTIME_EXECUTION_STORE_DIR ?? ".local-data/runtime-executions"));
 const shadowConfiguration = parseRuntimeShadowConfiguration(process.env.RUNTIME_SHADOW_MODE, process.env.RUNTIME_SHADOW_TIMEOUT_MS);
+const aiSdkCandidateConfiguration = parseAiSdkCandidateConfiguration(process.env);
 const configured = Boolean(apiKey && model);
 const client = configured ? createDeepSeekClient({ apiKey, model, baseUrl, thinkingMode }) : null;
 const capabilityRuntime = new LegacyTrainerCapabilityRuntime(diagnosisUrl);
+const createRuntimeTools = (request: AgentRunRequest) => {
+  const currentUserMessage = [...request.messages].reverse().find((message) => message.role === "user")?.content ?? "";
+  return createAgentToolExecutor({
+    capabilities: capabilities.capabilities,
+    corpus,
+    corpusDeliveryPolicy,
+    provider: "deepseek",
+    capabilityRuntime,
+    runPurpose: request.runPurpose,
+    conversationId: request.conversationId,
+    conversationEvidenceHash: contentHash(currentUserMessage),
+    currentUserMessage,
+  });
+};
 const legacyDeepSeekRuntimeExecutor: RuntimeExecutor | null = client ? {
   identity: { adapterId: "legacy-deepseek-agent", adapterVersion: "1.0.0", providerId: "deepseek", modelId: model },
-  execute: async ({ request, executionPlan, policy }) => {
+  execute: async ({ request, executionPlan, policy }, signal) => {
     const toolResults: { readonly name: string; readonly resultRef: string; readonly data: unknown }[] = [];
     const traceRepository = traceRepositories.forPurpose(request.runPurpose);
-    const currentUserMessage = [...request.messages].reverse().find((message) => message.role === "user")?.content ?? "";
     const initialRoute = executionPlan.route;
-    const tools = createAgentToolExecutor({ capabilities: capabilities.capabilities, corpus, corpusDeliveryPolicy, provider: "deepseek", capabilityRuntime, runPurpose: request.runPurpose, conversationId: request.conversationId, conversationEvidenceHash: contentHash(currentUserMessage), currentUserMessage });
+    const tools = createRuntimeTools(request);
     const traceId = `agent-trace-${randomUUID()}`; const startedAt = new Date().toISOString();
     let latestControlPlaneState: AgentRunObservability | undefined;
     await traceRepository.start({ traceId, request, initialRoute, obligations: executionPlan.obligations, executionPlan, contextSelection: executionPlan.contextSelection, provider: "deepseek", model, thinkingMode, prompt: policy.prompt, capabilityRegistry: policy.capabilityRegistry, toolDefinitions: policy.toolDefinitions, startedAt });
     try {
-      const trace = await runAgent({ request, executionPlan, model, thinkingMode, systemPrompt, promptVersion: AGENT_PROMPT_VERSION, capabilityRegistryVersion: capabilities.version, toolDefinitions: toolConfig.tools, modelClient: client, tools, createId: () => traceId, onToolResult: (result) => toolResults.push(result), onModelResponse: (message, usage) => traceRepository.appendModelResponse(traceId, toObservableAgentMessage(message), usage), onToolExecution: (execution) => traceRepository.appendToolExecution(traceId, execution), onControlPlaneUpdate: (observability) => { latestControlPlaneState = observability; } });
+      const trace = await runAgent({ request, executionPlan, model, thinkingMode, systemPrompt, promptVersion: AGENT_PROMPT_VERSION, capabilityRegistryVersion: capabilities.version, toolDefinitions: toolConfig.tools, modelClient: client, tools, signal, createId: () => traceId, onToolResult: (result) => toolResults.push(result), onModelResponse: (message, usage) => traceRepository.appendModelResponse(traceId, toObservableAgentMessage(message), usage), onToolExecution: (execution) => traceRepository.appendToolExecution(traceId, execution), onControlPlaneUpdate: (observability) => { latestControlPlaneState = observability; } });
       await traceRepository.complete(traceId, trace.finalResponse, trace.completedAt, trace.route, { budgetConsumption: trace.budgetConsumption, evidenceAssessments: trace.evidenceAssessments, stopReason: trace.stopReason, governedWorkflow: trace.governedWorkflow });
       return { trace, toolResults };
     } catch (error) {
@@ -69,10 +86,25 @@ const legacyDeepSeekRuntimeExecutor: RuntimeExecutor | null = client ? {
     }
   },
 } : null;
+const aiSdkDeepSeekProvider = aiSdkCandidateConfiguration.configured
+  ? createDeepSeek({ apiKey, baseURL: baseUrl })
+  : null;
+const aiSdkCandidateRuntimeExecutor: RuntimeExecutor | null = aiSdkDeepSeekProvider && aiSdkCandidateConfiguration.modelId
+  ? createAiSdkRuntimeExecutor({
+      model: aiSdkDeepSeekProvider(aiSdkCandidateConfiguration.modelId),
+      modelId: aiSdkCandidateConfiguration.modelId,
+      thinkingMode: aiSdkCandidateConfiguration.thinkingMode,
+      timeoutMs: aiSdkCandidateConfiguration.timeoutMs,
+      systemPrompt,
+      toolDefinitions: toolConfig.tools,
+      createTools: (input) => createRuntimeTools(input.request),
+    })
+  : null;
 const runtimeCoordinator = legacyDeepSeekRuntimeExecutor ? createRuntimeShadowCoordinator({
   shadowEnabled: shadowConfiguration.enabled,
   shadowTimeoutMs: shadowConfiguration.timeoutMs,
   authoritativeExecutor: legacyDeepSeekRuntimeExecutor,
+  ...(aiSdkCandidateRuntimeExecutor ? { shadowExecutor: aiSdkCandidateRuntimeExecutor } : {}),
   recorder: runtimeExecutionRecorder,
   onRecorderError: (error, record) => { console.error(`Runtime comparison record failed for ${record.executionId}: ${error instanceof Error ? error.message : String(error)}`); },
 }) : null;
@@ -116,6 +148,10 @@ server.listen(port, "127.0.0.1", () => {
   for (const source of corpusReport.sources) console.log(`corpus source ${source.status === "REGISTERED" ? "registered" : "missing"}: ${source.sourceId}`);
   console.log(`index version: ${corpusReport.indexVersion ?? "missing"}`);
   console.log(`corpus delivery policy: ${corpusDeliveryPolicy.policy.version} (${corpusDeliveryPolicy.contentHash})`);
-  console.log(`runtime shadow: ${shadowConfiguration.enabled ? "enabled (candidate not configured)" : "disabled; Legacy authoritative"}`);
+  console.log(`runtime shadow: ${shadowConfiguration.enabled
+    ? aiSdkCandidateRuntimeExecutor
+      ? `enabled; candidate=ai-sdk7-deepseek@${AI_SDK_CANDIDATE_ADAPTER_VERSION}; candidate authority NOT GRANTED`
+      : "enabled; candidate unavailable"
+    : "disabled; Legacy authoritative; AI SDK candidate default-off"}`);
   for (const [key, count] of Object.entries(corpusReport.chunkCounts).sort()) console.log(`chunks ${key}: ${count}`);
 });

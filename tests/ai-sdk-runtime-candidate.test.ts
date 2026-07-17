@@ -6,6 +6,11 @@ import {
   createAiSdkRuntimeExecutor,
   parseAiSdkCandidateConfiguration,
 } from "../src/runtime/ai-sdk-runtime-executor";
+import {
+  createRuntimeShadowCoordinator,
+  type RuntimeExecutionRecord,
+  type RuntimeExecutor,
+} from "../src/runtime/runtime-shadow";
 
 const request = {
   conversationId: "ai-sdk-candidate-case",
@@ -64,7 +69,6 @@ describe("AI SDK 7 RuntimeExecutor candidate", () => {
       thinkingMode: "disabled",
       timeoutMs: 30_000,
       systemPrompt: "Foundry policy",
-      capabilityRegistryVersion: "1.0.0",
       toolDefinitions: [{ type: "function", function: { name: "search_learning_resources", description: "Search", parameters: { type: "object", properties: { query: { type: "string" } }, required: ["query"], additionalProperties: false } } }],
       generateText: generate,
       createTools: (_input, signal) => ({
@@ -102,7 +106,6 @@ describe("AI SDK 7 RuntimeExecutor candidate", () => {
       thinkingMode: "disabled",
       timeoutMs: 30_000,
       systemPrompt: "Foundry policy",
-      capabilityRegistryVersion: "1.0.0",
       toolDefinitions: [],
       createTools: () => ({ execute: async () => { throw new Error("unused"); } }),
       generateText: async (options: Record<string, unknown>) => {
@@ -119,6 +122,66 @@ describe("AI SDK 7 RuntimeExecutor candidate", () => {
 
     await expect(execution).rejects.toThrow("candidate cancelled");
     expect(receivedSignal).toBe(controller.signal);
+  });
+
+  it("keeps an AI SDK candidate failure out of the authoritative result", async () => {
+    const candidate = createAiSdkRuntimeExecutor({
+      model: {} as never,
+      modelId: "deepseek-chat",
+      thinkingMode: "disabled",
+      timeoutMs: 30_000,
+      systemPrompt: "Foundry policy",
+      toolDefinitions: [],
+      createTools: () => ({ execute: async () => { throw new Error("unused"); } }),
+      generateText: async () => { throw Object.assign(new Error("candidate offline"), { code: "CANDIDATE_OFFLINE" }); },
+    });
+    const authoritative: RuntimeExecutor = {
+      identity: { adapterId: "legacy-deepseek-agent", adapterVersion: "1.0.0", providerId: "deepseek", modelId: "deepseek-chat" },
+      execute: async (input) => ({
+        trace: {
+          traceId: "legacy-trace",
+          conversationId: input.request.conversationId,
+          inputOrigin: input.request.inputOrigin,
+          runPurpose: input.request.runPurpose,
+          initialRoute: input.executionPlan.route,
+          route: input.executionPlan.route,
+          obligations: input.executionPlan.obligations,
+          provider: "deepseek",
+          model: "deepseek-chat",
+          thinkingMode: "disabled",
+          promptVersion: input.policy.prompt.version,
+          capabilityRegistryVersion: input.policy.capabilityRegistry.version,
+          startedAt: "2026-07-18T00:00:00.000Z",
+          completedAt: "2026-07-18T00:00:01.000Z",
+          toolCalls: [],
+          finalResponse: { status: "ANSWERED", learnerMessage: "Legacy answer.", sourceRefs: [], evidenceRefs: [] },
+          latencyMs: 1000,
+        },
+        toolResults: [],
+      }),
+    };
+    const records: RuntimeExecutionRecord[] = [];
+    const coordinator = createRuntimeShadowCoordinator({
+      shadowEnabled: true,
+      authoritativeExecutor: authoritative,
+      shadowExecutor: candidate,
+      recorder: { record: async (record) => { records.push(record); } },
+      createId: (() => { const ids = ["legacy-execution", "candidate-execution"]; return () => ids.shift()!; })(),
+      now: () => "2026-07-18T00:00:02.000Z",
+    });
+
+    const execution = await coordinator.execute(normalizedInput);
+    await expect(execution.shadowCompletion).resolves.toBeUndefined();
+
+    expect(execution.authoritativeResult.trace.finalResponse.learnerMessage).toBe("Legacy answer.");
+    expect(records).toContainEqual(expect.objectContaining({
+      executionId: "candidate-execution",
+      parentAuthoritativeExecutionId: "legacy-execution",
+      role: "SHADOW",
+      runtimeAdapterId: "ai-sdk7-deepseek",
+      status: "FAILED",
+      terminalError: { code: "CANDIDATE_OFFLINE", message: "candidate offline" },
+    }));
   });
 
   it("executes offline through the installed official DeepSeek provider and AI SDK generateText primitive", async () => {
@@ -158,7 +221,6 @@ describe("AI SDK 7 RuntimeExecutor candidate", () => {
       thinkingMode: "disabled",
       timeoutMs: 30_000,
       systemPrompt: "Foundry policy",
-      capabilityRegistryVersion: "1.0.0",
       toolDefinitions: [{ type: "function", function: { name: "search_learning_resources", description: "Search", parameters: { type: "object", properties: { query: { type: "string" } }, required: ["query"], additionalProperties: false } } }],
       createTools: () => ({ execute: async () => ({ resultRef: "retrieval-1", sourceRefs: ["source-1"], evidenceRefs: ["retrieval-1"], data: { results: [{ sourceId: "source-1", sourceType: "TEACHER_NOTE", section: "one", score: 1 }] } }) }),
       createId: () => "official-provider-trace",
