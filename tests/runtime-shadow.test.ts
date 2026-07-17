@@ -81,7 +81,7 @@ describe("candidate-neutral runtime shadow coordination", () => {
     expect(execution.authoritativeResult.trace.finalResponse.learnerMessage).toBe("legacy answer");
     expect(authoritativeCalls).toBe(1);
     expect(shadowCalls).toBe(0);
-    expect(records).toEqual([expect.objectContaining({ executionId: "authoritative-execution", role: "AUTHORITATIVE", runtimeAdapterId: "legacy", status: "COMPLETED" })]);
+    expect(records).toEqual([expect.objectContaining({ schemaVersion: "1.1.0", executionId: "authoritative-execution", role: "AUTHORITATIVE", runtimeAdapterId: "legacy", status: "COMPLETED" })]);
   });
 
   it("runs an explicit shadow with the same plan while keeping the authoritative product result", async () => {
@@ -103,8 +103,8 @@ describe("candidate-neutral runtime shadow coordination", () => {
     expect(execution.authoritativeResult.trace.finalResponse.learnerMessage).toBe("legacy answer");
     expect(receivedPlans).toEqual([normalizedRequest.executionPlan, normalizedRequest.executionPlan]);
     expect(records).toEqual(expect.arrayContaining([
-      expect.objectContaining({ executionId: "authoritative-execution", role: "AUTHORITATIVE", runtimeAdapterId: "legacy" }),
-      expect.objectContaining({ executionId: "shadow-execution", parentAuthoritativeExecutionId: "authoritative-execution", role: "SHADOW", runtimeAdapterId: "candidate" }),
+      expect.objectContaining({ schemaVersion: "1.1.0", executionId: "authoritative-execution", role: "AUTHORITATIVE", runtimeAdapterId: "legacy" }),
+      expect.objectContaining({ schemaVersion: "1.1.0", executionId: "shadow-execution", parentAuthoritativeExecutionId: "authoritative-execution", role: "SHADOW", runtimeAdapterId: "candidate" }),
     ]));
   });
 
@@ -171,6 +171,38 @@ describe("candidate-neutral runtime shadow coordination", () => {
       failureStage: "EXECUTION",
       terminalError: { code: "CANDIDATE_DOWN", message: "candidate unavailable" },
     }));
+  });
+
+  it("records a pending shadow marker until candidate execution reaches a terminal state", async () => {
+    const records: RuntimeExecutionRecord[] = [];
+    const candidate = executor("candidate", () => {});
+    let completeCandidate!: (result: Awaited<ReturnType<RuntimeExecutor["execute"]>>) => void;
+    let candidateStarted!: () => void;
+    const started = new Promise<void>((resolve) => { candidateStarted = resolve; });
+    const coordinator = createRuntimeShadowCoordinator({
+      shadowEnabled: true,
+      authoritativeExecutor: executor("legacy", () => {}),
+      shadowExecutor: {
+        ...candidate,
+        execute: async () => await new Promise((resolve) => { completeCandidate = resolve; candidateStarted(); }),
+      },
+      recorder: { record: async (record) => { records.push(record); } },
+      createId: (() => { const ids = ["authoritative-execution", "shadow-execution"]; return () => ids.shift()!; })(),
+    });
+
+    const execution = await coordinator.execute(normalizedRequest);
+
+    expect(records).toContainEqual(expect.objectContaining({
+      executionId: "shadow-execution",
+      parentAuthoritativeExecutionId: "authoritative-execution",
+      role: "SHADOW",
+      status: "RUNNING",
+    }));
+
+    await started;
+    completeCandidate(await candidate.execute(normalizedRequest, new AbortController().signal));
+    await execution.shadowCompletion;
+    expect(records.at(-1)).toEqual(expect.objectContaining({ executionId: "shadow-execution", status: "COMPLETED" }));
   });
 
   it("bounds and records a candidate timeout without changing the authoritative result", async () => {
@@ -331,7 +363,7 @@ describe("candidate-neutral runtime shadow coordination", () => {
 
     const execution = await coordinator.execute(normalizedRequest);
     await execution.shadowCompletion;
-    const shadow = records.find((record) => record.role === "SHADOW")!;
+    const shadow = records.filter((record) => record.role === "SHADOW").at(-1)!;
 
     expect(shadow.toolCalls.map(({ name, order }) => [name, order])).toEqual([
       ["search_learning_resources", 0],

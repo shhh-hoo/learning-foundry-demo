@@ -39,6 +39,17 @@ describe("DeepSeek Agent Gateway", () => {
     expect(called).toBe(false);
   });
 
+  it("passes evalCaseId only for AgentEval transport metadata", async () => {
+    const requests: unknown[] = [];
+    const trace = { traceId: "agent-eval-trace", conversationId: "agent-eval", inputOrigin: "USER_INPUT", runPurpose: "AGENT_EVAL", provider: "deepseek", model: "configured", thinkingMode: "disabled", promptVersion: "1", capabilityRegistryVersion: "1", startedAt: "2026-07-16T10:00:00.000Z", completedAt: "2026-07-16T10:00:01.000Z", toolCalls: [], finalResponse: { status: "ANSWERED", learnerMessage: "Hello", sourceRefs: [] }, latencyMs: 1000 } satisfies AgentTrace;
+    const gateway = createAgentGateway({ configured: true, model: "configured", thinkingMode: "disabled", execution: { execute: async (request) => { requests.push(request); return trace; } } });
+    const valid = await gateway.handle(new Request("http://127.0.0.1:4176/agent/runs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ conversationId: "agent-eval", inputOrigin: "USER_INPUT", runPurpose: "AGENT_EVAL", evalCaseId: "case-1", messages: [{ role: "user", content: "hello" }] }) }));
+    const invalid = await gateway.handle(new Request("http://127.0.0.1:4176/agent/runs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ conversationId: "product", inputOrigin: "USER_INPUT", runPurpose: "PRODUCT", evalCaseId: "case-1", messages: [{ role: "user", content: "hello" }] }) }));
+    expect(valid.status).toBe(200);
+    expect(requests).toEqual([expect.objectContaining({ runPurpose: "AGENT_EVAL", evalCaseId: "case-1" })]);
+    expect(invalid.status).toBe(400);
+  });
+
   it("filters and clears in-memory evidence by runPurpose", async () => {
     const productTrace = { traceId: "product-trace", conversationId: "product", inputOrigin: "USER_INPUT", runPurpose: "PRODUCT", provider: "deepseek", model: "configured", thinkingMode: "disabled", promptVersion: "1", capabilityRegistryVersion: "1", startedAt: "2026-07-16T10:00:00.000Z", completedAt: "2026-07-16T10:00:01.000Z", toolCalls: [], finalResponse: { status: "ANSWERED", learnerMessage: "Product", sourceRefs: [] }, latencyMs: 1000 } satisfies AgentTrace;
     const agentEvalTrace = { ...productTrace, traceId: "agent-eval-trace", conversationId: "agent-eval", runPurpose: "AGENT_EVAL" } satisfies AgentTrace;

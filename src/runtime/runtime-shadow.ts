@@ -2,8 +2,10 @@ import type { AgentExecutionPlan, AgentObligations, AgentResponseEnvelope, Agent
 import type { VersionedHash } from "../agent/trace-store";
 
 export type RuntimeExecutionRole = "AUTHORITATIVE" | "SHADOW";
-export type RuntimeExecutionStatus = "COMPLETED" | "FAILED" | "TIMED_OUT" | "NOT_CONFIGURED";
+export type RuntimeExecutionStatus = "RUNNING" | "COMPLETED" | "FAILED" | "TIMED_OUT" | "NOT_CONFIGURED";
 export type RuntimeFailureStage = "CONFIGURATION" | "EXECUTION" | "TIMEOUT";
+export const RUNTIME_EXECUTION_SCHEMA_VERSION = "1.1.0" as const;
+export type RuntimeExecutionSchemaVersion = "1.0.0" | typeof RUNTIME_EXECUTION_SCHEMA_VERSION;
 
 export interface RuntimePolicySnapshot {
   readonly prompt: VersionedHash;
@@ -41,13 +43,14 @@ export interface NormalizedRuntimeToolCall extends AgentToolCallRecord {
 }
 
 export interface RuntimeExecutionRecord {
-  readonly schemaVersion: "1.0.0";
+  readonly schemaVersion: RuntimeExecutionSchemaVersion;
   readonly executionId: string;
   readonly parentAuthoritativeExecutionId?: string;
   readonly role: RuntimeExecutionRole;
   readonly runPurpose: RunPurpose;
   readonly conversationId: string;
   readonly caseId?: string;
+  readonly agentTraceId?: string;
   readonly runtimeAdapterId: string;
   readonly runtimeAdapterVersion: string;
   readonly providerId: string;
@@ -58,12 +61,15 @@ export interface RuntimeExecutionRecord {
   readonly sourceRefs: readonly string[];
   readonly evidenceRefs: readonly string[];
   readonly diagnosisTraceId?: string;
+  readonly diagnosisResult?: unknown;
+  readonly diagnosisFailureCode?: string;
+  readonly finalResponse?: AgentResponseEnvelope;
   readonly finalResponseStatus?: AgentResponseEnvelope["status"];
   readonly latencyMs?: number;
   readonly tokenUsage?: TokenUsage;
   readonly estimatedCostUsd?: number;
   readonly startedAt: string;
-  readonly completedAt: string;
+  readonly completedAt?: string;
   readonly status: RuntimeExecutionStatus;
   readonly terminalError?: { readonly code: string; readonly message: string };
   readonly failureStage?: RuntimeFailureStage;
@@ -111,14 +117,20 @@ function completedRecord(
   completedAt: string,
   parentAuthoritativeExecutionId?: string,
 ): RuntimeExecutionRecord {
+  const diagnosisCall = [...result.trace.toolCalls].reverse().find((call) => call.name === "run_learner_diagnosis" && call.status === "SUCCEEDED");
+  const diagnosisResult = diagnosisCall ? result.toolResults.find((item) => item.resultRef === diagnosisCall.resultRef)?.data : undefined;
+  const diagnosisFailureCode = diagnosisResult && typeof diagnosisResult === "object" && "diagnosis" in diagnosisResult
+    && diagnosisResult.diagnosis && typeof diagnosisResult.diagnosis === "object" && "failureCode" in diagnosisResult.diagnosis
+    && typeof diagnosisResult.diagnosis.failureCode === "string" ? diagnosisResult.diagnosis.failureCode : undefined;
   return {
-    schemaVersion: "1.0.0",
+    schemaVersion: RUNTIME_EXECUTION_SCHEMA_VERSION,
     executionId,
     ...(parentAuthoritativeExecutionId ? { parentAuthoritativeExecutionId } : {}),
     role,
     runPurpose: input.request.runPurpose,
     conversationId: input.request.conversationId,
     ...(input.caseId ? { caseId: input.caseId } : {}),
+    agentTraceId: result.trace.traceId,
     runtimeAdapterId: executor.identity.adapterId,
     runtimeAdapterVersion: executor.identity.adapterVersion,
     providerId: result.trace.provider,
@@ -129,6 +141,9 @@ function completedRecord(
     sourceRefs: result.trace.finalResponse.sourceRefs,
     evidenceRefs: result.trace.finalResponse.evidenceRefs ?? [],
     ...(result.trace.finalResponse.diagnosisTraceId ? { diagnosisTraceId: result.trace.finalResponse.diagnosisTraceId } : {}),
+    ...(diagnosisResult === undefined ? {} : { diagnosisResult }),
+    ...(diagnosisFailureCode ? { diagnosisFailureCode } : {}),
+    finalResponse: result.trace.finalResponse,
     finalResponseStatus: result.trace.finalResponse.status,
     latencyMs: result.trace.latencyMs,
     ...(result.trace.tokenUsage ? { tokenUsage: result.trace.tokenUsage } : {}),
@@ -152,7 +167,7 @@ function failedRecord(
   parentAuthoritativeExecutionId?: string,
 ): RuntimeExecutionRecord {
   return {
-    schemaVersion: "1.0.0",
+    schemaVersion: RUNTIME_EXECUTION_SCHEMA_VERSION,
     executionId,
     ...(parentAuthoritativeExecutionId ? { parentAuthoritativeExecutionId } : {}),
     role,
@@ -173,6 +188,36 @@ function failedRecord(
     status,
     terminalError,
     failureStage,
+    completeness: { trace: false, finalResponse: false, toolEvidence: false },
+  };
+}
+
+function runningRecord(
+  executionId: string,
+  input: NormalizedRuntimeExecutionRequest,
+  executor: RuntimeExecutor,
+  startedAt: string,
+  parentAuthoritativeExecutionId: string,
+): RuntimeExecutionRecord {
+  return {
+    schemaVersion: RUNTIME_EXECUTION_SCHEMA_VERSION,
+    executionId,
+    parentAuthoritativeExecutionId,
+    role: "SHADOW",
+    runPurpose: input.request.runPurpose,
+    conversationId: input.request.conversationId,
+    ...(input.caseId ? { caseId: input.caseId } : {}),
+    runtimeAdapterId: executor.identity.adapterId,
+    runtimeAdapterVersion: executor.identity.adapterVersion,
+    providerId: executor.identity.providerId,
+    modelId: executor.identity.modelId,
+    route: input.executionPlan.route,
+    obligations: input.executionPlan.obligations,
+    toolCalls: [],
+    sourceRefs: [],
+    evidenceRefs: [],
+    startedAt,
+    status: "RUNNING",
     completeness: { trace: false, finalResponse: false, toolEvidence: false },
   };
 }
@@ -206,7 +251,7 @@ export function createRuntimeShadowCoordinator(options: RuntimeShadowCoordinator
       catch { /* comparison observability must not affect the authoritative path */ }
     }
   };
-  const executeShadow = (input: NormalizedRuntimeExecutionRequest, authoritativeExecutionId: string): Promise<void> => {
+  const executeShadow = async (input: NormalizedRuntimeExecutionRequest, authoritativeExecutionId: string): Promise<void> => {
     if (!options.shadowEnabled) return Promise.resolve();
     const shadowExecutionId = createId();
     if (!options.shadowExecutor) {
@@ -229,25 +274,25 @@ export function createRuntimeShadowCoordinator(options: RuntimeShadowCoordinator
     const timeoutMs = options.shadowTimeoutMs ?? 5000;
     const controller = new AbortController();
     let timeout: ReturnType<typeof setTimeout> | undefined;
-    const timedExecution = Promise.race([
-      options.shadowExecutor.execute(input, controller.signal),
-      new Promise<never>((_resolve, reject) => {
-        timeout = setTimeout(() => {
-          const error = new ShadowExecutionTimeoutError(timeoutMs);
-          controller.abort(error);
-          reject(error);
-        }, timeoutMs);
-      }),
-    ]);
-    return timedExecution
-      .then(async (shadowResult) => {
-        await recordSafely(completedRecord(shadowExecutionId, "SHADOW", input, options.shadowExecutor!, shadowResult, now(), authoritativeExecutionId));
-      })
-      .catch(async (error) => {
-        const timedOut = error instanceof ShadowExecutionTimeoutError;
-        await recordSafely(failedRecord(shadowExecutionId, "SHADOW", input, options.shadowExecutor!, timedOut ? "TIMED_OUT" : "FAILED", terminalError(error, "SHADOW_EXECUTION_FAILED"), timedOut ? "TIMEOUT" : "EXECUTION", now(), authoritativeExecutionId));
-      })
-      .finally(() => { if (timeout) clearTimeout(timeout); });
+    await recordSafely(runningRecord(shadowExecutionId, input, options.shadowExecutor, now(), authoritativeExecutionId));
+    try {
+      const shadowResult = await Promise.race([
+        options.shadowExecutor.execute(input, controller.signal),
+        new Promise<never>((_resolve, reject) => {
+          timeout = setTimeout(() => {
+            const error = new ShadowExecutionTimeoutError(timeoutMs);
+            controller.abort(error);
+            reject(error);
+          }, timeoutMs);
+        }),
+      ]);
+      await recordSafely(completedRecord(shadowExecutionId, "SHADOW", input, options.shadowExecutor, shadowResult, now(), authoritativeExecutionId));
+    } catch (error) {
+      const timedOut = error instanceof ShadowExecutionTimeoutError;
+      await recordSafely(failedRecord(shadowExecutionId, "SHADOW", input, options.shadowExecutor, timedOut ? "TIMED_OUT" : "FAILED", terminalError(error, "SHADOW_EXECUTION_FAILED"), timedOut ? "TIMEOUT" : "EXECUTION", now(), authoritativeExecutionId));
+    } finally {
+      if (timeout) clearTimeout(timeout);
+    }
   };
   return {
     async execute(input: NormalizedRuntimeExecutionRequest): Promise<{ readonly authoritativeResult: RuntimeExecutionResult; readonly shadowCompletion: Promise<void> }> {

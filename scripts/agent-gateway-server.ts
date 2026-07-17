@@ -84,6 +84,7 @@ const legacyDeepSeekAgentExecution: AgentExecution | null = runtimeCoordinator ?
         capabilityRegistry: { version: capabilities.version, contentHash: contentHash(JSON.stringify(capabilities)) },
         toolDefinitions: { version: toolConfig.version, contentHash: contentHash(JSON.stringify(toolConfig)) },
       },
+      ...(request.evalCaseId ? { caseId: request.evalCaseId } : {}),
     });
     void execution.shadowCompletion;
     return execution.authoritativeResult;
