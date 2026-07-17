@@ -61,8 +61,8 @@ describe("runtime parity artifact persistence", () => {
     expect(JSON.parse(contents.at(-1)!)).toMatchObject({ reportId: "report-1", schemaVersion: "1.0.0" });
   });
 
-  it("rejects unsafe report identifiers", async () => {
+  it.each(["../escape", ".", ".."])('rejects unsafe report identifier "%s"', async (reportId) => {
     const directory = await mkdtemp(join(tmpdir(), "runtime-parity-")); directories.push(directory);
-    await expect(new RuntimeParityArtifactRepository(directory).save({ ...report(), reportId: "../escape" })).rejects.toThrow("INVALID_RUNTIME_PARITY_REPORT_ID");
+    await expect(new RuntimeParityArtifactRepository(directory).save({ ...report(), reportId })).rejects.toThrow("INVALID_RUNTIME_PARITY_REPORT_ID");
   });
 });

@@ -1,9 +1,9 @@
 import { mkdir, rename, writeFile } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { basename, join, resolve, sep } from "node:path";
 import type { RuntimeParityReport } from "../../src/runtime/runtime-parity";
 
 function safeReportId(value: string): string {
-  if (!/^[A-Za-z0-9._-]+$/u.test(value)) throw new Error("INVALID_RUNTIME_PARITY_REPORT_ID");
+  if (value === "." || value === ".." || !/^[A-Za-z0-9._-]+$/u.test(value)) throw new Error("INVALID_RUNTIME_PARITY_REPORT_ID");
   return value;
 }
 
@@ -33,7 +33,9 @@ export class RuntimeParityArtifactRepository {
   constructor(readonly rootDirectory: string) {}
 
   async save(report: RuntimeParityReport): Promise<string> {
-    const directory = join(this.rootDirectory, safeReportId(report.reportId));
+    const root = resolve(this.rootDirectory);
+    const directory = resolve(root, safeReportId(report.reportId));
+    if (!directory.startsWith(`${root}${sep}`)) throw new Error("INVALID_RUNTIME_PARITY_REPORT_ID");
     await mkdir(directory, { recursive: true });
     await Promise.all([
       atomicWrite(directory, "plan.json", report.plan),

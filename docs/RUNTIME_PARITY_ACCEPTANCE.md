@@ -4,7 +4,7 @@ Docs authority: `learning-foundry-docs@e6ec2408d18fc6850e92c996b36712dbd5be9df5`
 
 Corrected boundary base: `codex/runtime-boundary-program@df0aaa062128a2657e28c862b16b18a0247a4c68`
 
-Shadow foundation base: `codex/runtime-shadow-foundation@21b1208e8b520c62696b71dba0902c5c76851453`
+Shadow foundation base: `codex/runtime-shadow-foundation@198f67a6a0121c835c8c8d98dd5de16994a6ddd6`
 
 Parity implementation checkpoint: `2653544e5bc78168a64e91c1d6eaab4c2b081bc5`
 
@@ -16,7 +16,7 @@ This stacked milestone adds a Foundry-owned, case-level comparison harness above
 
 ## Versioned data model
 
-`RuntimeParityPlan`, `RuntimeParityCase`, `RuntimeParityExecution`, `RuntimeParityDifference`, `RuntimeParityCaseResult` and `RuntimeParityReport` use schema `1.0.0`. `RuntimeExecutionRecord` remains schema `1.0.0`, carries the observable final response, Agent trace reference and normalized Diagnosis result/failure evidence, and uses `RUNNING` before a shadow reaches `COMPLETED`, `FAILED` or `TIMED_OUT`.
+`RuntimeParityPlan`, `RuntimeParityCase`, `RuntimeParityExecution`, `RuntimeParityDifference`, `RuntimeParityCaseResult` and `RuntimeParityReport` use schema `1.0.0`. Terminal-only `RuntimeExecutionRecord` schema `1.0.0` remains readable for existing evidence. New records use schema `1.1.0`, which explicitly adds the `RUNNING` lifecycle, optional `completedAt`, observable final response, Agent trace reference and normalized Diagnosis result/failure evidence. New writes reject schema `1.0.0`; the read layer accepts terminal `1.0.0` records from the former flat role directories and prefers purpose-separated records with the same execution ID.
 
 The report separates three axes:
 
@@ -32,7 +32,7 @@ The five overall command/report classifications are:
 - `NOT_EXECUTED` — one side, including the candidate, has no execution evidence; this is never parity;
 - `INFRASTRUCTURE_FAILURE` — authoritative or candidate execution failed, timed out or was not configured, separate from behavioral regression.
 
-Tool `resultRef`, Trainer trace IDs and execution IDs are execution-local and are never compared literally. Evidence comparison uses evidence class plus producing tool/order/status lineage. A reference equal to the declared Diagnosis trace becomes `DIAGNOSIS_TRACE`; any other unresolved reference is an integrity regression. Diagnosis comparison uses governed component identity/version, decision, failure code, first pedagogical issue and recommended support. Structural equality ignores object-key insertion order; `sourceRefs` are a set, evidence lineage is normalized, and tool-call order remains significant. Provider/adapter identities are provenance, not behavioral equivalence fields.
+Tool `resultRef`, Trainer trace IDs and execution IDs are execution-local and are never compared literally. Evidence comparison uses evidence class plus producing tool/order/status lineage. A reference equal to the declared Diagnosis trace becomes `DIAGNOSIS_TRACE`; every other unresolved or unlinked reference fails the governed `evidenceIntegrity` check. That check is directional: Legacy valid/candidate invalid is `CANDIDATE_REGRESSION`, Legacy invalid/candidate valid is `CANDIDATE_IMPROVEMENT`, and both invalid is `SHARED_QUALITY_FAILURE`. Diagnosis comparison uses governed component identity/version, decision, failure code, first pedagogical issue and recommended support. Structural equality ignores object-key insertion order; `sourceRefs` are a set, evidence lineage is normalized, and tool-call order remains significant. Provider/adapter identities are provenance, not behavioral equivalence fields.
 
 ## Selection, grading and coverage
 
@@ -53,21 +53,21 @@ RUNTIME_PARITY_SELECTION=BASELINE npm run runtime:parity:self-check -- --run <ev
 RUNTIME_PARITY_SHADOW_WAIT_MS=10000 npm run runtime:parity:checkpoint -- --run <evalRunId>
 ```
 
-The fixture is deterministic offline validation. Checkpoint and baseline consume role-separated records for an existing live AgentEval run. Self-check clones the observed Legacy record only inside the comparison harness and labels the report `LEGACY_SELF_COMPARISON`; it validates harness wiring and is not candidate parity.
+The fixture is deterministic offline validation. Checkpoint and baseline consume `agent-eval/{authoritative,shadow}` records for an existing live AgentEval run. The read-only compatibility path can consume purpose-filtered terminal `1.0.0` records from the former flat role directories, but all new writes use the physically separated purpose/role layout. Self-check clones the observed Legacy record only inside the comparison harness and labels the report `LEGACY_SELF_COMPARISON`; it validates harness wiring and is not candidate parity.
 
 Candidate commands poll matching shadow records for a bounded 5000 ms by default, configurable through `RUNTIME_PARITY_SHADOW_WAIT_MS`. A `RUNNING` record remaining at the deadline is pending infrastructure evidence; no matching record is genuinely absent; terminal `TIMED_OUT` and `FAILED` records remain distinct. Live commands distinguish outcomes with explicit messages and non-zero exits: regression/not-executed (`1`), candidate unavailable (`2`), authoritative evidence unavailable (`3`), infrastructure failure including pending timeout (`4`), unexpected command failure (`5`) and review required (`6`). No operational delta is automatically accepted. A candidate comparison exits `0` only when every executed case is exact, governed quality passes and operational evidence matches.
 
-Artifacts are written under gitignored `.runtime-parity-results/<reportId>/` as `plan.json`, `authoritative.json`, `candidate.json`, `differences.json` and `report.json`. Role evidence is separate, case order is deterministic, and hidden reasoning, credentials and private paths are removed before persistence.
+Artifacts are written under gitignored `.runtime-parity-results/<reportId>/` as `plan.json`, `authoritative.json`, `candidate.json`, `differences.json` and `report.json`. Report IDs reject dot segments and the repository verifies the resolved artifact directory remains beneath its configured root. Role evidence is separate, case order is deterministic, and hidden reasoning, credentials and private paths are removed before persistence.
 
 ## Automated validation
 
-- `npm test` — 32 files, 217 tests passed;
+- `npm test` — 32 files, 222 tests passed;
 - `npm run check` — passed;
 - `npm run build` — passed;
 - `git diff --check` — passed;
 - `npm run runtime:parity:fixture` — `EXACT_MATCH`.
 
-The parity matrix covers exact equivalence; route and obligation drift; missing required and present forbidden tools; ordered tool status; Diagnosis-trace linkage and unrelated-reference rejection; object-key-order-independent structural equality; source-reference set equality; candidate regression, candidate improvement and shared quality failure; delayed shadow arrival; pending versus absent evidence; candidate timeout/failure; authoritative failure; exact Eval-run/conversation binding that rejects stale records when a failed case has no Agent trace ID; operational review-required/non-zero CLI behavior; missing usage/cost; partial/unplanned/not-run coverage; deterministic serialization; safe redaction; and candidate-failure isolation.
+The parity matrix covers exact equivalence; route and obligation drift; missing required and present forbidden tools; ordered tool status; Diagnosis-trace linkage and directional evidence-integrity quality; object-key-order-independent structural equality; source-reference set equality; candidate regression, candidate improvement and shared quality failure; delayed shadow arrival; pending versus absent evidence; candidate timeout/failure; authoritative failure; exact Eval-run/conversation binding that rejects stale records when a failed case has no Agent trace ID; 1.0 terminal-record read compatibility and 1.1-only writes; operational review-required/non-zero CLI behavior; missing usage/cost; partial/unplanned/not-run coverage; deterministic serialization; dot-segment/root-containment safety; safe redaction; and candidate-failure isolation.
 
 ## Genuine live evidence
 
@@ -91,6 +91,8 @@ After explicit informed approval to send `SCHOOL_INTERNAL` corpus-derived prompt
 Both attempts are retained. The second pass does not erase the first failure; together they show provider variance and support the readiness requirement for repeated-run reliability evidence. Self-comparison validates mapping only and does not establish candidate parity.
 
 The final review-hardened head produced checkpoint `agenteval-2026-07-17T05-35-32-868Z-21b7fe8f`: complete 6/6 evidence with 5/6 passing, while `C-complete-registered-diagnosis` failed with `INVALID_AGENT_RESPONSE`. An initial self-comparison report (`runtime-parity-2026-07-17T05-36-10-240Z-5a36f3ca`) was rejected as invalid evidence because it exposed a stale-record join: the failed case had no Agent trace ID and the CLI selected an older successful record sharing the same case ID. After binding records to the exact Eval-run conversation, regression test coverage was added and the same immutable run was compared again as `runtime-parity-2026-07-17T05-37-47-300Z-94b1a987`: complete 6/6 evidence, five `EXACT_MATCH`, one preserved authoritative infrastructure failure, exit `4`. No retry was used to replace this result with a favorable provider sample.
+
+After the record-version, purpose/role storage, evidence-integrity and artifact-path corrections, that same immutable run was read through the explicit terminal `1.0.0` compatibility path and compared again without a provider call as `runtime-parity-2026-07-17T06-15-02-462Z-569a76a2`: complete 6/6 evidence, five `EXACT_MATCH`, one preserved authoritative infrastructure failure, exit `4`. The result is unchanged and no new model sample was taken.
 
 ## Non-claims, rollback and authority
 
