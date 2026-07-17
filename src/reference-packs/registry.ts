@@ -13,8 +13,14 @@ export const referencePackRegistry = createReferencePackRegistry([
   chemistryCaie9701ReferencePack,
 ]);
 
+function validatedPublishedSnapshot(implementation: unknown): PublishedDiagnosticLearningComponent {
+  const snapshot = structuredClone(implementation);
+  parsePublishedComponent(snapshot);
+  return snapshot as PublishedDiagnosticLearningComponent;
+}
+
 export const registeredPublishedDiagnosticComponents: readonly PublishedDiagnosticLearningComponent[] =
-  referencePackRegistry.listComponents(packId).map(({ implementation }) => parsePublishedComponent(implementation));
+  referencePackRegistry.listComponents(packId).map(({ implementation }) => validatedPublishedSnapshot(implementation));
 
 export const registeredAgentCapabilities: {
   readonly version: string;
@@ -25,4 +31,3 @@ export const registeredAgentCapabilities: {
     implementation as LegacyAgentCapabilityRecord,
   ),
 };
-

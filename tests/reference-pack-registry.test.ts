@@ -46,6 +46,7 @@ describe("Reference Pack registration", () => {
   it("drives the current export and capability entrypoints from the registered Pack", () => {
     expect(referencePackRegistry.listManifests().map((manifest) => manifest.id)).toEqual(["chemistry-caie-9701"]);
     expect(registeredPublishedDiagnosticComponents).toEqual(publishedComponents);
+    expect(JSON.stringify(registeredPublishedDiagnosticComponents)).toBe(JSON.stringify(publishedComponents));
     expect(registeredAgentCapabilities).toEqual(capabilityRegistrySnapshot);
     expect(registeredAgentCapabilities).toMatchObject({
       version: "1.0.0",
