@@ -6,6 +6,7 @@ import { EvidenceSufficiencyAssessor } from "./control-plane/evidence-sufficienc
 import { ToolExecutionGovernor } from "./control-plane/tool-execution-governor";
 import { DiagnosisWorkflow } from "./control-plane/diagnosis-workflow";
 import type { EvidenceSufficiencyAssessment } from "./control-plane/observability";
+import type { AgentRunObservability } from "./trace-store";
 
 export interface AgentToolResult { readonly resultRef: string; readonly data: unknown; readonly evidenceData?: unknown; readonly executedArguments?: unknown; readonly sourceRefs?: readonly string[]; readonly evidenceRefs?: readonly string[]; readonly claimRefs?: readonly string[] }
 export interface AgentToolExecutor { execute(name: string, argumentsValue: unknown): Promise<AgentToolResult> }
@@ -28,6 +29,7 @@ interface RunAgentOptions {
   readonly onToolResult?: (result: { readonly name: string; readonly resultRef: string; readonly data: unknown }) => void;
   readonly onModelResponse?: (message: ModelMessage, usage: TokenUsage | undefined) => void | Promise<void>;
   readonly onToolExecution?: (execution: { readonly name: string; readonly arguments: unknown; readonly resultRef: string; readonly status: "SUCCEEDED" | "FAILED"; readonly result?: unknown; readonly error?: { readonly code: string; readonly message: string } }) => void | Promise<void>;
+  readonly onControlPlaneUpdate?: (observability: AgentRunObservability) => void | Promise<void>;
 }
 
 export class AgentRunError extends Error {
@@ -165,6 +167,13 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentTrace> {
   const evidenceAssessor = new EvidenceSufficiencyAssessor();
   const governor = new ToolExecutionGovernor(resolvedPlan);
   const diagnosisWorkflow = new DiagnosisWorkflow();
+  const controlPlaneSnapshot = (stopReason?: string, responseComposed = false): AgentRunObservability => ({
+    budgetConsumption: governor.snapshot(),
+    evidenceAssessments: structuredClone(evidenceAssessments),
+    ...(stopReason ? { stopReason } : {}),
+    ...(resolvedPlan.execution.mode === "GOVERNED_WORKFLOW" ? { governedWorkflow: diagnosisWorkflow.trace(records, responseComposed) } : {}),
+  });
+  await options.onControlPlaneUpdate?.(controlPlaneSnapshot());
 
   for (let round = 0; round < resolvedPlan.toolPolicy.maximumModelSteps; round += 1) {
     const providerTools = providerToolsForPlan(resolvedPlan, options.toolDefinitions, records, evidenceAssessments, governor, diagnosisWorkflow);
@@ -220,13 +229,16 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentTrace> {
           records.push({ name: call.function.name, arguments: executedArguments, resultRef: toolResult.resultRef, status: "SUCCEEDED" });
           const assessment = evidenceAssessor.assess({ toolId: call.function.name, toolCallIndex: records.length - 1, status: "SUCCEEDED", result: evidenceData });
           evidenceAssessments.push(assessment);
+          await options.onControlPlaneUpdate?.(controlPlaneSnapshot(assessment.continueOrStopReason));
           messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify({ resultRef: toolResult.resultRef, data: toolResult.data, evidenceAssessment: assessment }) });
         } catch (error) {
           const resultRef = `tool-error-${call.id}`;
           const structuredError = { code: error && typeof error === "object" && "code" in error && typeof error.code === "string" ? error.code : "TOOL_EXECUTION_FAILED", message: error instanceof Error ? error.message : String(error) };
           await options.onToolExecution?.({ name: call.function.name, arguments: parsed, resultRef, status: "FAILED", error: structuredError });
           records.push({ name: call.function.name, arguments: parsed, resultRef, status: "FAILED" });
-          evidenceAssessments.push(evidenceAssessor.assess({ toolId: call.function.name, toolCallIndex: records.length - 1, status: "FAILED" }));
+          const assessment = evidenceAssessor.assess({ toolId: call.function.name, toolCallIndex: records.length - 1, status: "FAILED" });
+          evidenceAssessments.push(assessment);
+          await options.onControlPlaneUpdate?.(controlPlaneSnapshot(assessment.continueOrStopReason));
           messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify({ resultRef, error: error instanceof Error ? error.message : String(error) }) });
         }
       }
@@ -243,6 +255,7 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentTrace> {
       const stopReason = response.status === "NEEDS_MORE_EVIDENCE" && latestEvidence
         ? latestEvidence.continueOrStopReason
         : resolvedPlan.execution.mode === "GOVERNED_WORKFLOW" ? "Governed workflow completed in its application-owned order." : "Execution Plan requirements satisfied.";
+      await options.onControlPlaneUpdate?.(controlPlaneSnapshot(stopReason, true));
       return {
         traceId,
         conversationId: options.request.conversationId,

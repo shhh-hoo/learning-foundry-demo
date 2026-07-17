@@ -71,8 +71,12 @@ describe("AgentTraceRepository", () => {
   it("persists partial failed runs and supports filtered queries", async () => {
     const root = await directory(); const repository = new AgentTraceRepository(root);
     await repository.start({ traceId: "trace-failed", request: { conversationId: "c-2", inputOrigin: "PRESET_INPUT", runPurpose: "AGENT_EVAL", messages: [{ role: "user", content: "working" }] }, initialRoute: "LEARNER_DIAGNOSIS_INCOMPLETE", provider: "deepseek", model: "configured", thinkingMode: "disabled", prompt: { version: "1.3.0", contentHash: "p" }, capabilityRegistry: { version: "1", contentHash: "c" }, toolDefinitions: { version: "1", contentHash: "t" }, startedAt: "2026-07-16T11:00:00.000Z" });
-    await repository.fail("trace-failed", { code: "DEEPSEEK_API_ERROR", message: "provider unavailable" }, "2026-07-16T11:00:01.000Z");
-    await expect(new AgentTraceRepository(root).get("trace-failed")).resolves.toMatchObject({ status: "FAILED", initialRoute: "LEARNER_DIAGNOSIS_INCOMPLETE", terminalError: { code: "DEEPSEEK_API_ERROR" } });
+    await repository.fail("trace-failed", { code: "DEEPSEEK_API_ERROR", message: "provider unavailable" }, "2026-07-16T11:00:01.000Z", {
+      budgetConsumption: [{ toolId: "list_capabilities", consumed: 1, maximum: 1 }],
+      evidenceAssessments: [{ assessmentId: "assessment-1", toolId: "list_capabilities", toolCallIndex: 0, outcome: "EXECUTION_FAILED", topicalFit: "UNKNOWN", sourceAuthority: "UNKNOWN", coverage: "NONE", missingAspects: ["successful tool execution"], lineageComplete: false, contaminationRisk: "UNKNOWN", anotherCallJustified: false, continueOrStopReason: "Stop: tool failed." }],
+      stopReason: "DEEPSEEK_API_ERROR: provider unavailable",
+    });
+    await expect(new AgentTraceRepository(root).get("trace-failed")).resolves.toMatchObject({ status: "FAILED", initialRoute: "LEARNER_DIAGNOSIS_INCOMPLETE", terminalError: { code: "DEEPSEEK_API_ERROR" }, budgetConsumption: [{ toolId: "list_capabilities", consumed: 1, maximum: 1 }], evidenceAssessments: [{ outcome: "EXECUTION_FAILED" }], stopReason: "DEEPSEEK_API_ERROR: provider unavailable" });
     await expect(repository.query({ conversationId: "c-2", status: "FAILED", inputOrigin: "PRESET_INPUT", runPurpose: "AGENT_EVAL", startedFrom: "2026-07-16T10:59:00.000Z" })).resolves.toHaveLength(1);
   });
 

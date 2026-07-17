@@ -257,4 +257,27 @@ describe("real agent orchestration contract", () => {
     await expect(runAgent({ ...base, modelClient: client(repeated), tools: { execute: async () => ({ resultRef: "capabilities", data: [] }) } }))
       .rejects.toEqual(new AgentRunError("AGENT_TOOL_LOOP_LIMIT_EXCEEDED", "The model requested tools after six rounds."));
   });
+
+  it("emits the latest Control Plane snapshot before a failed run terminates", async () => {
+    const snapshots: import("../src/agent/trace-store").AgentRunObservability[] = [];
+    const modelClient = client([
+      { message: { role: "assistant", content: null, tool_calls: [{ id: "failed-search", type: "function", function: { name: "search_learning_resources", arguments: '{"query":"missing"}' } }] } },
+      { message: { role: "assistant", content: JSON.stringify({ status: "ANSWERED", learnerMessage: "unsupported", sourceRefs: [], evidenceRefs: [] }) } },
+      { message: { role: "assistant", content: JSON.stringify({ status: "ANSWERED", learnerMessage: "still unsupported", sourceRefs: [], evidenceRefs: [] }) } },
+    ]);
+
+    await expect(runAgent({
+      ...base,
+      toolDefinitions: [{ type: "function", function: { name: "search_learning_resources" } }],
+      modelClient,
+      tools: { execute: async () => { throw new Error("retrieval unavailable"); } },
+      onControlPlaneUpdate: (snapshot) => { snapshots.push(snapshot); },
+    })).rejects.toMatchObject({ code: "ROUTE_POLICY_REJECTED" });
+
+    expect(snapshots.at(-1)).toMatchObject({
+      budgetConsumption: expect.arrayContaining([{ toolId: "search_learning_resources", consumed: 1, maximum: 2 }]),
+      evidenceAssessments: [expect.objectContaining({ outcome: "EXECUTION_FAILED" })],
+      stopReason: expect.stringContaining("required tool did not produce Evidence"),
+    });
+  });
 });

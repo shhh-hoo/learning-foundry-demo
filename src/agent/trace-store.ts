@@ -83,18 +83,20 @@ export interface AgentRunQuery {
   readonly startedTo?: string;
 }
 
+export interface AgentRunObservability {
+  readonly budgetConsumption?: readonly ToolBudgetConsumption[];
+  readonly evidenceAssessments?: readonly EvidenceSufficiencyAssessment[];
+  readonly stopReason?: string;
+  readonly governedWorkflow?: GovernedWorkflowTrace;
+}
+
 export interface AgentTraceStore {
   start(input: AgentRunStart): Promise<void>;
   get(traceId: string): Promise<PersistedAgentRun | null>;
   appendModelResponse(traceId: string, message: ObservableAgentMessage, usage?: TokenUsage): Promise<void>;
   appendToolExecution(traceId: string, execution: PersistedToolExecution): Promise<void>;
-  complete(traceId: string, finalResponse: AgentResponseEnvelope, completedAt: string, route?: AgentRoute, observability?: {
-    readonly budgetConsumption?: readonly ToolBudgetConsumption[];
-    readonly evidenceAssessments?: readonly EvidenceSufficiencyAssessment[];
-    readonly stopReason?: string;
-    readonly governedWorkflow?: GovernedWorkflowTrace;
-  }): Promise<void>;
-  fail(traceId: string, terminalError: { readonly code: string; readonly message: string }, completedAt: string): Promise<void>;
+  complete(traceId: string, finalResponse: AgentResponseEnvelope, completedAt: string, route?: AgentRoute, observability?: AgentRunObservability): Promise<void>;
+  fail(traceId: string, terminalError: { readonly code: string; readonly message: string }, completedAt: string, observability?: AgentRunObservability): Promise<void>;
   query(query?: AgentRunQuery): Promise<readonly PersistedAgentRun[]>;
   clear(): Promise<void>;
 }
