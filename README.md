@@ -73,7 +73,7 @@ Current runtime infrastructure is reached through narrow contracts for Agent exe
 
 The Agent Gateway also contains a candidate-neutral shadow foundation. It is default-off, always returns the Legacy authoritative result, isolates candidate failure and writes role-separated normalized comparison records. No candidate implementation or framework dependency is included.
 
-The case-level runtime parity harness consumes those role-separated records, reuses AgentEval cases and graders, and writes redacted comparison artifacts under `.runtime-parity-results/`. Missing candidate evidence is `NOT_EXECUTED` and exits non-zero. `runtime:parity:self-check` is explicitly Legacy harness validation, not candidate parity.
+The case-level runtime parity harness consumes those role-separated records, reuses AgentEval cases and graders, and writes redacted comparison artifacts under `.runtime-parity-results/`. It reports behavioral equivalence, directional governed quality and operational impact separately. Candidate improvements, shared quality failures and all latency/usage/cost differences require review and exit non-zero; missing candidate evidence is `NOT_EXECUTED`. `runtime:parity:self-check` is explicitly Legacy harness validation, not candidate parity.
 
 ## Documentation
 
