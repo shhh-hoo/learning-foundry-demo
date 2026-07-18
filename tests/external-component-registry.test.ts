@@ -84,6 +84,13 @@ describe("external component registry", () => {
     expect(registry.components.every((item) => item.authorizedDeploymentScopes.length === 0)).toBe(true);
   });
 
+  it("keeps every real resource disabled when the review-decision log is empty", () => {
+    const registry = deriveExternalComponentRegistry(resourceDocument.components, []);
+
+    expect(registry.components.every((item) => !item.currentStatus.startsWith("APPROVED_"))).toBe(true);
+    expect(registry.components.every((item) => item.authorizedDeploymentScopes.length === 0)).toBe(true);
+  });
+
   it("derives a deployment-specific approved link only from a complete latest decision", () => {
     const registry = deriveExternalComponentRegistry([reviewedLink()], [approval()]);
 
