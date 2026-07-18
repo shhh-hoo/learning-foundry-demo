@@ -1,0 +1,22 @@
+import { requireWorkspaceActor } from "@/application/identity";
+import { getEngineeringWorkspace } from "@/application/queries";
+import { RunFrameworkContractChecksButton } from "@/components/ClientActions";
+import { Badge, Card, Empty, SurfaceHeader } from "@/components/ui";
+import { WORKFLOW_CATALOG } from "@/workflows/catalog";
+
+export const dynamic = "force-dynamic";
+
+export default async function EngineeringPage() {
+  const actor = await requireWorkspaceActor(["ENGINEER", "ADMIN"], "Engineering Workspace");
+  const workspace = await getEngineeringWorkspace(actor);
+  return <>
+    <SurfaceHeader eyebrow="Engineering / Inspection" title="Inspect what actually ran" description="Operational workflow, retrieval and framework/core contract-check records are physically separate from canonical Product State." actions={<RunFrameworkContractChecksButton/>}/>
+    <div className="showcase-banner"><Badge tone="warn">Honest service status</Badge> Unavailable telemetry and adapters remain unavailable; no values are synthesized.</div>
+    <div className="metric-grid">{Object.entries(workspace.serviceStatus).map(([service, status]) => <Card key={service} eyebrow={service} title={status}><Badge tone={["UNAVAILABLE", "NOT_IMPLEMENTED", "NOT_CONFIGURED", "BLOCKED"].includes(status) ? "warn" : "info"}>{status}</Badge></Card>)}</div>
+    <Card eyebrow="LangGraph" title="Graph and interrupt inventory">{WORKFLOW_CATALOG.map((graph) => <article className="list-row" key={graph.kind}><span><strong>{graph.title}</strong><small>{graph.nodes.join(" → ")}</small></span><Badge>{graph.interrupts.length ? graph.interrupts.join(" · ") : "NO INTERRUPT"}</Badge></article>)}</Card>
+    <Card eyebrow="Operational schema" title="Workflow runs">{workspace.runs.map((run) => <article className="list-row" key={run.id}><span><strong>{run.workflowKind}</strong><small>{run.threadId} · v{run.interruptVersion} · {run.interruptType ?? "complete"}</small></span><Badge tone={run.status === "COMPLETED" ? "good" : run.status === "FAILED" ? "bad" : "warn"}>{run.status}</Badge></article>)}{workspace.runs.length === 0 ? <Empty>No authorized course workflow records.</Empty> : null}</Card>
+    <Card eyebrow="Operator recovery" title="Stale RESUMING claims"><p>A resume claim older than five minutes is reported for operator recovery. Automated crash recovery is NOT_IMPLEMENTED; a stale claim cannot be resumed again.</p>{workspace.staleResumingRuns.map((run) => <article className="list-row" key={run.id}><span><strong>{run.workflowKind}</strong><small>{run.threadId} · claimed {run.resumeClaimedAt?.toISOString() ?? "timestamp unavailable"}</small></span><Badge tone="bad">RECOVERY REQUIRED</Badge></article>)}{workspace.staleResumingRuns.length === 0 ? <Empty>No stale resume claims in authorized courses.</Empty> : null}</Card>
+    <div className="workspace-grid"><Card eyebrow="Retrieval inspection" title="Lexical candidate runs">{workspace.retrieval.map((run) => <article key={run.id}><strong>{run.query}</strong><pre>{JSON.stringify({ selectedEvidenceIds: run.selectedEvidenceIds, rankingEvidence: run.rankingEvidence, missingSignal: run.missingSignal, latencyMs: run.latencyMs }, null, 2)}</pre></article>)}{workspace.retrieval.length === 0 ? <Empty>No retrieval run recorded.</Empty> : null}</Card><Card eyebrow="Framework/core contract checks" title="Versioned implementation contracts"><p>These checks cover framework and core implementation contracts only. They are not product, pedagogy or learning-effectiveness Eval.</p>{workspace.evaluations.map((run) => <p key={run.id}><Badge tone={run.status === "PASS" ? "good" : "bad"}>{run.status}</Badge> {run.dataset}@{run.datasetVersion} · {run.passed} passed / {run.failed} failed</p>)}{workspace.evaluations.length === 0 ? <Empty>No framework/core contract-check dataset has run.</Empty> : null}</Card></div>
+    <Card eyebrow="Checkpoint store" title="LangGraph physical state">{workspace.checkpointCounts.map((row) => <p key={String(row.table_name)}>{String(row.table_name)}: {String(row.count)} {row.status ? `· ${String(row.status)}` : ""}</p>)}</Card>
+  </>;
+}

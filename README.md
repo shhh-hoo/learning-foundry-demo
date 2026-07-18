@@ -1,93 +1,38 @@
-# Learning Foundry
+# Learning Foundry · full-framework rewrite
 
-Learning Foundry is a governed learning system where a real DeepSeek Agent uses explicit tools, deterministic diagnosis and human publication gates.
+This branch contains the Next.js App Router, LangGraph JS and PostgreSQL replacement baseline. It is an internal engineering checkpoint, not a completed product or cutover claim.
 
-- **Learner Workspace** — real learner input, source-grounded Agent responses, Learner Diagnosis evidence, and user-confirmed Library or Schedule writes.
-- **Foundry Studio** — a configurable repeated-diagnosis signal from PRODUCT runs, a teacher-operated governed Hint Editor, Component Contract Checks, Expert Review and publication.
-- **Engineering Inspector** — real Agent Traces, AgentEval reports, Learner Diagnosis, Runtime Validation, Component Registry and system boundaries.
-- **Demo Shell** — an event-driven observer around the product surfaces; it is not the product and cannot create evidence.
+## State and authority
 
-No key means no model answer, tool result, Trace, pattern, candidate, Library artifact or Schedule item. Presets only fill learner input and are recorded as `PRESET_INPUT`.
+- `foundry_product` stores canonical Product State.
+- `foundry_operational` stores workflow, retrieval and Eval inspection records.
+- `langgraph_checkpoint` is the separate LangGraph checkpoint store. Production requires `CHECKPOINT_DATABASE_URL` and `PRODUCT_DATABASE_URL` to use distinct database roles or targets; they may use the same managed PostgreSQL database when repository/schema boundaries and permissions remain separate. Local and test environments may fall back to `DATABASE_URL`.
+- Authenticated actor provenance—not a caller-supplied string—authorizes TeacherReview, LearningOutcome and PublicationDecision commands.
+- `RETRY` is the only activity type exposed in Checkpoint A.
 
-## Local services
+PostgreSQL full-text search is an honest lexical candidate retriever. Mature hybrid retrieval, a real reranker, multimodal retrieval, external telemetry and Standard Trainer are unavailable until real integrations are evaluated and configured.
 
-```text
-4173  Learning Foundry UI
-4174  Standard Trainer UI
-4175  Component Registry
-4176  DeepSeek Agent Gateway
-4177  Trainer Diagnosis API
-```
+Managed database roles and RLS (or an equivalent database-enforced tenant policy) are **NOT_CONFIGURED**. Application authorization remains mandatory, but is not a claim of database-level tenant enforcement. Automated recovery for a crashed `RESUMING` workflow is **NOT_IMPLEMENTED**; stale claims are reported to Engineering and remain fail-closed. Both gaps block any public preview.
 
-Export the values shown in `docs/DEEPSEEK_LOCAL_SETUP.md`, or copy `.env.local.example` to the gitignored `.env.local`. `DEEPSEEK_API_KEY` and `DEEPSEEK_MODEL` are both required for Agent runs. Never expose the key through Vite variables or browser storage.
+## Local verification
 
 ```bash
-npm install
-npm run demo:local
-```
-
-Open `http://127.0.0.1:4173/`. Standard Trainer must exist at `../standard-trainer-demo` unless `TRAINER_REPO` points elsewhere.
-
-## Governed 9701 corpus
-
-Place the two school-internal source files at `private-sources/9701-2025-2027-syllabus.pdf` and `private-sources/Chem_Calculation_Book_Almost_Everything.pdf`. Both `private-sources/` and `.local-data/corpus/` are gitignored. Source authority, versions and distribution rules come from `corpus/02_SOURCE_MANIFEST.json`; source bytes never enter Git or retrieval traces.
-
-```bash
-npm run corpus:ingest
-npm run corpus:inspect
-```
-
-Ingestion validates every chunk against `corpus/04_RETRIEVAL_CHUNK_SCHEMA.json`, then writes a content-addressed immutable lexical index. Gateway startup reports registered/missing sources, the index version, and chunk counts by source type and distribution scope. The public-safe export command includes only source metadata plus the original Teacher Notes and structured cases.
-
-## Verification
-
-```bash
-npm run policy:audit
-npm run core:leakage
-npm test
+npm ci
 npm run check
+npm run lint
+npm test
 npm run build
-npm run agenteval:checkpoint
-npm run agenteval:baseline
-npm run agenteval:core-contract
-npm run agenteval:reference-pack
-npm run agenteval:generalization
-npm run agenteval:adversarial
-npm run agenteval:learning-loop
-npm run agenteval:retrieval
-npm run agenteval:live
-npm run agenteval:report
-npm run agenteval:compare -- --baseline <evalRunId> --candidate <evalRunId>
-npm run runtime:parity:fixture
-npm run runtime:parity:checkpoint -- --run <evalRunId>
-npm run runtime:parity:baseline -- --run <evalRunId>
-npm run runtime:parity:layer -- --run <evalRunId>
-npm run runtime:parity:dimension -- --run <evalRunId>
-npm run runtime:parity:self-check -- --run <evalRunId>
+npm run legacy:scan
 ```
 
-`agenteval:live` requires the real server-side DeepSeek configuration and returns non-zero if it is absent. The full `2.0.0` contract contains 73 cases across the formal suite layers; retrieval is an orthogonal assessment dimension. Automated Tests validate the runner with controlled fixtures; they do not claim that a live AgentEval passed.
+Database verification requires an isolated PostgreSQL database:
 
-Product and AgentEval evidence have required `runPurpose` classification and separate physical stores. Diagnosis problem facts must be backed by exact quotes from the current user message before the Trainer API is called.
+```bash
+export DATABASE_URL=postgresql://...
+npm run db:migrate
+npm run db:checkpoint
+SYNTHETIC_SHOWCASE_MODE=true SHOWCASE_PASSWORD='<unique local secret>' npm run db:seed
+npm run test:integration
+```
 
-Current runtime infrastructure is reached through narrow contracts for Agent execution, corpus search, Learning Capability execution, AgentEval target transport, trace storage and the local diagnostic Component Repository. The target seam covers health and one Agent run; selection, iteration, grading, persistence and reporting remain in the existing AgentEval runner. The current DeepSeek, lexical corpus, Standard Trainer, file-store and local-showcase implementations remain authoritative Legacy adapters; no candidate framework has authority.
-
-The Agent Gateway also contains a candidate-neutral shadow foundation. It is default-off, always returns the Legacy authoritative result, isolates candidate failure and writes role-separated normalized comparison records. No candidate implementation or framework dependency is included.
-
-The case-level runtime parity harness consumes those role-separated records, reuses AgentEval cases and graders, and writes redacted comparison artifacts under `.runtime-parity-results/`. It reports behavioral equivalence, directional governed quality and operational impact separately. Candidate improvements, shared quality failures and all latency/usage/cost differences require review and exit non-zero. Shadow records move from `RUNNING` to a terminal state under the same execution ID; the CLI waits for a bounded window and distinguishes absent, pending, timed-out and failed candidate evidence. `runtime:parity:self-check` is explicitly Legacy harness validation, not candidate parity.
-
-## Documentation
-
-- [Real Agent architecture](docs/REAL_AGENT_ARCHITECTURE.md)
-- [DeepSeek local setup](docs/DEEPSEEK_LOCAL_SETUP.md)
-- [AgentEval](docs/AGENT_EVAL.md)
-- [Runtime-boundary acceptance](docs/RUNTIME_BOUNDARY_ACCEPTANCE.md)
-- [Runtime shadow foundation acceptance](docs/RUNTIME_SHADOW_FOUNDATION_ACCEPTANCE.md)
-- [Runtime parity acceptance](docs/RUNTIME_PARITY_ACCEPTANCE.md)
-- [Runtime candidate readiness](docs/RUNTIME_CANDIDATE_READINESS.md)
-- [Core / Chemistry Pack acceptance](docs/CORE_CHEMISTRY_PACK_ACCEPTANCE.md)
-- [Chemistry Pack ownership](docs/CHEMISTRY_REFERENCE_PACK_OWNERSHIP.md)
-- [Data-origin policy](docs/DATA_ORIGIN_POLICY.md)
-- [Terminology](docs/TERMINOLOGY.md)
-- [Capability Registry](docs/CAPABILITY_REGISTRY.md)
-- [Product surfaces](docs/PRODUCT_SURFACES.md)
+Synthetic credentials authentication is disabled unless `SYNTHETIC_SHOWCASE_MODE=true`. The showcase password has no repository default and must be supplied through the environment.
