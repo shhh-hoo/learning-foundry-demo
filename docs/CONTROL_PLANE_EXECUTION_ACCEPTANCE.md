@@ -109,7 +109,8 @@ message content or source bytes.
   relevance or a token budget. Long metadata-free history remains selected;
   therefore Context contamination is not claimed solved.
 - Evidence sufficiency fails closed on missing/nonpositive relevance scores,
-  incomplete citation lineage, declared missing aspects and contamination.
+  incomplete source plus page/section/chunk lineage, declared missing aspects
+  and contamination.
   A positive lexical score is still only a baseline topical signal; there is
   no semantic reranker/grader or requested-aspect coverage grader in this PR.
 - Diagnosis tool calls and arguments remain model-generated. The application

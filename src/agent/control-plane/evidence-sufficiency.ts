@@ -50,7 +50,11 @@ export class EvidenceSufficiencyAssessor {
     const governed = results.some((item) => item.sourceType === "OFFICIAL_SYLLABUS" || item.sourceType === "TEACHER_NOTE" || item.sourceType === "STRUCTURED_CASE");
     const relevanceUnknown = results.some((item) => typeof item.score !== "number" || !Number.isFinite(item.score));
     const topical = !relevanceUnknown && results.some((item) => typeof item.score === "number" && item.score > 0);
-    const lineageComplete = results.every((item) => typeof item.sourceId === "string" && (typeof item.page === "number" || typeof item.section === "string"));
+    const lineageComplete = results.every((item) => typeof item.sourceId === "string" && (
+      typeof item.page === "number"
+      || typeof item.section === "string"
+      || (typeof item.chunkId === "string" && Boolean(item.chunkId.trim()))
+    ));
     const contaminationRisk = root?.contaminationRisk === "DETECTED" ? "DETECTED" as const : "NONE" as const;
     const declaredMissing = Array.isArray(root?.missingAspects) ? root.missingAspects.filter((item): item is string => typeof item === "string" && Boolean(item.trim())) : [];
     if (!topical || !governed) {
@@ -70,7 +74,7 @@ export class EvidenceSufficiencyAssessor {
       const missingAspects = [
         ...declaredMissing,
         ...(contaminationRisk === "DETECTED" ? ["uncontaminated Evidence"] : []),
-        ...(!lineageComplete ? ["complete source/page-or-section lineage"] : []),
+        ...(!lineageComplete ? ["complete source and page, section, or chunk lineage"] : []),
       ];
       return {
         assessmentId, toolId: input.toolId, toolCallIndex: input.toolCallIndex,
