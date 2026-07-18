@@ -122,24 +122,50 @@ Fixture evidence is not live Evidence.
 Run manifest:
 `agent-eval/run-manifests/ai-sdk7-candidate-pr5.json`.
 
-Live checkpoint, repeated-run reliability, baseline and case-level parity:
-`NOT EXECUTED`.
-
-At implementation time, the process had no `DEEPSEEK_API_KEY`, no
-`DEEPSEEK_MODEL` and no governed corpus index. The committed delivery
-policy separately authorizes DeepSeek for `AGENT_EVAL`,
-`SCHOOL_INTERNAL` and its listed source types. Authorization exists, but
-the technical environment does not. No missing case is classified and no
-parity conclusion is claimed before execution.
-
-The committed manifest freezes `deepseek-chat`, disabled thinking,
+The committed manifest froze `deepseek-chat`, disabled thinking,
 provider-default unsent sampling fields, the 1,800-token output ceiling and
-content hashes for the executable adapter boundary. When the environment is
-available, it requires exactly three
-checkpoint attempts and two baseline attempts. Every original attempt is
-retained; only a classified infrastructure failure may receive one linked
-replacement. The existing parity reporter preserves case-level behavior,
-quality and operational classifications.
+content hashes for the executable adapter boundary. Its three checkpoint
+attempts and two baseline attempts were executed at implementation head
+`f3641d2`. Every original attempt is retained and there were no replacements.
+
+The technical gate used a configured DeepSeek key/model, governed corpus
+index `v0.1-6f7e2a2945ca`, a healthy Registry and two Trainer endpoints with
+separate authoritative and shadow persistence. The delivery gate used policy
+`1.0.0`, authorizing `deepseek`, `AGENT_EVAL`, `SCHOOL_INTERNAL` and its four
+listed source types. The gateway reported candidate authority `NOT GRANTED`
+throughout execution.
+
+| Attempt | AgentEval run ID | Authoritative result | Parity report | Candidate evidence |
+| --- | --- | --- | --- | --- |
+| checkpoint-01 | `agenteval-2026-07-18T09-02-39-891Z-0e8c7b6e` | 5/6 | `runtime-parity-2026-07-18T09-03-39-448Z-5f0b4665` | 3 completed, 3 failed; 1 behavioral regression |
+| checkpoint-02 | `agenteval-2026-07-18T09-04-44-184Z-621c6aae` | 5/6 | `runtime-parity-2026-07-18T09-05-55-945Z-91e2e040` | 4 completed, 2 failed; 1 behavioral regression |
+| checkpoint-03 | `agenteval-2026-07-18T09-06-09-930Z-873054e2` | 6/6 | `runtime-parity-2026-07-18T09-06-49-668Z-681183e5` | 5 completed, 1 failed; 2 candidate quality regressions |
+| baseline-01 | `agenteval-2026-07-18T09-07-11-181Z-058293c0` | 15/18 | `runtime-parity-2026-07-18T09-09-08-573Z-b9a7e0e4` | 11 completed, 7 failed; 3 behavioral regressions |
+| baseline-02 | `agenteval-2026-07-18T09-09-28-189Z-a533524a` | 14/18 | `runtime-parity-2026-07-18T09-11-36-010Z-8c435965` | 12 completed, 4 failed; 2 authoritative failures correctly prevented shadows |
+
+All 54 authoritative case executions are present. Fifty-two authoritative
+successes were eligible for a shadow; all 52 have candidate evidence: 35
+completed and 17 failed. Candidate terminal failures comprise 16
+`INVALID_AGENT_RESPONSE` structured-response failures and one
+`AGENT_UNSUPPORTED_CLAIM`. There are no unexplained missing shadows or
+coordinator timeouts.
+
+Among the 35 completed candidate executions, behavioral comparison found 24
+exact matches and 11 differences. Directional quality found 28 matches, five
+candidate improvements and two candidate regressions. Every completed pair
+has an operational difference requiring assessment; operational differences
+are not auto-accepted.
+
+Completed candidate executions recorded 161,874 tokens, including 94,336
+prompt-cache-hit and 45,712 prompt-cache-miss tokens, with 240,076 ms aggregate
+client latency. No approved pricing snapshot covered this model, so cost
+remains unknown rather than estimated.
+
+Live result: **REWORK TRANSPORT CANDIDATE**. AI SDK transport compatibility is
+not reliable enough for acceptance because structured final responses fail
+non-deterministically across both checkpoint and baseline cases, and completed
+executions still contain behavioral and directional quality regressions. This
+is a candidate-code decision only, not a runtime-authority decision.
 
 ## Privacy, limitations and rollback
 
@@ -149,7 +175,8 @@ the existing purpose-and-role-separated runtime evidence namespace.
 
 Known limitations:
 
-- no live provider variance, latency, token, cost or parity evidence exists;
+- live provider variance, latency, token/cache and parity evidence exists,
+  but pricing coverage is unavailable and the candidate requires rework;
 - structured final validation is Foundry-owned; provider-native strict JSON
   schema enforcement is neither used nor claimed;
 - governed Diagnosis parity requires an explicitly isolated shadow Trainer
@@ -158,8 +185,9 @@ Known limitations:
   switch is explicitly enabled;
 - the handwritten `runAgent` loop remains in place, so this evidence cannot
   support a claim that AI SDK replaced commodity Agent orchestration;
-- a future authority review must be based on retained live attempts and a
-  case-level decision report, not this offline acceptance.
+- a future authority assessment requires a corrected adapter, a newly frozen
+  run manifest and new retained first attempts. The failed attempts above are
+  never replaced or removed.
 
 Rollback is a revert of this candidate PR. No Legacy path is deleted and no
 canonical state requires migration. No PR #13 workflow, base, lockfile or
