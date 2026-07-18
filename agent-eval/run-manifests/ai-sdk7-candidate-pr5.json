@@ -4,8 +4,8 @@
   "docsAuthority": "learning-foundry-docs@260747722e8040972deceed3290bce237676f225",
   "implementationRef": "CONTENT_HASHED_SNAPSHOT",
   "implementationFiles": {
-    "src/runtime/ai-sdk-runtime-executor.ts": "bac2c8283a936f7047dc82c6c7c1784d880108f6c46a82e7ba268d4cd1be7528",
-    "scripts/agent-gateway-server.ts": "727eab988949fae975c6606a13f88b215e14e3bb29470e697cb4de5bf106bc67",
+    "src/runtime/ai-sdk-runtime-executor.ts": "27b70050907a1a8d2340725fee9e3e0afd86a4e0dde04df229260c955c542edc",
+    "scripts/agent-gateway-server.ts": "49365fbe4286c09697faf8aacdbe1c5745f64bb352c2d17bce70c83dab8af87e",
     "src/runtime/runtime-shadow.ts": "de2786bdd8e6cfe0a6a1a3693f2f7aa27cc798e0a870bca81631646a0c6ae0bb",
     "src/agent/run-agent.ts": "27cb7260c5248ba35eb521efb7d23e7b70b4ab428739dcb49751fbbb8fd3bf44",
     "src/agent/tool-executor.ts": "c28f1f6faebd55ef3fd2bc9b667df41e14ef7df38dc197a4e89fa7f1794ff57e",
@@ -14,8 +14,9 @@
     "package-lock.json": "7ccf213d9b9ec3e89801c88c5b9f1f9f809d7e2578b034c52919fbb3abd2910c"
   },
   "status": "PLANNED_NOT_EXECUTED",
+  "candidateHypothesis": "AI_SDK_DEEPSEEK_MODEL_PROVIDER_TRANSPORT",
   "candidate": {
-    "adapterId": "ai-sdk7-deepseek",
+    "adapterId": "ai-sdk7-deepseek-transport",
     "adapterVersion": "1.0.0",
     "authority": "NOT_GRANTED",
     "packages": {

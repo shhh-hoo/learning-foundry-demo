@@ -3,13 +3,15 @@
 Docs authority: `learning-foundry-docs@260747722e8040972deceed3290bce237676f225`
 
 Assessment basis: the current stable runtime boundary, shadow and parity
-foundation plus the separately reviewed AI SDK 7 candidate described in
+foundation plus the separately reviewed AI SDK 7 transport candidate described in
 `AI_SDK_RUNTIME_CANDIDATE_ACCEPTANCE.md`.
 
 ## Decision
 
-One real AI SDK 7 DeepSeek `RuntimeExecutor` candidate is installed behind
-the default-off shadow boundary. The system is not ready to grant candidate
+One real AI SDK 7 DeepSeek model/provider transport candidate is installed
+behind a `RuntimeExecutor`-shaped default-off shadow boundary. The existing
+handwritten `runAgent` still owns the tool loop; no AI SDK loop candidate is
+installed or evaluated. The system is not ready to grant candidate
 authority because live checkpoint, reliability, baseline and parity
 evidence have not been executed.
 
@@ -52,6 +54,8 @@ The candidate PR must not move route resolution, obligations, tool policy, corpu
   governed corpus index.
 - Candidate checkpoint, repeated-run reliability and baseline parity are
   therefore unexecuted.
+- The transport candidate does not test replacement of the handwritten Agent
+  loop and cannot support an orchestration-authority or deletion decision.
 - The live Legacy baseline remains stochastic and currently has two quality failures; parity must not be used to conceal them.
 - Corrected-head live evidence shows provider variance across two consecutive checkpoint runs (5/6, then 6/6); candidate reliability evidence must therefore use repeated runs rather than selecting a favorable sample.
 - No candidate authority, release-gate authority or Legacy-deletion authority has been granted.

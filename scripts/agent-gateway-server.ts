@@ -16,7 +16,7 @@ import type { CorpusSearchService } from "../src/corpus/types.ts";
 import { createCorpusDeliveryPolicyRuntime } from "../src/corpus/delivery-policy.ts";
 import { LegacyTrainerCapabilityRuntime } from "../src/runtime/learning-capability-runtime.ts";
 import { createRuntimeShadowCoordinator, parseRuntimeShadowConfiguration, type RuntimeExecutor } from "../src/runtime/runtime-shadow.ts";
-import { AI_SDK_CANDIDATE_ADAPTER_VERSION, createAiSdkRuntimeExecutor, parseAiSdkCandidateConfiguration } from "../src/runtime/ai-sdk-runtime-executor.ts";
+import { AI_SDK_TRANSPORT_CANDIDATE_ADAPTER_VERSION, createAiSdkTransportRuntimeExecutor, parseAiSdkTransportCandidateConfiguration } from "../src/runtime/ai-sdk-runtime-executor.ts";
 import { PurposeAndRoleSeparatedFileRuntimeExecutionRecorder } from "./lib/runtime-execution-recorder.ts";
 import { registeredAgentCapabilities } from "../src/reference-packs/registry.ts";
 
@@ -47,7 +47,7 @@ const traceRepositories = new PurposeSeparatedAgentTraceRepository(
 );
 const runtimeExecutionRecorder = new PurposeAndRoleSeparatedFileRuntimeExecutionRecorder(resolve(process.env.RUNTIME_EXECUTION_STORE_DIR ?? ".local-data/runtime-executions"));
 const shadowConfiguration = parseRuntimeShadowConfiguration(process.env.RUNTIME_SHADOW_MODE, process.env.RUNTIME_SHADOW_TIMEOUT_MS);
-const aiSdkCandidateConfiguration = parseAiSdkCandidateConfiguration(process.env);
+const aiSdkCandidateConfiguration = parseAiSdkTransportCandidateConfiguration(process.env);
 const configured = Boolean(apiKey && model);
 const client = configured ? createDeepSeekClient({ apiKey, model, baseUrl, thinkingMode }) : null;
 const capabilityRuntime = new LegacyTrainerCapabilityRuntime(diagnosisUrl);
@@ -97,7 +97,7 @@ const aiSdkDeepSeekProvider = aiSdkCandidateConfiguration.configured
   ? createDeepSeek({ apiKey, baseURL: baseUrl })
   : null;
 const aiSdkCandidateRuntimeExecutor: RuntimeExecutor | null = aiSdkDeepSeekProvider && aiSdkCandidateConfiguration.modelId
-  ? createAiSdkRuntimeExecutor({
+  ? createAiSdkTransportRuntimeExecutor({
       model: aiSdkDeepSeekProvider(aiSdkCandidateConfiguration.modelId),
       modelId: aiSdkCandidateConfiguration.modelId,
       thinkingMode: aiSdkCandidateConfiguration.thinkingMode,
@@ -157,7 +157,7 @@ server.listen(port, "127.0.0.1", () => {
   console.log(`corpus delivery policy: ${corpusDeliveryPolicy.policy.version} (${corpusDeliveryPolicy.contentHash})`);
   console.log(`runtime shadow: ${shadowConfiguration.enabled
     ? aiSdkCandidateRuntimeExecutor
-      ? `enabled; candidate=ai-sdk7-deepseek@${AI_SDK_CANDIDATE_ADAPTER_VERSION}; candidate authority NOT GRANTED`
+      ? `enabled; candidate=ai-sdk7-deepseek-transport@${AI_SDK_TRANSPORT_CANDIDATE_ADAPTER_VERSION}; candidate authority NOT GRANTED`
       : "enabled; candidate unavailable"
     : "disabled; Legacy authoritative; AI SDK candidate default-off"}`);
   console.log(`shadow Trainer: ${shadowCapabilityRuntime ? "isolated endpoint configured" : "not configured; candidate Diagnosis calls fail closed"}`);

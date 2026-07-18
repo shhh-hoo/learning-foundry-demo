@@ -1,10 +1,26 @@
-# AI SDK 7 Runtime Candidate acceptance
+# AI SDK 7 DeepSeek Transport Candidate acceptance
 
 Docs authority: `learning-foundry-docs@260747722e8040972deceed3290bce237676f225`
 
 Doc 17 sections: §§2, 8–9, 16B and 17–20.
 
 Implementation lane: separately reviewed Candidate Experiment.
+
+## Candidate hypothesis
+
+This PR tests exactly one hypothesis:
+
+```text
+Legacy DeepSeek model/provider transport
+→ AI SDK generateText + official DeepSeek provider transport
+```
+
+It does **not** replace or evaluate ownership of the multi-round Agent tool
+loop. The existing handwritten `runAgent` implementation still performs
+model-call iteration, tool execution, per-step availability, budgets,
+Evidence assessment, stopping and final-response correction. Therefore this
+PR does not claim reduced custom orchestration or demonstrate an AI SDK-owned
+loop.
 
 ## Authority status
 
@@ -50,9 +66,9 @@ The provider documentation page still carries an AI SDK 6 label, so exact
 v7 signatures and versions come from the installed v7 package metadata and
 types rather than that label.
 
-## Adapter boundary
+## Transport adapter boundary
 
-The adapter uses the smallest required primitive, `generateText`; it does
+The transport candidate uses the smallest required primitive, `generateText`; it does
 not use `WorkflowAgent` or `ToolLoopAgent`. It translates only:
 
 - the immutable Foundry `ExecutionPlan` and selected tool definitions;
@@ -140,6 +156,8 @@ Known limitations:
   service and evidence store;
 - a configured candidate still does nothing unless the existing shadow
   switch is explicitly enabled;
+- the handwritten `runAgent` loop remains in place, so this evidence cannot
+  support a claim that AI SDK replaced commodity Agent orchestration;
 - a future authority review must be based on retained live attempts and a
   case-level decision report, not this offline acceptance.
 

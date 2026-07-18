@@ -7,7 +7,8 @@ describe("AI SDK candidate live evidence manifest", () => {
   it("freezes the candidate, selections and attempt counts without favorable resampling", async () => {
     const manifest = JSON.parse(await readFile(join(process.cwd(), "agent-eval/run-manifests/ai-sdk7-candidate-pr5.json"), "utf8")) as {
       status: string;
-      candidate: { authority: string; packages: Record<string, string> };
+      candidateHypothesis: string;
+      candidate: { adapterId: string; authority: string; packages: Record<string, string> };
       implementationRef: string;
       implementationFiles: Record<string, string>;
       modelConfiguration: { provider: string; model: string; thinkingMode: string; sampling: Record<string, unknown>; aiSdkMaxRetries: number };
@@ -23,7 +24,12 @@ describe("AI SDK candidate live evidence manifest", () => {
       const contents = await readFile(join(process.cwd(), path));
       expect(createHash("sha256").update(contents).digest("hex"), path).toBe(expectedHash);
     }
-    expect(manifest.candidate).toMatchObject({ authority: "NOT_GRANTED", packages: { ai: "7.0.31", "@ai-sdk/deepseek": "3.0.12" } });
+    expect(manifest.candidateHypothesis).toBe("AI_SDK_DEEPSEEK_MODEL_PROVIDER_TRANSPORT");
+    expect(manifest.candidate).toMatchObject({
+      adapterId: "ai-sdk7-deepseek-transport",
+      authority: "NOT_GRANTED",
+      packages: { ai: "7.0.31", "@ai-sdk/deepseek": "3.0.12" },
+    });
     expect(manifest.modelConfiguration).toMatchObject({
       provider: "deepseek",
       model: "deepseek-chat",

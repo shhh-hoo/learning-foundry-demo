@@ -1,4 +1,4 @@
-# AI SDK 7 Candidate decision memo
+# AI SDK 7 DeepSeek Transport Candidate decision memo
 
 Docs authority: `learning-foundry-docs@260747722e8040972deceed3290bce237676f225`
 
@@ -8,7 +8,8 @@ Decision date: 2026-07-17.
 
 ## Decision
 
-Retain the AI SDK 7 DeepSeek adapter as a default-off shadow candidate.
+Retain the AI SDK 7 DeepSeek model/provider transport adapter as a default-off
+shadow candidate. Do not interpret it as an AI SDK-owned Agent-loop candidate.
 Do not grant runtime authority.
 
 ```text
@@ -19,13 +20,18 @@ Legacy deletion authority: NOT GRANTED
 
 ## Basis
 
-The implementation provides a real `RuntimeExecutor`, uses the stable
+The implementation provides a `RuntimeExecutor`-shaped shadow adapter, uses the stable
 Foundry request/Plan/tool/result contracts, preserves authoritative-first
 execution, keeps shadow retrieval and Diagnosis writes outside authoritative
 evidence stores, and propagates cooperative cancellation through model, tool
 and derived-write boundaries. Offline tests cover the installed official
 provider integration, Foundry-owned malformed-result correction and candidate
 failure isolation.
+
+The existing handwritten `runAgent` continues to own multi-round tool-loop
+orchestration. This candidate therefore evaluates provider transport,
+message/tool translation, cancellation and usage metadata only; it provides
+no evidence that custom Agent orchestration has been replaced or reduced.
 
 The required live environment was unavailable. Therefore checkpoint,
 repeated-run reliability, baseline and case-level parity were not run. No

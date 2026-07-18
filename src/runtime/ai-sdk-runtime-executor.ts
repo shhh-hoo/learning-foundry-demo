@@ -16,16 +16,16 @@ import type {
   RuntimeExecutor,
 } from "./runtime-shadow";
 
-export const AI_SDK_CANDIDATE_ADAPTER_VERSION = "1.0.0" as const;
+export const AI_SDK_TRANSPORT_CANDIDATE_ADAPTER_VERSION = "1.0.0" as const;
 
-export interface AiSdkCandidateConfiguration {
+export interface AiSdkTransportCandidateConfiguration {
   readonly configured: boolean;
   readonly modelId: string | null;
   readonly thinkingMode: "enabled" | "disabled";
   readonly timeoutMs: number;
 }
 
-export function parseAiSdkCandidateConfiguration(environment: Readonly<Record<string, string | undefined>>): AiSdkCandidateConfiguration {
+export function parseAiSdkTransportCandidateConfiguration(environment: Readonly<Record<string, string | undefined>>): AiSdkTransportCandidateConfiguration {
   const apiKey = environment.DEEPSEEK_API_KEY?.trim() ?? "";
   const modelId = environment.DEEPSEEK_MODEL?.trim() ?? "";
   const configuredTimeout = Number(environment.AI_SDK_CANDIDATE_TIMEOUT_MS);
@@ -216,7 +216,7 @@ function createAiSdkModelClient(options: {
   };
 }
 
-interface CreateAiSdkRuntimeExecutorOptions {
+interface CreateAiSdkTransportRuntimeExecutorOptions {
   readonly model: LanguageModel;
   readonly modelId: string;
   readonly thinkingMode: "enabled" | "disabled";
@@ -229,11 +229,16 @@ interface CreateAiSdkRuntimeExecutorOptions {
   readonly now?: () => Date;
 }
 
-export function createAiSdkRuntimeExecutor(options: CreateAiSdkRuntimeExecutorOptions): RuntimeExecutor {
+/**
+ * RuntimeExecutor-shaped shadow adapter for one explicit hypothesis:
+ * AI SDK replaces the DeepSeek model/provider transport only. Foundry's
+ * existing runAgent implementation still owns the multi-call tool loop.
+ */
+export function createAiSdkTransportRuntimeExecutor(options: CreateAiSdkTransportRuntimeExecutorOptions): RuntimeExecutor {
   return {
     identity: {
-      adapterId: "ai-sdk7-deepseek",
-      adapterVersion: AI_SDK_CANDIDATE_ADAPTER_VERSION,
+      adapterId: "ai-sdk7-deepseek-transport",
+      adapterVersion: AI_SDK_TRANSPORT_CANDIDATE_ADAPTER_VERSION,
       providerId: "deepseek",
       modelId: options.modelId,
     },

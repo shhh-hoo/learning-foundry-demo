@@ -2,9 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 import { createDeepSeek } from "@ai-sdk/deepseek";
 import { resolveAgentExecutionPlan } from "../src/agent/route-policy";
 import {
-  AI_SDK_CANDIDATE_ADAPTER_VERSION,
-  createAiSdkRuntimeExecutor,
-  parseAiSdkCandidateConfiguration,
+  AI_SDK_TRANSPORT_CANDIDATE_ADAPTER_VERSION,
+  createAiSdkTransportRuntimeExecutor,
+  parseAiSdkTransportCandidateConfiguration,
 } from "../src/runtime/ai-sdk-runtime-executor";
 import {
   createRuntimeShadowCoordinator,
@@ -30,16 +30,16 @@ const normalizedInput = {
   caseId: "A-course-explanation",
 } as const;
 
-describe("AI SDK 7 RuntimeExecutor candidate", () => {
+describe("AI SDK 7 DeepSeek transport candidate", () => {
   it("is configured independently but remains controlled by the existing default-off shadow mode", () => {
-    expect(parseAiSdkCandidateConfiguration({})).toEqual({ configured: false, modelId: null, thinkingMode: "disabled", timeoutMs: 30_000 });
-    expect(parseAiSdkCandidateConfiguration({ DEEPSEEK_API_KEY: "secret", DEEPSEEK_MODEL: "deepseek-chat", DEEPSEEK_THINKING_MODE: "enabled", AI_SDK_CANDIDATE_TIMEOUT_MS: "12000" })).toEqual({
+    expect(parseAiSdkTransportCandidateConfiguration({})).toEqual({ configured: false, modelId: null, thinkingMode: "disabled", timeoutMs: 30_000 });
+    expect(parseAiSdkTransportCandidateConfiguration({ DEEPSEEK_API_KEY: "secret", DEEPSEEK_MODEL: "deepseek-chat", DEEPSEEK_THINKING_MODE: "enabled", AI_SDK_CANDIDATE_TIMEOUT_MS: "12000" })).toEqual({
       configured: true,
       modelId: "deepseek-chat",
       thinkingMode: "enabled",
       timeoutMs: 12_000,
     });
-    expect(AI_SDK_CANDIDATE_ADAPTER_VERSION).toBe("1.0.0");
+    expect(AI_SDK_TRANSPORT_CANDIDATE_ADAPTER_VERSION).toBe("1.0.0");
   });
 
   it("translates Foundry-selected tools, returns a structured final result and preserves cache usage", async () => {
@@ -62,7 +62,7 @@ describe("AI SDK 7 RuntimeExecutor candidate", () => {
         providerMetadata: { deepseek: { promptCacheHitTokens: 8, promptCacheMissTokens: 4 } },
       };
     });
-    const executor = createAiSdkRuntimeExecutor({
+    const executor = createAiSdkTransportRuntimeExecutor({
       model: {} as never,
       modelId: "deepseek-chat",
       thinkingMode: "disabled",
@@ -84,7 +84,7 @@ describe("AI SDK 7 RuntimeExecutor candidate", () => {
     const signal = new AbortController().signal;
     const result = await executor.execute(normalizedInput, signal);
 
-    expect(executor.identity).toEqual({ adapterId: "ai-sdk7-deepseek", adapterVersion: "1.0.0", providerId: "deepseek", modelId: "deepseek-chat" });
+    expect(executor.identity).toEqual({ adapterId: "ai-sdk7-deepseek-transport", adapterVersion: "1.0.0", providerId: "deepseek", modelId: "deepseek-chat" });
     expect(calls[0]).toMatchObject({ abortSignal: signal, timeout: { totalMs: 30_000 }, toolChoice: { type: "tool", toolName: "search_learning_resources" } });
     expect(calls[0]?.tools).toHaveProperty("search_learning_resources");
     expect(calls[1]?.tools).toBeUndefined();
@@ -104,7 +104,7 @@ describe("AI SDK 7 RuntimeExecutor candidate", () => {
     } as const;
     const input = { ...normalizedInput, request: capabilityRequest, executionPlan: resolveAgentExecutionPlan(capabilityRequest) };
     const calls: Record<string, unknown>[] = [];
-    const executor = createAiSdkRuntimeExecutor({
+    const executor = createAiSdkTransportRuntimeExecutor({
       model: {} as never,
       modelId: "deepseek-chat",
       thinkingMode: "disabled",
@@ -134,7 +134,7 @@ describe("AI SDK 7 RuntimeExecutor candidate", () => {
 
   it("leaves malformed final-result correction under Foundry control", async () => {
     const prompts: Record<string, unknown>[] = [];
-    const executor = createAiSdkRuntimeExecutor({
+    const executor = createAiSdkTransportRuntimeExecutor({
       model: {} as never,
       modelId: "deepseek-chat",
       thinkingMode: "disabled",
@@ -162,7 +162,7 @@ describe("AI SDK 7 RuntimeExecutor candidate", () => {
     let receivedSignal: AbortSignal | undefined;
     let markModelStarted!: () => void;
     const modelStarted = new Promise<void>((resolve) => { markModelStarted = resolve; });
-    const executor = createAiSdkRuntimeExecutor({
+    const executor = createAiSdkTransportRuntimeExecutor({
       model: {} as never,
       modelId: "deepseek-chat",
       thinkingMode: "disabled",
@@ -187,7 +187,7 @@ describe("AI SDK 7 RuntimeExecutor candidate", () => {
   });
 
   it("keeps an AI SDK candidate failure out of the authoritative result", async () => {
-    const candidate = createAiSdkRuntimeExecutor({
+    const candidate = createAiSdkTransportRuntimeExecutor({
       model: {} as never,
       modelId: "deepseek-chat",
       thinkingMode: "disabled",
@@ -240,7 +240,7 @@ describe("AI SDK 7 RuntimeExecutor candidate", () => {
       executionId: "candidate-execution",
       parentAuthoritativeExecutionId: "legacy-execution",
       role: "SHADOW",
-      runtimeAdapterId: "ai-sdk7-deepseek",
+      runtimeAdapterId: "ai-sdk7-deepseek-transport",
       status: "FAILED",
       terminalError: { code: "CANDIDATE_OFFLINE", message: "candidate offline" },
     }));
@@ -277,7 +277,7 @@ describe("AI SDK 7 RuntimeExecutor candidate", () => {
         return Response.json(responses.shift());
       },
     });
-    const executor = createAiSdkRuntimeExecutor({
+    const executor = createAiSdkTransportRuntimeExecutor({
       model: provider("deepseek-chat"),
       modelId: "deepseek-chat",
       thinkingMode: "disabled",
