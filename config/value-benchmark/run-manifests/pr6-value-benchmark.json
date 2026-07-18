@@ -3,7 +3,7 @@
   "experimentId": "learning-foundry-value-benchmark",
   "experimentVersion": "1.0.0",
   "docsAuthority": "learning-foundry-docs@260747722e8040972deceed3290bce237676f225",
-  "implementationCommit": "4561e5e7323c3db848366ae69a309d440f743cfd",
+  "implementationCommit": "ffebe53ba7b22e6723b7a29a0b212a632a3ee920",
   "runId": "foundry-value-benchmark-1.0.0-live-01",
   "encoding": {
     "charset": "UTF-8",
@@ -1334,7 +1334,7 @@
     "agentEvalCases": "agent-eval/cases.jsonl@sha256:0c421e183ee35a968931c2e4ff6ef291005d9000dcc821b26d0a8e422bc157fb",
     "runtimeToolDefinitionsSemantic": "sha256:f8dfe73a2d97edcb3e6b7973f6979e7d61200a0e43966c5f82e9d8301e48a548",
     "runtimeCapabilityRegistrySemantic": "sha256:55bb4f02560d032a5301093ffca4c1872a9a547d38a0571e6507484883b5e08d",
-    "governedCorpusIndex": "NOT_AVAILABLE_NO_LIVE_RUN",
+    "governedCorpusIndex": "v0.1-6f7e2a2945ca",
     "externalReviewerAuthorization": "REQUIRED_BEFORE_PACKET_DELIVERY",
     "rawArtifacts": ".value-benchmark-results/ (mode 0600, ignored)"
   },
