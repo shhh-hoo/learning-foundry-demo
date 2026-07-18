@@ -47,7 +47,7 @@ export class FileAgentTraceStore implements AgentTraceStore {
 function parseAgentRunRecord(value: unknown): PersistedAgentRun {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("INVALID_AGENT_RUN_RECORD");
   const record = value as Partial<PersistedAgentRun>;
-  if (record.schemaVersion !== "1.0.0" && record.schemaVersion !== AGENT_RUN_SCHEMA_VERSION) throw new Error("UNSUPPORTED_AGENT_RUN_SCHEMA_VERSION");
+  if (record.schemaVersion !== "1.0.0" && record.schemaVersion !== "1.1.0" && record.schemaVersion !== AGENT_RUN_SCHEMA_VERSION) throw new Error("UNSUPPORTED_AGENT_RUN_SCHEMA_VERSION");
   if (!record.request || typeof record.traceId !== "string" || !["RUNNING", "COMPLETED", "FAILED"].includes(record.status ?? "")) throw new Error("INVALID_AGENT_RUN_RECORD");
   return record as PersistedAgentRun;
 }

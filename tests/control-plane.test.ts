@@ -4,6 +4,7 @@ import { ExecutionPlanner } from "../src/agent/control-plane/execution-planner";
 import { EvidenceSufficiencyAssessor } from "../src/agent/control-plane/evidence-sufficiency";
 import { ToolExecutionGovernor } from "../src/agent/control-plane/tool-execution-governor";
 import { DiagnosisSequenceGovernor } from "../src/agent/control-plane/diagnosis-workflow";
+import { CapabilityResolutionAssessor } from "../src/agent/control-plane/capability-resolution";
 import type { AgentRunRequest } from "../src/agent/types";
 
 const request = (messages: AgentRunRequest["messages"]): AgentRunRequest => ({
@@ -14,6 +15,40 @@ const request = (messages: AgentRunRequest["messages"]): AgentRunRequest => ({
 });
 
 describe("Foundry Control Plane", () => {
+  it("resolves only Registry-returned capability identities and distinguishes ambiguity and execution failure", () => {
+    const assessor = new CapabilityResolutionAssessor();
+    const registryResult = [
+      { id: "supported-example", version: "1.0.0", purpose: "A governed calculation example." },
+      { id: "review-example", version: "2.0.0", purpose: "A governed review example." },
+    ];
+
+    expect(assessor.assess({ route: "SOLVE_WITH_CHECKS", requestText: "Use absent-example as the main capability.", registryEvidenceRef: "registry-1", registryResult })).toMatchObject({
+      status: "REQUESTED_CAPABILITY_NOT_FOUND",
+      returnedCapabilities: [{ id: "supported-example", version: "1.0.0" }, { id: "review-example", version: "2.0.0" }],
+      matchedCapabilities: [],
+    });
+    expect(assessor.assess({ route: "SOLVE_WITH_CHECKS", requestText: "Which capability should I use?", registryEvidenceRef: "registry-2", registryResult })).toMatchObject({
+      status: "REQUEST_AMBIGUOUS",
+      matchedCapabilities: [],
+      missingClarification: expect.any(String),
+    });
+    const noisySingleRegistryResult = [{
+      id: "supported-example",
+      version: "1.0.0",
+      purpose: "Diagnose one governed calculation family.",
+      requiredInput: "Provide equations and values and complete working.",
+    }];
+    expect(assessor.assess({ route: "SOLVE_WITH_CHECKS", requestText: "I need a diagnosis across two unrelated domains, but I have not supplied equations, values or working.", registryEvidenceRef: "registry-3", registryResult: noisySingleRegistryResult })).toMatchObject({
+      status: "REQUEST_AMBIGUOUS",
+      matchedCapabilities: [],
+    });
+    expect(assessor.executionFailed("REGISTRY_UNAVAILABLE")).toEqual({
+      status: "REGISTRY_EXECUTION_FAILED",
+      returnedCapabilities: [],
+      matchedCapabilities: [],
+      failureCode: "REGISTRY_UNAVAILABLE",
+    });
+  });
   it("compiles a message-index decision and never copies message content into the Execution Plan", () => {
     const input = request([
       { role: "user", content: "Earlier task-local question" },
@@ -167,8 +202,12 @@ describe("Foundry Control Plane", () => {
     const governor = new ToolExecutionGovernor(plan);
 
     expect(plan.toolPolicy.maximumCallsPerTool.search_learning_resources).toBe(2);
-    expect(governor.authorize("search_learning_resources", { query: "coefficient relationship" }, [])).toMatchObject({ allowed: true });
-    expect(governor.authorize("search_learning_resources", { query: "coefficient relationship" }, [])).toMatchObject({ allowed: false, code: "DUPLICATE_TOOL_CALL" });
+    expect(governor.authorize("search_learning_resources", { query: "coefficient relationship" }, [])).toMatchObject({ allowed: true, disposition: "ALLOW" });
+    expect(governor.authorize("search_learning_resources", { query: "coefficient relationship" }, [], {
+      routeAvailable: true,
+      availableAlternativeTools: [],
+      governedWorkflowStepRemaining: false,
+    })).toMatchObject({ allowed: false, disposition: "REJECT_RECOVERABLE", code: "DUPLICATE_TOOL_CALL" });
 
     const partial = new EvidenceSufficiencyAssessor({ createId: () => "assessment-first" }).assess({
       toolId: "search_learning_resources",
@@ -176,12 +215,20 @@ describe("Foundry Control Plane", () => {
       status: "SUCCEEDED",
       result: { results: [{ sourceId: "official", sourceType: "OFFICIAL_SYLLABUS", score: 3, page: 1 }], missingAspects: ["pedagogical explanation"] },
     });
-    expect(governor.authorize("search_learning_resources", { query: "coefficient relation details" }, [partial])).toMatchObject({ allowed: false, code: "SECOND_SEARCH_JUSTIFICATION_REQUIRED" });
+    expect(governor.authorize("search_learning_resources", { query: "coefficient relation details" }, [partial], {
+      routeAvailable: true,
+      availableAlternativeTools: [],
+      governedWorkflowStepRemaining: false,
+    })).toMatchObject({ allowed: false, disposition: "REJECT_TERMINAL", code: "SECOND_SEARCH_JUSTIFICATION_REQUIRED" });
     expect(governor.authorize("search_learning_resources", {
       query: "particle count scaling pedagogical explanation",
       retrievalJustification: { priorAssessmentId: "assessment-first", missingAspect: "pedagogical explanation", expectedCoverageGain: "find a teaching explanation" },
     }, [partial])).toMatchObject({ allowed: true });
-    expect(governor.authorize("search_learning_resources", { query: "a third query" }, [partial])).toMatchObject({ allowed: false, code: "TOOL_BUDGET_EXCEEDED" });
+    expect(governor.authorize("search_learning_resources", { query: "a third query" }, [partial], {
+      routeAvailable: false,
+      availableAlternativeTools: [],
+      governedWorkflowStepRemaining: false,
+    })).toMatchObject({ allowed: false, disposition: "REJECT_TERMINAL", code: "TOOL_BUDGET_EXCEEDED" });
     expect(governor.snapshot()).toContainEqual({ toolId: "search_learning_resources", consumed: 2, maximum: 2 });
   });
 

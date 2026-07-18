@@ -59,7 +59,19 @@ const legacyDeepSeekRuntimeExecutor: RuntimeExecutor | null = client ? {
     await traceRepository.start({ traceId, request, initialRoute, obligations: executionPlan.obligations, executionPlan, contextSelection: executionPlan.contextSelection, provider: "deepseek", model, thinkingMode, prompt: policy.prompt, capabilityRegistry: policy.capabilityRegistry, toolDefinitions: policy.toolDefinitions, startedAt });
     try {
       const trace = await runAgent({ request, executionPlan, model, thinkingMode, systemPrompt, promptVersion: AGENT_PROMPT_VERSION, capabilityRegistryVersion: capabilities.version, toolDefinitions: toolConfig.tools, modelClient: client, tools, createId: () => traceId, onToolResult: (result) => toolResults.push(result), onModelResponse: (message, usage) => traceRepository.appendModelResponse(traceId, toObservableAgentMessage(message), usage), onToolExecution: (execution) => traceRepository.appendToolExecution(traceId, execution), onControlPlaneUpdate: (observability) => { latestControlPlaneState = observability; } });
-      await traceRepository.complete(traceId, trace.finalResponse, trace.completedAt, trace.route, { budgetConsumption: trace.budgetConsumption, evidenceAssessments: trace.evidenceAssessments, stopReason: trace.stopReason, governedWorkflow: trace.governedWorkflow });
+      await traceRepository.complete(traceId, trace.finalResponse, trace.completedAt, trace.route, {
+        budgetConsumption: trace.budgetConsumption,
+        evidenceAssessments: trace.evidenceAssessments,
+        stopReason: trace.stopReason,
+        governedWorkflow: trace.governedWorkflow,
+        applicationResponseDisposition: trace.applicationResponseDisposition,
+        capabilityResolution: trace.capabilityResolution,
+        terminalToolRejection: trace.terminalToolRejection,
+        toolPhase: trace.toolPhase,
+        responseOnlyCorrectionCount: trace.responseOnlyCorrectionCount,
+        deterministicFallbackUsed: trace.deterministicFallbackUsed,
+        finalTerminalCondition: trace.finalTerminalCondition,
+      });
       return { trace, toolResults };
     } catch (error) {
       const code = error && typeof error === "object" && "code" in error && typeof error.code === "string" ? error.code : "AGENT_RUN_FAILED";

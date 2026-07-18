@@ -38,6 +38,11 @@ function executor(adapterId: string, onExecute: () => void): RuntimeExecutor {
           initialRoute: input.executionPlan.route,
           route: input.executionPlan.route,
           obligations: input.executionPlan.obligations,
+          applicationResponseDisposition: { status: "ANSWERED", reason: "Governed Evidence is sufficient." },
+          toolPhase: { state: "CLOSED", closedAt: "2026-07-17T00:00:00.900Z", reason: "Plan requirements satisfied." },
+          responseOnlyCorrectionCount: 0,
+          deterministicFallbackUsed: false,
+          finalTerminalCondition: "PLAN_REQUIREMENTS_SATISFIED",
           provider: `${adapterId}-provider`,
           model: `${adapterId}-model`,
           thinkingMode: "disabled",
@@ -80,7 +85,12 @@ describe("candidate-neutral runtime shadow coordination", () => {
     expect(execution.authoritativeResult.trace.finalResponse.learnerMessage).toBe("legacy answer");
     expect(authoritativeCalls).toBe(1);
     expect(shadowCalls).toBe(0);
-    expect(records).toEqual([expect.objectContaining({ schemaVersion: "1.2.0", executionId: "authoritative-execution", role: "AUTHORITATIVE", runtimeAdapterId: "legacy", status: "COMPLETED", executionPlan: normalizedRequest.executionPlan })]);
+    expect(records).toEqual([expect.objectContaining({
+      schemaVersion: "1.3.0", executionId: "authoritative-execution", role: "AUTHORITATIVE", runtimeAdapterId: "legacy", status: "COMPLETED",
+      executionPlan: normalizedRequest.executionPlan, applicationResponseDisposition: { status: "ANSWERED", reason: "Governed Evidence is sufficient." },
+      toolPhase: expect.objectContaining({ state: "CLOSED" }), responseOnlyCorrectionCount: 0, deterministicFallbackUsed: false,
+      finalTerminalCondition: "PLAN_REQUIREMENTS_SATISFIED",
+    })]);
   });
 
   it("runs an explicit shadow with the same plan while keeping the authoritative product result", async () => {
@@ -102,8 +112,8 @@ describe("candidate-neutral runtime shadow coordination", () => {
     expect(execution.authoritativeResult.trace.finalResponse.learnerMessage).toBe("legacy answer");
     expect(receivedPlans).toEqual([normalizedRequest.executionPlan, normalizedRequest.executionPlan]);
     expect(records).toEqual(expect.arrayContaining([
-      expect.objectContaining({ schemaVersion: "1.2.0", executionId: "authoritative-execution", role: "AUTHORITATIVE", runtimeAdapterId: "legacy" }),
-      expect.objectContaining({ schemaVersion: "1.2.0", executionId: "shadow-execution", parentAuthoritativeExecutionId: "authoritative-execution", role: "SHADOW", runtimeAdapterId: "candidate" }),
+      expect.objectContaining({ schemaVersion: "1.3.0", executionId: "authoritative-execution", role: "AUTHORITATIVE", runtimeAdapterId: "legacy" }),
+      expect.objectContaining({ schemaVersion: "1.3.0", executionId: "shadow-execution", parentAuthoritativeExecutionId: "authoritative-execution", role: "SHADOW", runtimeAdapterId: "candidate" }),
     ]));
   });
 

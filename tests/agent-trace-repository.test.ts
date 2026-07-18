@@ -43,12 +43,23 @@ describe("AgentTraceRepository", () => {
     const providerMessage = { role: "assistant", content: null, tool_calls: [{ id: "call-1", type: "function", function: { name: "search_learning_resources", arguments: '{"query":"ratio"}' } }], reasoning_content: "must never persist" } as const satisfies ModelMessage;
     await repository.appendModelResponse("trace-1", providerMessage, { promptTokens: 10, completionTokens: 2, totalTokens: 12 });
     await repository.appendToolExecution("trace-1", { name: "search_learning_resources", arguments: { query: "ratio" }, resultRef: "resource-search-1", status: "SUCCEEDED", result: [{ sourceId: "source-1" }] });
-    await repository.complete("trace-1", { status: "ANSWERED", learnerMessage: "answer", sourceRefs: ["source-1"] }, "2026-07-16T10:00:01.000Z", "COURSE_EXPLANATION");
+    await repository.complete("trace-1", { status: "ANSWERED", learnerMessage: "answer", sourceRefs: ["source-1"] }, "2026-07-16T10:00:01.000Z", "COURSE_EXPLANATION", {
+      applicationResponseDisposition: { status: "ANSWERED", reason: "Governed Evidence is sufficient." },
+      toolPhase: { state: "CLOSED", closedAt: "2026-07-16T10:00:00.900Z", reason: "Plan requirements satisfied." },
+      responseOnlyCorrectionCount: 0,
+      deterministicFallbackUsed: false,
+      finalTerminalCondition: "PLAN_REQUIREMENTS_SATISFIED",
+    });
 
     const reloaded = await new AgentTraceRepository(root).get("trace-1");
-    expect(reloaded).toMatchObject({ status: "COMPLETED", traceId: "trace-1", initialRoute: "COURSE_EXPLANATION", route: "COURSE_EXPLANATION", finalResponse: { status: "ANSWERED" }, observableModelMessages: [{ role: "assistant", content: null }], toolExecutions: [{ result: [{ sourceId: "source-1" }] }] });
+    expect(reloaded).toMatchObject({
+      status: "COMPLETED", traceId: "trace-1", initialRoute: "COURSE_EXPLANATION", route: "COURSE_EXPLANATION",
+      finalResponse: { status: "ANSWERED" }, observableModelMessages: [{ role: "assistant", content: null }], toolExecutions: [{ result: [{ sourceId: "source-1" }] }],
+      applicationResponseDisposition: { status: "ANSWERED" }, toolPhase: { state: "CLOSED" }, responseOnlyCorrectionCount: 0,
+      deterministicFallbackUsed: false, finalTerminalCondition: "PLAN_REQUIREMENTS_SATISFIED",
+    });
     const serialized = await readFile(join(root, "trace-1.json"), "utf8");
-    expect(JSON.parse(serialized)).toMatchObject({ schemaVersion: "1.1.0" });
+    expect(JSON.parse(serialized)).toMatchObject({ schemaVersion: "1.2.0" });
     expect(serialized).not.toMatch(/must never persist|authorization|api.?key/i);
   });
 
@@ -66,6 +77,22 @@ describe("AgentTraceRepository", () => {
     await writeFile(join(root, "legacy-trace.json"), JSON.stringify(legacy), "utf8");
 
     await expect(new AgentTraceRepository(root).get("legacy-trace")).resolves.toMatchObject({ schemaVersion: "1.0.0", traceId: "legacy-trace" });
+  });
+
+  it("keeps 1.1.0 Control Plane records readable after terminal disposition observability is added", async () => {
+    const root = await directory();
+    const prior = {
+      schemaVersion: "1.1.0",
+      traceId: "prior-control-plane-trace",
+      request: { conversationId: "prior", inputOrigin: "USER_INPUT", runPurpose: "PRODUCT", messages: [{ role: "user", content: "prior" }] },
+      provider: "deepseek", model: "prior", thinkingMode: "disabled",
+      prompt: { version: "1", contentHash: "p" }, capabilityRegistry: { version: "1", contentHash: "c" }, toolDefinitions: { version: "1", contentHash: "t" },
+      startedAt: "2026-07-17T00:00:00.000Z", completedAt: "2026-07-17T00:00:01.000Z", updatedAt: "2026-07-17T00:00:01.000Z",
+      status: "COMPLETED", observableModelMessages: [], toolExecutions: [], finalResponse: { status: "ANSWERED", learnerMessage: "prior", sourceRefs: [] },
+    };
+    await writeFile(join(root, "prior-control-plane-trace.json"), JSON.stringify(prior), "utf8");
+
+    await expect(new AgentTraceRepository(root).get("prior-control-plane-trace")).resolves.toMatchObject({ schemaVersion: "1.1.0", traceId: "prior-control-plane-trace" });
   });
 
   it("persists partial failed runs and supports filtered queries", async () => {

@@ -1,7 +1,7 @@
 import type { AgentExecutionPlan, AgentObligations, AgentResponseEnvelope, AgentRoute, AgentRunRequest, AgentToolCallRecord } from "./types";
 import { ContextCompiler } from "./control-plane/context-compiler";
 import { ExecutionPlanner } from "./control-plane/execution-planner";
-import type { EvidenceSufficiencyAssessment, ToolBudgetConsumption } from "./control-plane/observability";
+import type { CapabilityResolutionResult, EvidenceSufficiencyAssessment, TerminalToolRejection, ToolBudgetConsumption } from "./control-plane/observability";
 import type { ExecutionPlanV1 } from "./control-plane/execution-plan";
 
 interface SuccessfulToolResult { readonly name: string; readonly data: unknown }
@@ -88,6 +88,8 @@ export function enforceRoutePolicy(
   evidenceAssessments: readonly EvidenceSufficiencyAssessment[] = [],
   executionPlan: ExecutionPlanV1 = resolveAgentExecutionPlan(request),
   budgetConsumption: readonly ToolBudgetConsumption[] = [],
+  terminalToolRejection?: TerminalToolRejection,
+  capabilityResolution?: CapabilityResolutionResult,
 ): AgentRoute {
   const route = initialRoute;
   const successfulCalls = toolCalls.filter((call) => call.status === "SUCCEEDED");
@@ -100,7 +102,7 @@ export function enforceRoutePolicy(
     const latestAssessment = [...evidenceAssessments].reverse().find((item) => item.toolId === "search_learning_resources");
     const sufficient = latestAssessment ? latestAssessment.outcome === "SUFFICIENT_EVIDENCE" : searchHasGovernedSource(successfulToolResults);
     const retrievalBudget = budgetConsumption.find((item) => item.toolId === "search_learning_resources");
-    const shouldContinue = Boolean(latestAssessment?.anotherCallJustified && retrievalBudget && retrievalBudget.consumed < retrievalBudget.maximum);
+    const shouldContinue = Boolean(latestAssessment?.anotherCallJustified && retrievalBudget && retrievalBudget.consumed < retrievalBudget.maximum && !terminalToolRejection);
     if (shouldContinue) throw new RoutePolicyError(route, "Evidence assessment requires one justified, materially different retrieval before stopping.");
     if (!sufficient) {
       if (response.status !== "NEEDS_MORE_EVIDENCE") throw new RoutePolicyError(route, "Insufficient governed Evidence must return NEEDS_MORE_EVIDENCE, never an unsupported ANSWERED response.");
@@ -112,11 +114,16 @@ export function enforceRoutePolicy(
     }
   }
 
-  if (route === "LEARNER_DIAGNOSIS_COMPLETE" && response.status !== "ANSWERED") {
+  const capabilityBlocksDiagnosis = capabilityResolution?.status === "REQUESTED_CAPABILITY_NOT_FOUND" || capabilityResolution?.status === "REQUEST_AMBIGUOUS";
+  if (route === "LEARNER_DIAGNOSIS_COMPLETE" && capabilityBlocksDiagnosis) {
+    if (response.status !== "NEEDS_MORE_EVIDENCE" || successfulCalls.some((call) => call.name === "run_learner_diagnosis")) {
+      throw new RoutePolicyError(route, "Unresolved capability Evidence must return NEEDS_MORE_EVIDENCE without running Diagnosis.");
+    }
+  } else if (route === "LEARNER_DIAGNOSIS_COMPLETE" && response.status !== "ANSWERED") {
     throw new RoutePolicyError(route, "A completed governed Diagnosis must return ANSWERED and reference its persisted trace.");
   }
 
-  if (route === "LEARNER_DIAGNOSIS_COMPLETE") {
+  if (route === "LEARNER_DIAGNOSIS_COMPLETE" && !capabilityBlocksDiagnosis) {
     const listIndex = successfulCalls.findIndex((call) => call.name === "list_capabilities");
     const getIndex = successfulCalls.findIndex((call) => call.name === "get_capability");
     const diagnosisIndex = successfulCalls.findIndex((call) => call.name === "run_learner_diagnosis");
