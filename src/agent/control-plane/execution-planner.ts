@@ -24,6 +24,14 @@ function requiresCapabilityInspection(input: string): boolean {
     || /\b(?:capabilit(?:y|ies)|tool\s+trace)\b/iu.test(input);
 }
 
+function looksLikeConcreteProblem(input: string): boolean {
+  const explicitProblem = /\b(?:calculate|compute|evaluate|solve|determine|work\s+out|find\s+the\s+(?:value|result|answer))\b|(?:计算|求解|算出|解出)/iu.test(input);
+  const concretePayload = /\d/u.test(input)
+    || /(?:=|\+|−|-|×|\*|÷|\/|\^|√|∫|∑)/u.test(input)
+    || /\b(?:equation|formula|expression|proof|derivative|integral)\b|(?:方程|公式|表达式|证明|导数|积分)/iu.test(input);
+  return explicitProblem && concretePayload;
+}
+
 function obligations(route: AgentRoute, input: string): AgentObligations {
   return {
     retrievalRequired: route === "COURSE_EXPLANATION",
@@ -39,18 +47,20 @@ function intent(route: AgentRoute, input: string): ExecutionIntent {
   if (route === "LEARNER_DIAGNOSIS_COMPLETE") return "COMPLETE_ATTEMPT_DIAGNOSIS";
   if (route === "LEARNER_DIAGNOSIS_INCOMPLETE") return "INCOMPLETE_ATTEMPT_DIAGNOSIS";
   if (route === "CAPABILITY_GAP") return "CAPABILITY_DISCOVERY";
-  return "CONCRETE_CALCULATION";
+  if (requiresCapabilityInspection(input)) return "CAPABILITY_DISCOVERY";
+  if (looksLikeConcreteProblem(input)) return "CONCRETE_CALCULATION";
+  return "GENERAL_ASSISTANCE";
 }
 
 function directive(executionIntent: ExecutionIntent): ExecutionDirective {
   if (executionIntent === "COMPLETE_ATTEMPT_DIAGNOSIS") return { mode: "GOVERNED_WORKFLOW", workflow: { id: "LEARNER_DIAGNOSIS", version: "1.0.0" } };
   if (executionIntent === "PRODUCT_ACTION") return { mode: "PRODUCT_ACTION" };
-  if (executionIntent === "CONCRETE_CALCULATION") return { mode: "DIRECT_MODEL" };
+  if (executionIntent === "CONCRETE_CALCULATION" || executionIntent === "GENERAL_ASSISTANCE") return { mode: "DIRECT_MODEL" };
   return { mode: "BOUNDED_AGENT" };
 }
 
 function policy(route: AgentRoute, routeObligations: AgentObligations, executionIntent: ExecutionIntent, input: string) {
-  let permitted: readonly ToolId[] = ALL_TOOLS;
+  let permitted: readonly ToolId[] = [];
   let required: readonly ToolId[] = [];
   if (executionIntent === "PRODUCT_ACTION") {
     const tool: ToolId = /\b(?:schedule|plan)\b|(?:安排|计划)/iu.test(input) ? "propose_schedule_followup" : "propose_library_artifact";
@@ -61,7 +71,10 @@ function policy(route: AgentRoute, routeObligations: AgentObligations, execution
   else if (route === "CAPABILITY_GAP") { permitted = ["list_capabilities", "record_capability_gap"]; required = ["list_capabilities"]; }
   else if (routeObligations.capabilityInspectionRequired) { permitted = ["list_capabilities"]; required = ["list_capabilities"]; }
   else if (route === "LEARNER_DIAGNOSIS_INCOMPLETE") permitted = [];
-  const maximumCallsPerTool = Object.fromEntries(ALL_TOOLS.map((tool) => [tool, tool === "search_learning_resources" ? 2 : 1])) as Record<ToolId, number>;
+  const maximumCallsPerTool = Object.fromEntries(ALL_TOOLS.map((tool) => [
+    tool,
+    permitted.includes(tool) ? tool === "search_learning_resources" ? 2 : 1 : 0,
+  ])) as Record<ToolId, number>;
   return {
     permitted,
     required,

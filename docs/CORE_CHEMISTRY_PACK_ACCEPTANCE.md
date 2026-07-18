@@ -28,6 +28,9 @@ Included:
   Adapter;
 - Chemistry compatibility Adapters for current Components and Agent
   capability records;
+- an identity-bearing Core registration binding that rejects any Capability
+  or Component implementation whose ID/version differs from its profile;
+- Pack-owned runtime validation before a Legacy capability binding is used;
 - real Component export, Registry seed and Agent capability entrypoint
   wiring through the registered Pack;
 - scoped import, contract, union, Runtime and schema leakage checks.
@@ -75,6 +78,10 @@ metadata may contain domain terms.
 `known-core-chemistry-leakages.json` is an exact, reviewed exception file.
 Its current maximum and entry count are both zero. The count can shrink;
 increasing its reviewed maximum is an explicit architecture disclosure.
+The current scanner intentionally rejects relative imports outside Core and
+all package imports. A future domain-neutral utility or type is not silently
+allowed: its exact dependency must receive explicit architecture review and a
+focused scanner change. No current legitimate Core dependency is blocked.
 
 ## Canonical and derived records
 

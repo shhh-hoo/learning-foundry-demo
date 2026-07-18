@@ -4,7 +4,7 @@ import { ZodError } from "zod";
 import { enforceRoutePolicy, resolveAgentExecutionPlan, routeInstruction, RoutePolicyError } from "./route-policy";
 import { EvidenceSufficiencyAssessor } from "./control-plane/evidence-sufficiency";
 import { ToolExecutionGovernor } from "./control-plane/tool-execution-governor";
-import { DiagnosisWorkflow } from "./control-plane/diagnosis-workflow";
+import { DiagnosisSequenceGovernor } from "./control-plane/diagnosis-workflow";
 import type { EvidenceSufficiencyAssessment } from "./control-plane/observability";
 import type { AgentRunObservability } from "./trace-store";
 
@@ -96,7 +96,8 @@ function matchingToolDefinitions(definitions: readonly unknown[], names: readonl
   return definitions.filter((definition) => names.includes(toolName(definition) ?? ""));
 }
 
-function providerToolsForPlan(plan: AgentExecutionPlan, definitions: readonly unknown[], records: AgentTrace["toolCalls"], assessments: readonly EvidenceSufficiencyAssessment[], governor: ToolExecutionGovernor, diagnosisWorkflow: DiagnosisWorkflow): readonly unknown[] {
+function providerToolsForPlan(plan: AgentExecutionPlan, definitions: readonly unknown[], records: AgentTrace["toolCalls"], assessments: readonly EvidenceSufficiencyAssessment[], governor: ToolExecutionGovernor, diagnosisWorkflow: DiagnosisSequenceGovernor): readonly unknown[] {
+  if (plan.execution.mode === "DIRECT_MODEL" || plan.execution.mode === "DETERMINISTIC_CAPABILITY") return [];
   const route = plan.route;
   const obligations = plan.obligations;
   const permittedDefinitions = matchingToolDefinitions(definitions, plan.toolPolicy.permitted);
@@ -170,7 +171,7 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentTrace> {
   const evidenceAssessments: EvidenceSufficiencyAssessment[] = [];
   const evidenceAssessor = new EvidenceSufficiencyAssessor();
   const governor = new ToolExecutionGovernor(resolvedPlan);
-  const diagnosisWorkflow = new DiagnosisWorkflow();
+  const diagnosisWorkflow = new DiagnosisSequenceGovernor();
   const controlPlaneSnapshot = (stopReason?: string, responseComposed = false): AgentRunObservability => ({
     budgetConsumption: governor.snapshot(),
     evidenceAssessments: structuredClone(evidenceAssessments),
@@ -261,7 +262,7 @@ export async function runAgent(options: RunAgentOptions): Promise<AgentTrace> {
       const latestEvidence = [...evidenceAssessments].reverse().find((item) => item.toolId === "search_learning_resources");
       const stopReason = response.status === "NEEDS_MORE_EVIDENCE" && latestEvidence
         ? latestEvidence.continueOrStopReason
-        : resolvedPlan.execution.mode === "GOVERNED_WORKFLOW" ? "Governed workflow completed in its application-owned order." : "Execution Plan requirements satisfied.";
+        : resolvedPlan.execution.mode === "GOVERNED_WORKFLOW" ? "Diagnosis sequence completed in application-governed order with model-supplied tool arguments." : "Execution Plan requirements satisfied.";
       await options.onControlPlaneUpdate?.(controlPlaneSnapshot(stopReason, true));
       return {
         traceId,

@@ -23,6 +23,18 @@ function assertManifest(manifest: ReferencePackManifest): void {
   }
 }
 
+function assertImplementationIdentity(
+  kind: "CAPABILITY" | "COMPONENT",
+  profile: { readonly identity: { readonly id: string; readonly version: string } },
+  implementation: { readonly id: string; readonly version: string },
+): void {
+  if (implementation.id !== profile.identity.id || implementation.version !== profile.identity.version) {
+    throw new Error(
+      `REFERENCE_PACK_${kind}_IDENTITY_MISMATCH: expected ${profile.identity.id}@${profile.identity.version}, received ${implementation.id}@${implementation.version}.`,
+    );
+  }
+}
+
 export function createReferencePackRegistry(registrations: readonly ReferencePackRegistration[]) {
   const manifests = new Map<string, ReferencePackManifest>();
   const capabilities = new Map<string, ReferencePackRegistration["capabilities"]>();
@@ -35,12 +47,14 @@ export function createReferencePackRegistry(registrations: readonly ReferencePac
       throw new Error(`DUPLICATE_REFERENCE_PACK: ${registration.manifest.id}`);
     }
     for (const capability of registration.capabilities) {
+      assertImplementationIdentity("CAPABILITY", capability.profile, capability.implementation);
       const key = `${capability.profile.identity.id}@${capability.profile.identity.version}`;
       const owner = capabilityOwners.get(key);
       if (owner) throw new Error(`DUPLICATE_CAPABILITY_REGISTRATION: ${key} is owned by ${owner}.`);
       capabilityOwners.set(key, registration.manifest.id);
     }
     for (const component of registration.components) {
+      assertImplementationIdentity("COMPONENT", component.profile, component.implementation);
       const key = `${component.profile.identity.id}@${component.profile.identity.version}`;
       const owner = componentOwners.get(key);
       if (owner) throw new Error(`DUPLICATE_COMPONENT_REGISTRATION: ${key} is owned by ${owner}.`);
