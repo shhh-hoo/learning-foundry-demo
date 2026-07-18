@@ -9,6 +9,7 @@
     "registry:demo": "tsx scripts/demo-registry-server.ts",
     "agent:gateway": "tsx scripts/agent-gateway-server.ts",
     "policy:audit": "tsx scripts/audit-policy.ts",
+    "core:leakage": "vitest run tests/core-leakage.test.ts",
     "agenteval:live": "tsx scripts/agenteval-live.ts",
     "agenteval:checkpoint": "AGENT_EVAL_CHECKPOINT=1 tsx scripts/agenteval-live.ts",
     "agenteval:baseline": "AGENT_EVAL_BASELINE=1 tsx scripts/agenteval-live.ts",

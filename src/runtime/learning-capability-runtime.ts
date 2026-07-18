@@ -1,15 +1,14 @@
-import type { RunPurpose } from "../agent/types";
+import type {
+  LearningCapabilityExecution,
+  LearningCapabilityExecutionResult,
+  LearningCapabilityRuntime,
+} from "../core/ports/learning-capability-runtime";
 
-export interface LearningCapabilityExecution {
-  readonly capabilityId: string;
-  readonly capabilityVersion?: string;
-  readonly input: Record<string, unknown>;
-  readonly runPurpose: RunPurpose;
-}
-
-export interface LearningCapabilityRuntime {
-  execute(execution: LearningCapabilityExecution): Promise<{ readonly traceId: string; readonly result: Record<string, unknown> }>;
-}
+export type {
+  LearningCapabilityExecution,
+  LearningCapabilityExecutionResult,
+  LearningCapabilityRuntime,
+} from "../core/ports/learning-capability-runtime";
 
 class LearningCapabilityRuntimeError extends Error {
   constructor(readonly code: string, message: string) { super(`${code}: ${message}`); }
@@ -21,7 +20,7 @@ export class LegacyTrainerCapabilityRuntime implements LearningCapabilityRuntime
     private readonly fetcher: typeof fetch = globalThis.fetch,
   ) {}
 
-  async execute(execution: LearningCapabilityExecution): Promise<{ readonly traceId: string; readonly result: Record<string, unknown> }> {
+  async execute(execution: LearningCapabilityExecution): Promise<LearningCapabilityExecutionResult> {
     const inputCapabilityId = execution.input.componentId;
     const inputCapabilityVersion = execution.input.componentVersion;
     if ((inputCapabilityId !== undefined && inputCapabilityId !== execution.capabilityId)

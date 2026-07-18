@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { publishedComponents } from "../src/components/published";
+import { registeredPublishedDiagnosticComponents as publishedComponents } from "../src/reference-packs/registry";
 import { acceptPublishedDiagnosticComponent, LocalShowcaseComponentRepository, type DiagnosticComponentRepository } from "../src/demo-registry/registry-store";
 
 const port = 4175;

@@ -15,6 +15,7 @@ import { createCorpusDeliveryPolicyRuntime } from "../src/corpus/delivery-policy
 import { LegacyTrainerCapabilityRuntime } from "../src/runtime/learning-capability-runtime.ts";
 import { createRuntimeShadowCoordinator, parseRuntimeShadowConfiguration, type RuntimeExecutor } from "../src/runtime/runtime-shadow.ts";
 import { PurposeAndRoleSeparatedFileRuntimeExecutionRecorder } from "./lib/runtime-execution-recorder.ts";
+import { registeredAgentCapabilities } from "../src/reference-packs/registry.ts";
 
 const root = new URL("../", import.meta.url);
 const readText = (path: string) => readFile(new URL(path, root), "utf8");
@@ -25,7 +26,7 @@ const baseUrl = process.env.DEEPSEEK_BASE_URL?.trim() || "https://api.deepseek.c
 const thinkingMode = process.env.DEEPSEEK_THINKING_MODE === "enabled" ? "enabled" : "disabled";
 const port = Number(process.env.AGENT_GATEWAY_PORT ?? 4176);
 const diagnosisUrl = process.env.TRAINER_DIAGNOSIS_URL?.trim() || "http://127.0.0.1:4177/diagnose";
-const capabilities = await readJson<{ readonly version: string; readonly capabilities: readonly CapabilityRecord[] }>("config/capabilities/registry.json");
+const capabilities: { readonly version: string; readonly capabilities: readonly CapabilityRecord[] } = registeredAgentCapabilities;
 const toolConfig = await readJson<{ readonly version: string; readonly tools: readonly unknown[] }>("config/tools/tool-descriptions.json");
 const responsePolicy = await readText("config/agent/response-policy.json");
 const corpusDeliveryPolicyText = await readText("config/corpus/delivery-policy.json");
