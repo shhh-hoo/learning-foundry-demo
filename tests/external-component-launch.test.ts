@@ -1,8 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ExternalComponentService } from "../src/external-components/external-component-service";
+import {
+  ExternalComponentService,
+  ExternalLaunchTerminalTelemetryError,
+} from "../src/external-components/external-component-service";
 import { deriveExternalComponentRegistry } from "../src/external-components/registry";
 import { BrowserExternalLaunchTelemetryRepository } from "../src/external-components/telemetry-repository";
 import type { ExternalComponentReviewDecision, ExternalLearningComponent } from "../src/external-components/types";
+import type { ExternalLaunchTelemetryEvent, ExternalLaunchTelemetryRepository } from "../src/external-components/types";
 
 function approvedRegistry() {
   const component: ExternalLearningComponent = {
@@ -87,6 +91,34 @@ describe("external component launch governance", () => {
     await expect(service.requestLaunch({ componentId: "reviewed-link", deploymentScope: "SYNTHETIC_TEST" })).rejects.toThrow(/corrupt launch telemetry/i);
     expect(open).not.toHaveBeenCalled();
     expect(window.localStorage.getItem("learning-foundry.external-launch-telemetry.v1")).toBe("not-json");
+  });
+
+  it("retains LAUNCH_REQUESTED and returns an explicit error when terminal telemetry cannot be appended", async () => {
+    const events: ExternalLaunchTelemetryEvent[] = [];
+    const repository: ExternalLaunchTelemetryRepository = {
+      list: async () => structuredClone(events),
+      append: async (event) => {
+        if (event.type !== "LAUNCH_REQUESTED") throw new Error("storage quota exceeded");
+        events.push(structuredClone(event));
+      },
+    };
+    const open = vi.fn(() => ({}) as Window);
+    const service = new ExternalComponentService({
+      registry: approvedRegistry(),
+      telemetryRepository: repository,
+      open,
+      now: () => "2026-07-17T01:00:00.000Z",
+      createRequestId: () => "request-1",
+    });
+
+    const launch = service.requestLaunch({ componentId: "reviewed-link", deploymentScope: "SYNTHETIC_TEST" });
+    await expect(launch).rejects.toMatchObject({
+      name: "ExternalLaunchTerminalTelemetryError",
+      requestId: "request-1",
+      observedWindowStatus: "WINDOW_CREATED",
+    } satisfies Partial<ExternalLaunchTerminalTelemetryError>);
+    expect(open).toHaveBeenCalledOnce();
+    expect(events.map((event) => event.type)).toEqual(["LAUNCH_REQUESTED"]);
   });
 
   it("rejects deployment mismatches without telemetry or a window", async () => {

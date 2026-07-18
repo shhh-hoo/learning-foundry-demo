@@ -45,6 +45,9 @@ records the resource version, reviewer, timestamp, terms URL, Evidence
 reference and hash, deployment scope, four review gates, status and an
 optional superseded-decision reference. Current state derives from the
 latest valid record; approval and revocation history is never rewritten.
+The terms hash is a declared governance record. This PR did not capture or
+cryptographically verify official terms content through a governed process,
+so the field must not be described as verified official terms Evidence.
 
 The production log is currently empty because no current candidate has a
 complete review. Synthetic test records exercise the approved-link path
@@ -63,6 +66,11 @@ append LAUNCH_REQUESTED
 Browser telemetry is schema-validated, duplicate-rejecting and fail-closed
 on corrupt history. It is local, tamperable, noncanonical operational
 Evidence. It has no update, delete, reset or governance method.
+
+If the terminal append fails after the window request, the retained
+`LAUNCH_REQUESTED` record is not reset or overwritten. The service returns an
+explicit operational error containing the observed `WINDOW_CREATED` or
+`POPUP_BLOCKED` state without claiming that terminal telemetry was preserved.
 
 `WINDOW_CREATED` means only that the browser returned a window handle. It
 does not prove provider load, engagement, completion, correctness or
