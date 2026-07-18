@@ -510,9 +510,17 @@ export function createBlindPedagogyPacket(run: BenchmarkRunSnapshot, cases: read
 
 type PedagogyScores = { readonly correctness: number; readonly clarity: number; readonly pedagogy: number; readonly contextFidelity: number };
 type EvidenceScores = { readonly grounding: number; readonly authority: number; readonly provenance: number; readonly integrity: number };
+export type BenchmarkResponseDisposition =
+  | "SUBSTANTIVE_ANSWER"
+  | "SAFE_EVIDENCE_LIMIT"
+  | "SAFE_CAPABILITY_REFUSAL"
+  | "OTHER";
+export type BenchmarkAnswerCapability = "DEMONSTRATED" | "NOT_DEMONSTRATED" | "NOT_APPLICABLE_SAFE_LIMIT";
+export type BenchmarkPolicyCompliance = "COMPLIANT" | "NONCOMPLIANT" | "NOT_APPLICABLE";
+export type BenchmarkUnsupportedClaimAvoidance = "PRESERVED" | "VIOLATED" | "NOT_APPLICABLE";
 export type BenchmarkReview =
-  | { readonly schemaVersion: "1.0.0"; readonly phase: "BLIND_PEDAGOGY"; readonly blindId: string; readonly reviewerId: string; readonly reviewedAt: string; readonly scores: PedagogyScores; readonly reason: string }
-  | { readonly schemaVersion: "1.0.0"; readonly phase: "EVIDENCE_AUDIT"; readonly blindId: string; readonly reviewerId: string; readonly reviewedAt: string; readonly scores: EvidenceScores; readonly reason: string };
+  | { readonly schemaVersion: "1.0.0"; readonly phase: "BLIND_PEDAGOGY"; readonly blindId: string; readonly reviewerId: string; readonly reviewedAt: string; readonly scores: PedagogyScores; readonly responseDisposition: BenchmarkResponseDisposition; readonly answerCapability: BenchmarkAnswerCapability; readonly reason: string }
+  | { readonly schemaVersion: "1.0.0"; readonly phase: "EVIDENCE_AUDIT"; readonly blindId: string; readonly reviewerId: string; readonly reviewedAt: string; readonly scores: EvidenceScores; readonly policyCompliance: BenchmarkPolicyCompliance; readonly unsupportedClaimAvoidance: BenchmarkUnsupportedClaimAvoidance; readonly reason: string };
 
 export interface BlindPedagogyReviewLock {
   readonly schemaVersion: "1.0.0";
@@ -546,6 +554,15 @@ function validateReviewSet(expectedBlindIds: readonly string[], reviews: readonl
     if (!review.reviewerId.trim() || !review.reviewedAt.trim() || !review.reason.trim()
       || Object.keys(review.scores).sort().join("\u0000") !== expectedScoreKeys.sort().join("\u0000")
       || Object.values(review.scores).some((score) => !Number.isInteger(score) || score < 1 || score > 5)) {
+      throw new Error("BENCHMARK_REVIEW_INVALID");
+    }
+    if (review.phase === "BLIND_PEDAGOGY") {
+      if (!(["SUBSTANTIVE_ANSWER", "SAFE_EVIDENCE_LIMIT", "SAFE_CAPABILITY_REFUSAL", "OTHER"] as const).includes(review.responseDisposition)
+        || !(["DEMONSTRATED", "NOT_DEMONSTRATED", "NOT_APPLICABLE_SAFE_LIMIT"] as const).includes(review.answerCapability)) {
+        throw new Error("BENCHMARK_REVIEW_INVALID");
+      }
+    } else if (!(["COMPLIANT", "NONCOMPLIANT", "NOT_APPLICABLE"] as const).includes(review.policyCompliance)
+      || !(["PRESERVED", "VIOLATED", "NOT_APPLICABLE"] as const).includes(review.unsupportedClaimAvoidance)) {
       throw new Error("BENCHMARK_REVIEW_INVALID");
     }
   }
@@ -659,6 +676,10 @@ export function createValueBenchmarkReport(options: {
         cacheMissTokens: record.tokenUsage ? record.tokenUsage.promptCacheMissTokens ?? null : null,
         tokenUsage: record.tokenUsage, providerUsage: record.providerUsage, rawClientLatencyMs: record.rawClientLatencyMs,
         estimatedCostUsd: record.estimatedCostUsd, pedagogyScores: structuredClone(pedagogyReview.scores), evidenceScores: structuredClone(evidenceReview.scores), pedagogyScore: score(pedagogyReview), evidenceScore: score(evidenceReview),
+        responseDisposition: pedagogyReview.responseDisposition,
+        answerCapability: pedagogyReview.answerCapability,
+        policyCompliance: evidenceReview.policyCompliance,
+        unsupportedClaimAvoidance: evidenceReview.unsupportedClaimAvoidance,
         combinedScore: score(pedagogyReview) + score(evidenceReview), reviewerReasons: [pedagogyReview.reason, evidenceReview.reason], attempts,
       };
     });
@@ -694,9 +715,13 @@ export function createValueBenchmarkReport(options: {
       knownCostSubtotalUsd: values.reduce((total, item) => total + (item.estimatedCostUsd ?? 0), 0),
       totalEstimatedCostUsd: values.every((item) => item.estimatedCostUsd !== null) ? values.reduce((total, item) => total + item.estimatedCostUsd!, 0) : null,
       costCoverage: values.filter((item) => item.estimatedCostUsd !== null).length,
+      responseDispositionCounts: Object.fromEntries(["SUBSTANTIVE_ANSWER", "SAFE_EVIDENCE_LIMIT", "SAFE_CAPABILITY_REFUSAL", "OTHER"].map((value) => [value, values.filter((item) => item.responseDisposition === value).length])),
+      answerCapabilityCounts: Object.fromEntries(["DEMONSTRATED", "NOT_DEMONSTRATED", "NOT_APPLICABLE_SAFE_LIMIT"].map((value) => [value, values.filter((item) => item.answerCapability === value).length])),
+      policyComplianceCounts: Object.fromEntries(["COMPLIANT", "NONCOMPLIANT", "NOT_APPLICABLE"].map((value) => [value, values.filter((item) => item.policyCompliance === value).length])),
+      unsupportedClaimAvoidanceCounts: Object.fromEntries(["PRESERVED", "VIOLATED", "NOT_APPLICABLE"].map((value) => [value, values.filter((item) => item.unsupportedClaimAvoidance === value).length])),
       wins: reportCases.filter((item) => item.winner === arm).length,
     }];
-  })) as Readonly<Record<BenchmarkArm, { readonly averagePedagogyDimensions: Readonly<Record<keyof PedagogyScores, number>>; readonly averageEvidenceDimensions: Readonly<Record<keyof EvidenceScores, number>>; readonly averagePedagogyScore: number; readonly averageEvidenceScore: number; readonly averageLatencyMs: number; readonly knownTokenSubtotal: number; readonly tokenCoverage: number; readonly knownCostSubtotalUsd: number; readonly totalEstimatedCostUsd: number | null; readonly costCoverage: number; readonly wins: number }>>;
+  }));
   const exposureStrata = Object.fromEntries((["KNOWN_FIT", "NOVEL_GENERALIZATION", "CAPABILITY_BOUNDARY"] as const).map((exposureClass) => [exposureClass, {
     cases: reportCases.filter((item) => item.exposureClass === exposureClass).length,
     wins: Object.fromEntries(BENCHMARK_ARMS.map((arm) => [arm, reportCases.filter((item) => item.exposureClass === exposureClass && item.winner === arm).length])),
@@ -708,6 +733,9 @@ export function createValueBenchmarkReport(options: {
     reviewLocks: { pedagogy: options.pedagogyLock, evidence: options.evidenceLock }, cases: reportCases, armSummary, exposureStrata,
     summary: {
       answerQuality: Object.fromEntries(BENCHMARK_ARMS.map((arm) => [arm, armSummary[arm].averagePedagogyScore])),
+      answerCapability: Object.fromEntries(BENCHMARK_ARMS.map((arm) => [arm, armSummary[arm].answerCapabilityCounts])),
+      policyCompliance: Object.fromEntries(BENCHMARK_ARMS.map((arm) => [arm, armSummary[arm].policyComplianceCounts])),
+      unsupportedClaimAvoidance: Object.fromEntries(BENCHMARK_ARMS.map((arm) => [arm, armSummary[arm].unsupportedClaimAvoidanceCounts])),
       productValue: Object.fromEntries(BENCHMARK_ARMS.map((arm) => [arm, { evidenceScore: armSummary[arm].averageEvidenceScore, wins: armSummary[arm].wins, latencyMs: armSummary[arm].averageLatencyMs, costUsd: armSummary[arm].totalEstimatedCostUsd, knownCostSubtotalUsd: armSummary[arm].knownCostSubtotalUsd, costCoverage: armSummary[arm].costCoverage }])),
     },
     demonstratedLearningEffectiveness: "NOT_MEASURED" as const,

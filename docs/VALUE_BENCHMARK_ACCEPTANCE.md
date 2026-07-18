@@ -88,7 +88,10 @@ Arm B receives the Foundry-selected frozen Context and a deterministic plan
 summary together with the frozen Arm B policy prompt. It receives no tools,
 tool definitions, tool choice, corpus material, registry output or simulated
 tool result. It must not call the authoritative Agent loop. It makes one
-provider call.
+provider call. This arm measures Foundry policy and safety contribution, not
+unrestricted tutor answer capability. When governed Evidence is required but
+unavailable, `SAFE_EVIDENCE_LIMIT` can be the correct disposition and must not
+be collapsed into an ordinary wrong answer.
 
 ### C — Full authoritative Foundry
 
@@ -105,6 +108,11 @@ manifest. The current provider API does not support a request seed. The frozen
 configuration records `UNSUPPORTED_NOT_SENT`; the schedule seed is not a
 provider seed. A live benchmark cannot claim full fixed-seed conformance until
 that contract disposition is explicitly accepted.
+
+Arms A and B make exactly one direct provider call. Arm C intentionally runs
+the product-level, Plan-governed loop and may use multiple model and tool
+steps. Raw latency, provider usage, cache tokens and cost remain visible; this
+is not presented as an equal-call-count transport benchmark.
 
 The live preflight also binds Arm C to the committed prompt, response policy,
 tool, capability and delivery-policy hashes plus a deterministic transitive
@@ -147,6 +155,13 @@ Review follows two separately locked phases:
    references and runtime provenance while arm identity remains hidden. It
    scores grounding, authority, provenance and integrity.
 
+Before arm reveal, blind pedagogy reviewers also classify response disposition
+and whether answer capability was demonstrated. Evidence reviewers separately
+classify policy compliance and unsupported-claim avoidance. The final report
+keeps these categories distinct from answer-quality, Evidence and combined
+product-value scores. A safe refusal can preserve policy integrity while
+demonstrating no answer capability.
+
 The Evidence packet and all Evidence decisions are hash-locked before the arm
 mapping is revealed. Exact source and Evidence IDs and URLs in learner-facing
 answers are replaced by neutral reference markers for the blind packet; both
@@ -162,8 +177,9 @@ metrics, hashes and case IDs only.
 
 Each dimension uses the frozen 1–5 anchors in
 `config/value-benchmark/experiment.json`. Reports preserve all eight raw scores
-and reviewer reasons. Answer-quality, Evidence and combined product-value
-winners are calculated using the frozen rules; exact ties remain ties.
+and reviewer reasons plus the four categorical judgments. Answer-quality,
+Evidence and combined product-value winners are calculated using the frozen
+rules; exact ties remain ties.
 
 ## Evidence, rights and publication safety
 

@@ -217,7 +217,7 @@ describe("Foundry Value Benchmark", () => {
     const records = await repository.listExecutions(run.runId);
     const labeledRecords = records.map((record) => record.arm === "C_FULL_FOUNDRY" ? { ...record, answer: "According to CAIE and search_learning_resources at https://example.test, use source-1." } : record);
     const preparation = createBlindPedagogyPacket(run, cases, labeledRecords, "private-blinding-salt");
-    const pedagogyReviews: BenchmarkReview[] = preparation.packet.map((item) => ({ schemaVersion: "1.0.0", phase: "BLIND_PEDAGOGY", blindId: item.blindId, reviewerId: "pedagogy-reviewer", reviewedAt: "2026-07-17T01:00:00.000Z", scores: { correctness: 4, clarity: 4, pedagogy: 4, contextFidelity: 4 }, reason: "Blind rationale." }));
+    const pedagogyReviews: BenchmarkReview[] = preparation.packet.map((item) => ({ schemaVersion: "1.0.0", phase: "BLIND_PEDAGOGY", blindId: item.blindId, reviewerId: "pedagogy-reviewer", reviewedAt: "2026-07-17T01:00:00.000Z", scores: { correctness: 4, clarity: 4, pedagogy: 4, contextFidelity: 4 }, responseDisposition: "SUBSTANTIVE_ANSWER", answerCapability: "DEMONSTRATED", reason: "Blind rationale." }));
     const pedagogyLock = createBlindPedagogyReviewLock(preparation, pedagogyReviews, "2026-07-17T02:00:00.000Z");
     const evidencePacket = createEvidenceAuditPacket({ cases, records: labeledRecords, preparation, pedagogyReviews, pedagogyLock });
 
@@ -239,7 +239,7 @@ describe("Foundry Value Benchmark", () => {
     const preparation = createBlindPedagogyPacket(run, cases, records, "private-blinding-salt");
     const pedagogyReviews: BenchmarkReview[] = preparation.packet.map((item, index) => ({
       schemaVersion: "1.0.0", phase: "BLIND_PEDAGOGY", blindId: item.blindId, reviewerId: "pedagogy-reviewer", reviewedAt: "2026-07-17T01:00:00.000Z",
-      scores: { correctness: 3 + index % 3, clarity: 4, pedagogy: 4, contextFidelity: 4 }, reason: "Blind teaching-quality rationale.",
+      scores: { correctness: 3 + index % 3, clarity: 4, pedagogy: 4, contextFidelity: 4 }, responseDisposition: "SUBSTANTIVE_ANSWER", answerCapability: "DEMONSTRATED", reason: "Blind teaching-quality rationale.",
     }));
     expect(() => createBlindPedagogyReviewLock(preparation, pedagogyReviews.slice(1), "2026-07-17T03:00:00.000Z")).toThrow("BENCHMARK_REVIEW_SET_INCOMPLETE");
     const pedagogyLock = createBlindPedagogyReviewLock(preparation, pedagogyReviews, "2026-07-17T03:00:00.000Z");
@@ -248,7 +248,7 @@ describe("Foundry Value Benchmark", () => {
     const evidencePacket = createEvidenceAuditPacket({ cases, records, preparation, pedagogyReviews, pedagogyLock });
     const evidenceReviews: BenchmarkReview[] = evidencePacket.map((item) => ({
       schemaVersion: "1.0.0", phase: "EVIDENCE_AUDIT", blindId: item.blindId, reviewerId: "evidence-reviewer", reviewedAt: "2026-07-17T02:00:00.000Z",
-      scores: { grounding: 4, authority: 4, provenance: 4, integrity: 4 }, reason: "Evidence rationale before unblinding.",
+      scores: { grounding: 4, authority: 4, provenance: 4, integrity: 4 }, policyCompliance: "COMPLIANT", unsupportedClaimAvoidance: "PRESERVED", reason: "Evidence rationale before unblinding.",
     }));
 
     const evidenceLock = createEvidenceAuditReviewLock({ evidencePacket, evidenceReviews, preparation, pedagogyLock, lockedAt: "2026-07-17T03:30:00.000Z" });
@@ -262,20 +262,23 @@ describe("Foundry Value Benchmark", () => {
     expect(report.cases[0]?.arms[0]).toHaveProperty("evidenceScores.provenance");
     expect(report.demonstratedLearningEffectiveness).toBe("NOT_MEASURED");
     expect(report.summary).toHaveProperty("answerQuality");
+    expect(report.summary).toHaveProperty("answerCapability");
+    expect(report.summary).toHaveProperty("policyCompliance");
+    expect(report.summary).toHaveProperty("unsupportedClaimAvoidance");
     expect(report.summary).toHaveProperty("productValue");
 
     const armByBlindId = new Map(preparation.sealedMapping.entries.map(({ blindId, executionId }) => [blindId, records.find((record) => record.executionId === executionId)!.arm]));
     const tiedPedagogyReviews: BenchmarkReview[] = preparation.packet.map((item) => {
       const arm = armByBlindId.get(item.blindId)!;
       const value = arm === "C_FULL_FOUNDRY" ? 1 : 5;
-      return { schemaVersion: "1.0.0", phase: "BLIND_PEDAGOGY", blindId: item.blindId, reviewerId: "tie-reviewer", reviewedAt: "2026-07-17T04:10:00.000Z", scores: { correctness: value, clarity: value, pedagogy: value, contextFidelity: value }, reason: `${arm} pedagogy reason.` };
+      return { schemaVersion: "1.0.0", phase: "BLIND_PEDAGOGY", blindId: item.blindId, reviewerId: "tie-reviewer", reviewedAt: "2026-07-17T04:10:00.000Z", scores: { correctness: value, clarity: value, pedagogy: value, contextFidelity: value }, responseDisposition: arm === "B_FOUNDRY_POLICY_NO_TOOLS" ? "SAFE_EVIDENCE_LIMIT" : "SUBSTANTIVE_ANSWER", answerCapability: arm === "B_FOUNDRY_POLICY_NO_TOOLS" ? "NOT_APPLICABLE_SAFE_LIMIT" : "DEMONSTRATED", reason: `${arm} pedagogy reason.` };
     });
     const tiedPedagogyLock = createBlindPedagogyReviewLock(preparation, tiedPedagogyReviews, "2026-07-17T04:20:00.000Z");
     const tiedEvidencePacket = createEvidenceAuditPacket({ cases, records, preparation, pedagogyReviews: tiedPedagogyReviews, pedagogyLock: tiedPedagogyLock });
     const tiedEvidenceReviews: BenchmarkReview[] = tiedEvidencePacket.map((item) => {
       const arm = armByBlindId.get(item.blindId)!;
       const value = arm === "C_FULL_FOUNDRY" ? 1 : 5;
-      return { schemaVersion: "1.0.0", phase: "EVIDENCE_AUDIT", blindId: item.blindId, reviewerId: "tie-reviewer", reviewedAt: "2026-07-17T04:30:00.000Z", scores: { grounding: value, authority: value, provenance: value, integrity: value }, reason: `${arm} evidence reason.` };
+      return { schemaVersion: "1.0.0", phase: "EVIDENCE_AUDIT", blindId: item.blindId, reviewerId: "tie-reviewer", reviewedAt: "2026-07-17T04:30:00.000Z", scores: { grounding: value, authority: value, provenance: value, integrity: value }, policyCompliance: "COMPLIANT", unsupportedClaimAvoidance: "PRESERVED", reason: `${arm} evidence reason.` };
     });
     const tiedEvidenceLock = createEvidenceAuditReviewLock({ evidencePacket: tiedEvidencePacket, evidenceReviews: tiedEvidenceReviews, preparation, pedagogyLock: tiedPedagogyLock, lockedAt: "2026-07-17T04:40:00.000Z" });
     const tiedReport = createValueBenchmarkReport({ run, cases, records, preparation, evidencePacket: tiedEvidencePacket, pedagogyReviews: tiedPedagogyReviews, evidenceReviews: tiedEvidenceReviews, pedagogyLock: tiedPedagogyLock, evidenceLock: tiedEvidenceLock, generatedAt: "2026-07-17T04:50:00.000Z" });
@@ -283,6 +286,8 @@ describe("Foundry Value Benchmark", () => {
     expect(tiedReport.cases[0]!.winnerReason).toContain("A_BARE_LLM");
     expect(tiedReport.cases[0]!.winnerReason).toContain("B_FOUNDRY_POLICY_NO_TOOLS");
     expect(tiedReport.cases[0]!.winnerReason).not.toContain("C_FULL_FOUNDRY");
+    expect(tiedReport.summary.answerCapability.B_FOUNDRY_POLICY_NO_TOOLS).toMatchObject({ NOT_APPLICABLE_SAFE_LIMIT: 24 });
+    expect(tiedReport.summary.policyCompliance.B_FOUNDRY_POLICY_NO_TOOLS).toMatchObject({ COMPLIANT: 24 });
 
     const changedReviews = [...pedagogyReviews.slice(0, -1), { ...pedagogyReviews.at(-1)!, reason: "Changed after lock." }];
     expect(() => createValueBenchmarkReport({ run, cases, records, preparation, evidencePacket, pedagogyReviews: changedReviews, evidenceReviews, pedagogyLock, evidenceLock, generatedAt: "2026-07-17T04:00:00.000Z" })).toThrow("BENCHMARK_REVIEW_LOCK_MISMATCH");
@@ -300,14 +305,14 @@ describe("Foundry Value Benchmark", () => {
     expect(reviewerPacket).toEqual(preparation.packet);
     expect(JSON.stringify(reviewerPacket)).not.toContain("executionId");
     await expect(custody.revealArmMapping()).rejects.toThrow();
-    const prematureEvidenceReview: BenchmarkReview = { schemaVersion: "1.0.0", phase: "EVIDENCE_AUDIT", blindId: reviewerPacket[0]!.blindId, reviewerId: "reviewer-e", reviewedAt: "2026-07-17T00:30:00.000Z", scores: { grounding: 4, authority: 4, provenance: 4, integrity: 4 }, reason: "Must not precede the pedagogy lock and Evidence packet." };
+    const prematureEvidenceReview: BenchmarkReview = { schemaVersion: "1.0.0", phase: "EVIDENCE_AUDIT", blindId: reviewerPacket[0]!.blindId, reviewerId: "reviewer-e", reviewedAt: "2026-07-17T00:30:00.000Z", scores: { grounding: 4, authority: 4, provenance: 4, integrity: 4 }, policyCompliance: "COMPLIANT", unsupportedClaimAvoidance: "PRESERVED", reason: "Must not precede the pedagogy lock and Evidence packet." };
     await expect(custody.appendReview(prematureEvidenceReview)).rejects.toThrow("BENCHMARK_EVIDENCE_PHASE_NOT_READY");
-    for (const item of reviewerPacket) await custody.appendReview({ schemaVersion: "1.0.0", phase: "BLIND_PEDAGOGY", blindId: item.blindId, reviewerId: "reviewer-p", reviewedAt: "2026-07-17T01:00:00.000Z", scores: { correctness: 4, clarity: 4, pedagogy: 4, contextFidelity: 4 }, reason: "Locked pedagogy decision." });
+    for (const item of reviewerPacket) await custody.appendReview({ schemaVersion: "1.0.0", phase: "BLIND_PEDAGOGY", blindId: item.blindId, reviewerId: "reviewer-p", reviewedAt: "2026-07-17T01:00:00.000Z", scores: { correctness: 4, clarity: 4, pedagogy: 4, contextFidelity: 4 }, responseDisposition: "SUBSTANTIVE_ANSWER", answerCapability: "DEMONSTRATED", reason: "Locked pedagogy decision." });
     await custody.lockPedagogy("2026-07-17T02:00:00.000Z");
-    await expect(custody.appendReview({ schemaVersion: "1.0.0", phase: "BLIND_PEDAGOGY", blindId: reviewerPacket[0]!.blindId, reviewerId: "late", reviewedAt: "2026-07-17T02:01:00.000Z", scores: { correctness: 5, clarity: 5, pedagogy: 5, contextFidelity: 5 }, reason: "Late rewrite." })).rejects.toThrow("BENCHMARK_REVIEW_PHASE_LOCKED");
+    await expect(custody.appendReview({ schemaVersion: "1.0.0", phase: "BLIND_PEDAGOGY", blindId: reviewerPacket[0]!.blindId, reviewerId: "late", reviewedAt: "2026-07-17T02:01:00.000Z", scores: { correctness: 5, clarity: 5, pedagogy: 5, contextFidelity: 5 }, responseDisposition: "SUBSTANTIVE_ANSWER", answerCapability: "DEMONSTRATED", reason: "Late rewrite." })).rejects.toThrow("BENCHMARK_REVIEW_PHASE_LOCKED");
     await expect(custody.appendReview(prematureEvidenceReview)).rejects.toThrow("BENCHMARK_EVIDENCE_PHASE_NOT_READY");
     const evidencePacket = await custody.createAndStoreEvidencePacket(cases, records);
-    for (const item of evidencePacket) await custody.appendReview({ schemaVersion: "1.0.0", phase: "EVIDENCE_AUDIT", blindId: item.blindId, reviewerId: "reviewer-e", reviewedAt: "2026-07-17T03:00:00.000Z", scores: { grounding: 4, authority: 4, provenance: 4, integrity: 4 }, reason: "Locked evidence decision." });
+    for (const item of evidencePacket) await custody.appendReview({ schemaVersion: "1.0.0", phase: "EVIDENCE_AUDIT", blindId: item.blindId, reviewerId: "reviewer-e", reviewedAt: "2026-07-17T03:00:00.000Z", scores: { grounding: 4, authority: 4, provenance: 4, integrity: 4 }, policyCompliance: "COMPLIANT", unsupportedClaimAvoidance: "PRESERVED", reason: "Locked evidence decision." });
     await custody.lockEvidence("2026-07-17T04:00:00.000Z");
     expect((await custody.revealArmMapping()).entries).toHaveLength(72);
     expect((await stat(join(root, run.runId, "review", "sealed-arm-mapping.json"))).mode & 0o777).toBe(0o600);

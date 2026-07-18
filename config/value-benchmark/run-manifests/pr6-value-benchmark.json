@@ -3,7 +3,7 @@
   "experimentId": "learning-foundry-value-benchmark",
   "experimentVersion": "1.0.0",
   "docsAuthority": "learning-foundry-docs@260747722e8040972deceed3290bce237676f225",
-  "implementationCommit": "d78a6da37075de747370453d0e13ec4e08e4fbde",
+  "implementationCommit": "5b247340d1250f376782d19fc3527e4810853945",
   "runId": "foundry-value-benchmark-1.0.0-live-01",
   "encoding": {
     "charset": "UTF-8",
@@ -78,9 +78,9 @@
     },
     "prompts": {
       "path": "config/value-benchmark/experiment.json",
-      "bytes": 8434,
-      "sha256": "5749ccd89d852d9d0a353d4b74f15f85711f403c2852aeb3a6aebf0f5beda3f8",
-      "lines": 196,
+      "bytes": 8865,
+      "sha256": "91e410929f0ced7ec20f385f7c0eade7486bfc75e31ddaf77f1290e0984f9f83",
+      "lines": 204,
       "lineSha256": [
         "a6fb08fda1acb957b6116bd37811a1fe41a01611c0631edbf786d6889a27a55c",
         "c4ed752fdf2254bb85cd41d8c433305658efe0081ebe4b71adacf16c53530fcb",
@@ -241,6 +241,10 @@
         "2f580596a1a195a7bc3c25d68f39e1f07c83d01adcfba8e41aa6d086ed3fabdd",
         "e72aa55d231308ac34d76055981947fad1edd8a6eaecb3a9abe7e92eff907a3f",
         "b978e2503b8cf37a06f7d6f0a3a6b6fe35691fbcab50b8775cab6fabc71c592b",
+        "838238bf575114134c2ba752437d469cc78217b26c6cc84f9b26aecce376e0cb",
+        "22104419bb0119b7762c6a56fdd9e7296ceeb0265dba0d81cd8d97cb571125a0",
+        "c44aca228aca5f1ce19032a87ccf836c41df5e63ef4c868271a921a50293a7d0",
+        "b978e2503b8cf37a06f7d6f0a3a6b6fe35691fbcab50b8775cab6fabc71c592b",
         "2d043e11b82f7eb53d57f8af54a7cb6ce3a2ba4ed1c78d5966ac15a74924c225",
         "1f0cdb972a7bfb7ed246f9ff672385e55f4968fc11043dc5b684d51dfa31dbcb",
         "0870dc1c0d20cec557c94355eaf81de5fe6eaf4ef61b1c5b402add7f1d87b674",
@@ -252,6 +256,10 @@
         "6d04a7c04aa32d28630363f8a0d04391b85d37d853a03b940bcf99290394d794",
         "3ffe5746a54b260ee6a1f15993aa74c10ab98146c2885398220724d3c92e4cab",
         "488a79a378973c617959f47f032ecaebe22a1e700db4a5bfb9fdf2a9d6389759",
+        "b978e2503b8cf37a06f7d6f0a3a6b6fe35691fbcab50b8775cab6fabc71c592b",
+        "838238bf575114134c2ba752437d469cc78217b26c6cc84f9b26aecce376e0cb",
+        "ede71943b89472809f65b292a94c2bc44e677e4ae2ceafe67116b00bf2e7ac72",
+        "7eb23edcfe4663fd8e783db587b26d425782f45fa15d353256821301fc6d9910",
         "b978e2503b8cf37a06f7d6f0a3a6b6fe35691fbcab50b8775cab6fabc71c592b",
         "cc826528b36a0582cb690979b5af21e3d85c82fbf04c4a253d62e9a4b87a1cb8",
         "1f0cdb972a7bfb7ed246f9ff672385e55f4968fc11043dc5b684d51dfa31dbcb",
@@ -1289,8 +1297,8 @@
       },
       {
         "path": "src/value-benchmark/index.ts",
-        "bytes": 41137,
-        "sha256": "be2813a9de5aa31cf499cd4b92875c27f95ca68afeaaf9a3e8040cd2af134c43"
+        "bytes": 43388,
+        "sha256": "f35345e3c013849937fd2f3fb4d922c0b10fc3a1c8d479d1436f0666a4891acc"
       },
       {
         "path": "src/value-benchmark/preparation.ts",
@@ -1313,7 +1321,7 @@
         "sha256": "f21c00f9a7b7665ec7ba6e34bc2a432067b8bafdbc8a916db59666dade515ae1"
       }
     ],
-    "closureSha256": "5a1556a6423cbbf242200186720a390e791aa928a07ecebf28bb21bb92831a0d"
+    "closureSha256": "502e7a7d8bf871337d1d7ee6772e41953477cd51ce8100216eec39f53595323d"
   },
   "policySnapshots": {
     "agentInstructions": "config/agent/instructions.md@sha256:b074582b43912167c666922a885f3b1e7665da51da9d6d98f8ff8f922f3dbc2b",
