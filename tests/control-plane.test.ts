@@ -106,11 +106,13 @@ describe("Foundry Control Plane", () => {
     const lowAuthority = assessor.assess({ toolId: "search_learning_resources", toolCallIndex: 1, status: "SUCCEEDED", result: { results: [{ sourceId: "secondary", sourceType: "SECONDARY_REFERENCE", score: 2, section: "s" }] } });
     const partial = assessor.assess({ toolId: "search_learning_resources", toolCallIndex: 2, status: "SUCCEEDED", result: { results: [{ sourceId: "official", sourceType: "OFFICIAL_SYLLABUS", score: 4, page: 2 }], missingAspects: ["worked-example evidence"] } });
     const sufficient = assessor.assess({ toolId: "search_learning_resources", toolCallIndex: 3, status: "SUCCEEDED", result: { results: [{ sourceId: "note", sourceType: "TEACHER_NOTE", score: 5, section: "route" }] } });
+    const chunkLineage = assessor.assess({ toolId: "search_learning_resources", toolCallIndex: 4, status: "SUCCEEDED", result: { results: [{ sourceId: "note", sourceType: "TEACHER_NOTE", score: 5, chunkId: "note::chunk-1" }] } });
 
     expect(noResults).toMatchObject({ outcome: "NO_RESULTS", anotherCallJustified: false, coverage: "NONE" });
     expect(lowAuthority).toMatchObject({ outcome: "LOW_RELEVANCE", anotherCallJustified: true, sourceAuthority: "INSUFFICIENT" });
     expect(partial).toMatchObject({ outcome: "PARTIAL_COVERAGE", anotherCallJustified: true, missingAspects: ["worked-example evidence"] });
     expect(sufficient).toMatchObject({ outcome: "SUFFICIENT_EVIDENCE", anotherCallJustified: false, lineageComplete: true });
+    expect(chunkLineage).toMatchObject({ outcome: "SUFFICIENT_EVIDENCE", anotherCallJustified: false, lineageComplete: true });
   });
 
   it("fails Evidence sufficiency closed on unknown relevance, incomplete lineage and contamination", () => {
