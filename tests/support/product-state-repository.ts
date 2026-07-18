@@ -59,9 +59,11 @@ export class TestProductStateRepository implements ProductStateRepository {
         if (superseded) this.attempts.set(superseded.id, { ...superseded, status: "SUPERSEDED" });
         break;
       }
-      case "RECORD_OBSERVATION":
+      case "RECORD_OBSERVATION": {
+        await this.assertObservationSuccessor(mutation.observation);
         this.insert(this.observations, mutation.observation);
         break;
+      }
       case "RECORD_REVIEW": {
         const current = await this.getCurrentReviewForObservation(mutation.review.observationId);
         if ((current?.id ?? null) !== (mutation.review.supersedesReviewId ?? null)) {
@@ -102,6 +104,7 @@ export class TestProductStateRepository implements ProductStateRepository {
         break;
       }
       case "RECORD_RETRY_RESULT": {
+        await this.assertObservationSuccessor(mutation.observation);
         this.insert(this.observations, mutation.observation);
         const retry = this.retries.get(mutation.retryAttemptId);
         if (!retry || retry.status !== "SUBMITTED") throw new Error("SUBMITTED_RETRY_REQUIRED");
@@ -136,6 +139,10 @@ export class TestProductStateRepository implements ProductStateRepository {
   async getEpisode(episodeId: string): Promise<LearningEpisode | null> { return this.clone(this.episodes.get(episodeId)); }
   async getAttempt(attemptId: string): Promise<LearnerAttempt | null> { return this.clone(this.attempts.get(attemptId)); }
   async getObservation(observationId: string): Promise<DiagnosticObservation | null> { return this.clone(this.observations.get(observationId)); }
+  async getCurrentObservationForAttempt(attemptId: string): Promise<DiagnosticObservation | null> {
+    const supersededIds = new Set([...this.observations.values()].flatMap((item) => item.supersedesObservationId ? [item.supersedesObservationId] : []));
+    return this.clone([...this.observations.values()].find((item) => item.attemptId === attemptId && !supersededIds.has(item.id)));
+  }
   async getReview(reviewId: string): Promise<TeacherReview | null> { return this.clone(this.reviews.get(reviewId)); }
   async getCurrentReviewForObservation(observationId: string): Promise<TeacherReview | null> {
     const supersededIds = new Set([...this.reviews.values()].flatMap((item) => item.supersedesReviewId ? [item.supersedesReviewId] : []));
@@ -206,6 +213,16 @@ export class TestProductStateRepository implements ProductStateRepository {
   private insert<T extends { readonly id: string }>(map: Map<string, T>, value: T): void {
     if (map.has(value.id)) throw new Error("DUPLICATE_PRODUCT_STATE_RECORD");
     map.set(value.id, structuredClone(value));
+  }
+
+  private async assertObservationSuccessor(observation: DiagnosticObservation): Promise<void> {
+    const current = await this.getCurrentObservationForAttempt(observation.attemptId);
+    if ((current?.id ?? null) !== (observation.supersedesObservationId ?? null)) {
+      throw new Error("CURRENT_OBSERVATION_SUPERSESSION_REQUIRED");
+    }
+    if (current && await this.getCurrentReviewForObservation(current.id)) {
+      throw new Error("REVIEWED_OBSERVATION_CANNOT_BE_SUPERSEDED");
+    }
   }
 
   private clone<T>(value: T | undefined): T | null {

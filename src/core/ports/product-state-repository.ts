@@ -137,6 +137,19 @@ export interface ProductStateImportDecision {
   readonly evidence: Readonly<Record<string, unknown>>;
 }
 
+export interface NoImportRequiredInventoryEvidence extends Readonly<Record<string, unknown>> {
+  readonly environment: string;
+  readonly scope: string;
+  readonly evidenceKind: "LEGACY_STATE_INVENTORY";
+  readonly inventoryId: string;
+  readonly sourceSystem: "LEGACY_SHOWCASE";
+  readonly sourceSystemScanHash: string;
+  readonly recordCount: 0;
+  readonly inventoryTimestamp: string;
+  readonly scannerImplementationId: string;
+  readonly scannerImplementationVersion: string;
+}
+
 export interface ProductStateCutoverAcceptance {
   readonly schemaVersion: typeof PRODUCT_STATE_SCHEMA_VERSION;
   readonly id: string;
@@ -163,6 +176,7 @@ export interface ProductStateRepository {
   getEpisode(episodeId: string): Promise<LearningEpisode | null>;
   getAttempt(attemptId: string): Promise<LearnerAttempt | null>;
   getObservation(observationId: string): Promise<DiagnosticObservation | null>;
+  getCurrentObservationForAttempt(attemptId: string): Promise<DiagnosticObservation | null>;
   getReview(reviewId: string): Promise<TeacherReview | null>;
   getCurrentReviewForObservation(observationId: string): Promise<TeacherReview | null>;
   getRetry(retryAttemptId: string): Promise<RetryAttempt | null>;

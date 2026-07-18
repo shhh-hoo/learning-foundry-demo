@@ -78,6 +78,7 @@ const attemptSchema = z.object({
 });
 const observationBaseSchema = z.object({
   observationId: z.string().trim().min(1),
+  supersedesObservationId: z.string().trim().min(1).optional(),
   sourceRefs: z.array(sourceReferenceSchema).default([]),
   evidenceRefs: z.array(evidenceReferenceSchema).default([]),
   provenance: provenanceSchema,

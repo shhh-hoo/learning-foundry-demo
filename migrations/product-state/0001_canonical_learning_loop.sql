@@ -77,7 +77,7 @@ CREATE TABLE product_state.diagnostic_observation (
   id text PRIMARY KEY,
   schema_version text NOT NULL DEFAULT '1.0.0' CHECK (schema_version = '1.0.0'),
   attempt_id text NOT NULL REFERENCES product_state.learner_attempt(id),
-  status text NOT NULL CHECK (status IN ('ACTIVE', 'SUPERSEDED')),
+  supersedes_observation_id text REFERENCES product_state.diagnostic_observation(id),
   created_at timestamptz NOT NULL,
   source_refs jsonb NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(source_refs) = 'array'),
   evidence_refs jsonb NOT NULL DEFAULT '[]'::jsonb CHECK (jsonb_typeof(evidence_refs) = 'array'),

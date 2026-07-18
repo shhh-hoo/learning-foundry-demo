@@ -4,6 +4,18 @@ import { LegacyExperienceImporter } from "../src/product-state/legacy-experience
 import { TestProductStateRepository } from "./support/product-state-repository";
 
 const actor = { actorId: "deployment-owner", role: "SYSTEM" } as const;
+const noImportEvidence = (environment: string) => ({
+  environment,
+  scope: environment,
+  evidenceKind: "LEGACY_STATE_INVENTORY",
+  inventoryId: `inventory:${environment}:2026-07-18`,
+  sourceSystem: "LEGACY_SHOWCASE",
+  sourceSystemScanHash: "a".repeat(64),
+  recordCount: 0,
+  inventoryTimestamp: "2026-07-18T11:59:00.000Z",
+  scannerImplementationId: "legacy-showcase-inventory",
+  scannerImplementationVersion: "1.0.0",
+} as const);
 
 describe("explicit per-environment canonical cutover", () => {
   it("requires readiness and an append-only import/no-import decision before acceptance", async () => {
@@ -21,11 +33,7 @@ describe("explicit per-environment canonical cutover", () => {
       decisionId: "import-decision-ci",
       environment: "ci-integration",
       decision: "NO_IMPORT_REQUIRED",
-      evidence: {
-        environment: "ci-integration",
-        scope: "ci-integration",
-        reason: "fresh isolated CI database",
-      },
+      evidence: noImportEvidence("ci-integration"),
     });
     const acceptance = await service.accept(actor, {
       acceptanceId: "acceptance-ci",
@@ -73,6 +81,13 @@ describe("explicit per-environment canonical cutover", () => {
       evidence: { environment: "canonical-sandbox", scope: "another-environment" },
     })).rejects.toThrow("IMPORT_EVIDENCE_SCOPE_MUST_MATCH_ENVIRONMENT");
 
+    await expect(service.recordImportDecision(actor, {
+      decisionId: "strings-only-no-import",
+      environment: "canonical-sandbox",
+      decision: "NO_IMPORT_REQUIRED",
+      evidence: { environment: "canonical-sandbox", scope: "canonical-sandbox" },
+    })).rejects.toThrow("LEGACY_STATE_INVENTORY_EVIDENCE_REQUIRED");
+
     const imported = await new LegacyExperienceImporter(repository, clock).import({
       snapshot: {
         conversationId: "legacy-cutover",
@@ -108,6 +123,28 @@ describe("explicit per-environment canonical cutover", () => {
       mode: "POSTGRES_CANONICAL",
       notes: "Must recheck receipt content.",
     })).rejects.toThrow("NONEMPTY_LEGACY_IMPORT_RECEIPT_REQUIRED");
+  });
+
+  it("revalidates governed zero-record inventory evidence at cutover", async () => {
+    const repository = new TestProductStateRepository();
+    const service = new ProductStateCutoverService(repository, { now: () => "2026-07-18T12:00:00.000Z" });
+    const decision = await service.recordImportDecision(actor, {
+      decisionId: "no-import-with-inventory",
+      environment: "canonical-empty",
+      decision: "NO_IMPORT_REQUIRED",
+      evidence: noImportEvidence("canonical-empty"),
+    });
+    repository.importDecisions.set("canonical-empty", {
+      ...decision,
+      evidence: { ...decision.evidence, recordCount: 1 },
+    });
+
+    await expect(service.accept(actor, {
+      acceptanceId: "invalidated-no-import",
+      environment: "canonical-empty",
+      mode: "POSTGRES_CANONICAL",
+      notes: "Must revalidate inventory evidence.",
+    })).rejects.toThrow("LEGACY_INVENTORY_ZERO_RECORD_COUNT_REQUIRED");
   });
 
   it("does not confuse code availability with Legacy showcase cutover", async () => {

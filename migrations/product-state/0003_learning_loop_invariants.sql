@@ -38,6 +38,28 @@ ALTER TABLE product_state.import_decision
     OR (decision = 'NO_IMPORT_REQUIRED' AND legacy_import_receipt_id IS NULL)
   );
 
+CREATE OR REPLACE FUNCTION product_state.valid_no_import_inventory_evidence(
+  evidence_value jsonb,
+  expected_environment text,
+  expected_scope text
+)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT evidence_value ->> 'environment' = expected_environment
+    AND evidence_value ->> 'scope' = expected_scope
+    AND evidence_value ->> 'evidenceKind' = 'LEGACY_STATE_INVENTORY'
+    AND length(btrim(COALESCE(evidence_value ->> 'inventoryId', ''))) > 0
+    AND evidence_value ->> 'sourceSystem' = 'LEGACY_SHOWCASE'
+    AND COALESCE(evidence_value ->> 'sourceSystemScanHash', '') ~ '^[0-9a-f]{64}$'
+    AND evidence_value -> 'recordCount' = '0'::jsonb
+    AND length(btrim(COALESCE(evidence_value ->> 'inventoryTimestamp', ''))) > 0
+    AND (evidence_value ->> 'inventoryTimestamp')::timestamptz IS NOT NULL
+    AND length(btrim(COALESCE(evidence_value ->> 'scannerImplementationId', ''))) > 0
+    AND length(btrim(COALESCE(evidence_value ->> 'scannerImplementationVersion', ''))) > 0;
+$$;
+
 CREATE OR REPLACE FUNCTION product_state.enforce_import_decision_receipt()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -51,6 +73,9 @@ BEGIN
     RAISE EXCEPTION 'new import decisions require schema 1.1.0' USING ERRCODE = '23514';
   END IF;
   IF NEW.decision = 'NO_IMPORT_REQUIRED' THEN
+    IF NOT product_state.valid_no_import_inventory_evidence(NEW.evidence, NEW.environment, NEW.scope) THEN
+      RAISE EXCEPTION 'governed zero-record Legacy inventory evidence required' USING ERRCODE = '23514';
+    END IF;
     RETURN NEW;
   END IF;
   SELECT receipt.task_id, (receipt.details ->> 'importedMessageCount')::integer
@@ -172,6 +197,65 @@ CREATE TRIGGER learner_attempt_supersession_apply
 AFTER INSERT ON product_state.learner_attempt
 FOR EACH ROW EXECUTE FUNCTION product_state.mark_superseded_attempt();
 
+CREATE UNIQUE INDEX diagnostic_observation_one_root_idx
+  ON product_state.diagnostic_observation(attempt_id)
+  WHERE supersedes_observation_id IS NULL;
+CREATE UNIQUE INDEX diagnostic_observation_one_successor_idx
+  ON product_state.diagnostic_observation(supersedes_observation_id)
+  WHERE supersedes_observation_id IS NOT NULL;
+
+CREATE OR REPLACE FUNCTION product_state.enforce_diagnostic_observation_chain()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  parent_attempt_id text;
+BEGIN
+  PERFORM 1 FROM product_state.learner_attempt attempt
+  WHERE attempt.id = NEW.attempt_id
+  FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'observation attempt required' USING ERRCODE = '23503';
+  END IF;
+  IF NEW.supersedes_observation_id IS NULL THEN
+    IF EXISTS (
+      SELECT 1 FROM product_state.diagnostic_observation observation
+      WHERE observation.attempt_id = NEW.attempt_id
+    ) THEN
+      RAISE EXCEPTION 'current DiagnosticObservation supersession required' USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+  END IF;
+  IF NEW.id = NEW.supersedes_observation_id THEN
+    RAISE EXCEPTION 'DiagnosticObservation cannot supersede itself' USING ERRCODE = '23514';
+  END IF;
+  SELECT parent.attempt_id INTO parent_attempt_id
+  FROM product_state.diagnostic_observation parent
+  WHERE parent.id = NEW.supersedes_observation_id
+  FOR UPDATE;
+  IF NOT FOUND OR parent_attempt_id <> NEW.attempt_id THEN
+    RAISE EXCEPTION 'DiagnosticObservation must supersede the current observation for the same Attempt' USING ERRCODE = '23514';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM product_state.diagnostic_observation child
+    WHERE child.supersedes_observation_id = NEW.supersedes_observation_id
+  ) THEN
+    RAISE EXCEPTION 'DiagnosticObservation supersession fork prohibited' USING ERRCODE = '23514';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM product_state.teacher_review review
+    WHERE review.observation_id = NEW.supersedes_observation_id
+  ) THEN
+    RAISE EXCEPTION 'reviewed DiagnosticObservation cannot be superseded' USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER diagnostic_observation_chain_guard
+BEFORE INSERT ON product_state.diagnostic_observation
+FOR EACH ROW EXECUTE FUNCTION product_state.enforce_diagnostic_observation_chain();
+
 CREATE UNIQUE INDEX teacher_review_one_root_idx
   ON product_state.teacher_review(observation_id)
   WHERE supersedes_review_id IS NULL;
@@ -186,6 +270,15 @@ AS $$
 DECLARE
   parent_observation_id text;
 BEGIN
+  PERFORM 1 FROM product_state.diagnostic_observation observation
+  WHERE observation.id = NEW.observation_id
+  FOR UPDATE;
+  IF NOT FOUND OR EXISTS (
+    SELECT 1 FROM product_state.diagnostic_observation child
+    WHERE child.supersedes_observation_id = NEW.observation_id
+  ) THEN
+    RAISE EXCEPTION 'TeacherReview requires the current DiagnosticObservation leaf' USING ERRCODE = '23514';
+  END IF;
   IF NEW.supersedes_review_id IS NULL THEN
     IF EXISTS (
       SELECT 1 FROM product_state.teacher_review review
@@ -302,6 +395,18 @@ BEGIN
     WHERE event.task_id = receipt_task_id;
     IF expected_event_count IS NULL OR expected_event_count < 1 OR actual_event_count <> expected_event_count THEN
       RAISE EXCEPTION 'cutover Legacy import receipt content mismatch' USING ERRCODE = '23514';
+    END IF;
+  ELSIF decision_value = 'NO_IMPORT_REQUIRED' THEN
+    IF NOT EXISTS (
+      SELECT 1 FROM product_state.import_decision decision_record
+      WHERE decision_record.id = NEW.importer_decision_id
+        AND product_state.valid_no_import_inventory_evidence(
+          decision_record.evidence,
+          NEW.environment,
+          NEW.environment
+        )
+    ) THEN
+      RAISE EXCEPTION 'cutover requires governed zero-record Legacy inventory evidence' USING ERRCODE = '23514';
     END IF;
   END IF;
   RETURN NEW;

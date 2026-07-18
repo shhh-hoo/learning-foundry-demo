@@ -74,7 +74,7 @@ export interface ObservationCorrection {
 export interface DiagnosticObservation {
   readonly id: string;
   readonly attemptId: string;
-  readonly status: "ACTIVE" | "SUPERSEDED";
+  readonly supersedesObservationId?: string;
   readonly createdAt: string;
   readonly sourceRefs: readonly SourceReference[];
   readonly evidenceRefs: readonly EvidenceReference[];

@@ -33,7 +33,7 @@ type ConversationEventInput = Omit<ConversationEvent, "id" | "sequence" | "occur
   readonly eventId: string;
 };
 type AttemptInput = Omit<LearnerAttempt, "id" | "submittedAt" | "status"> & { readonly attemptId: string };
-type ObservationInput = Omit<DiagnosticObservation, "id" | "status" | "createdAt" | "corrections"> & {
+type ObservationInput = Omit<DiagnosticObservation, "id" | "createdAt" | "corrections"> & {
   readonly observationId: string;
 };
 type ReviewInput = Omit<TeacherReview, "id" | "reviewerId" | "reviewedAt"> & {
@@ -57,6 +57,7 @@ type RetryResultInput = {
   readonly evidenceRefs: readonly EvidenceReference[];
   readonly provenance: DiagnosticObservation["provenance"];
   readonly diagnosisPayload: DerivedRepresentation<unknown>;
+  readonly supersedesObservationId?: string;
 };
 type OutcomeInput = Pick<LearningOutcome, "outcomeType" | "result" | "evidenceRefs"> & {
   readonly outcomeId: string;
@@ -265,11 +266,21 @@ export class ProductStateService {
     if (!input.diagnosisPayload.derivation.sourceRecordIds.includes(attempt.id)) {
       throw new Error("OBSERVATION_LINEAGE_REQUIRED");
     }
+    const currentObservation = await this.repository.getCurrentObservationForAttempt(attempt.id);
+    if (currentObservation && input.supersedesObservationId !== currentObservation.id) {
+      throw new Error("CURRENT_OBSERVATION_SUPERSESSION_REQUIRED");
+    }
+    if (!currentObservation && input.supersedesObservationId) {
+      throw new Error("OBSERVATION_SUPERSESSION_TARGET_NOT_CURRENT");
+    }
+    if (currentObservation && await this.repository.getCurrentReviewForObservation(currentObservation.id)) {
+      throw new Error("REVIEWED_OBSERVATION_CANNOT_BE_SUPERSEDED");
+    }
     const now = this.clock.now();
     const observation: DiagnosticObservation = {
       id: required(input.observationId, "observationId"),
       attemptId: attempt.id,
-      status: "ACTIVE",
+      ...(input.supersedesObservationId ? { supersedesObservationId: input.supersedesObservationId } : {}),
       createdAt: now,
       sourceRefs: structuredClone(input.sourceRefs),
       evidenceRefs: structuredClone(input.evidenceRefs),
@@ -287,7 +298,9 @@ export class ProductStateService {
   async reviewObservation(actor: ProductStateActor, input: ReviewInput): Promise<TeacherReview> {
     requireRole(actor, "TEACHER");
     const observation = await this.repository.getObservation(input.observationId);
-    if (!observation || observation.status !== "ACTIVE") throw new Error("ACTIVE_OBSERVATION_REQUIRED");
+    if (!observation) throw new Error("CURRENT_OBSERVATION_REQUIRED");
+    const currentObservation = await this.repository.getCurrentObservationForAttempt(observation.attemptId);
+    if (!currentObservation || currentObservation.id !== observation.id) throw new Error("CURRENT_OBSERVATION_REQUIRED");
     const currentReview = await this.repository.getCurrentReviewForObservation(observation.id);
     if (currentReview && input.supersedesReviewId !== currentReview.id) {
       throw new Error("CURRENT_TEACHER_REVIEW_SUPERSESSION_REQUIRED");
@@ -391,11 +404,21 @@ export class ProductStateService {
     if (!input.diagnosisPayload.derivation.sourceRecordIds.includes(retry.attemptId)) {
       throw new Error("RETRY_RESULT_LINEAGE_REQUIRED");
     }
+    const currentObservation = await this.repository.getCurrentObservationForAttempt(retry.attemptId);
+    if (currentObservation && input.supersedesObservationId !== currentObservation.id) {
+      throw new Error("CURRENT_OBSERVATION_SUPERSESSION_REQUIRED");
+    }
+    if (!currentObservation && input.supersedesObservationId) {
+      throw new Error("OBSERVATION_SUPERSESSION_TARGET_NOT_CURRENT");
+    }
+    if (currentObservation && await this.repository.getCurrentReviewForObservation(currentObservation.id)) {
+      throw new Error("REVIEWED_OBSERVATION_CANNOT_BE_SUPERSEDED");
+    }
     const now = this.clock.now();
     const observation: DiagnosticObservation = {
       id: required(input.observationId, "observationId"),
       attemptId: retry.attemptId,
-      status: "ACTIVE",
+      ...(input.supersedesObservationId ? { supersedesObservationId: input.supersedesObservationId } : {}),
       createdAt: now,
       sourceRefs: structuredClone(input.sourceRefs),
       evidenceRefs: structuredClone(input.evidenceRefs),

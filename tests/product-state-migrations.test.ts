@@ -30,6 +30,10 @@ describe("versioned Product State migrations", () => {
     expect(sql).toContain("enforce_teacher_review_chain");
     expect(sql).toContain("enforce_retry_review_and_scope");
     expect(sql).toContain("enforce_import_decision_receipt");
+    expect(sql).toContain("valid_no_import_inventory_evidence");
+    expect(sql).toContain("enforce_diagnostic_observation_chain");
+    expect(sql).toContain("supersedes_observation_id");
+    expect(sql).not.toContain("status text NOT NULL CHECK (status IN ('ACTIVE', 'SUPERSEDED'))");
     expect(sql).toContain("cutover_import_scope_guard");
     expect(sql).toContain("CHECK (dual_write = false)");
     expect(sql).not.toContain("runtime_execution");

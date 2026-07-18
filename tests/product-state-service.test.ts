@@ -195,7 +195,6 @@ describe("canonical Product State learning loop", () => {
     repository.observations.set("observation-review", {
       id: "observation-review",
       attemptId: "attempt-review",
-      status: "ACTIVE",
       createdAt: at,
       sourceRefs: [],
       evidenceRefs: [],
@@ -239,6 +238,69 @@ describe("canonical Product State learning loop", () => {
       evidenceRefs: [],
       supersedesReviewId: "review-leaf",
     })).rejects.toThrow("TEACHER_REVIEW_WITH_PLANNED_RETRY_CANNOT_BE_SUPERSEDED");
+  });
+
+  it("derives the current Observation from an explicit append-only supersession chain", async () => {
+    const repository = new TestProductStateRepository();
+    const service = new ProductStateService(repository, { now: () => at });
+    await service.createTask(learner, { taskId: "task-observation", goal: "Observation chain", materialRefs: [] });
+    await service.startEpisode(learner, { episodeId: "episode-observation", taskId: "task-observation" });
+    await service.submitAttempt(learner, {
+      attemptId: "attempt-observation", taskId: "task-observation", episodeId: "episode-observation", artifactRefs: [], evidenceRefs: [],
+    });
+    const observationInput = {
+      attemptId: "attempt-observation",
+      sourceRefs: [],
+      evidenceRefs: [],
+      provenance: { executionId: "execution-observation", policyVersion: "1.0.0" },
+      diagnosisPayload: {
+        representationVersion: "1.0.0",
+        derivedAt: at,
+        derivation: { kind: "DETERMINISTIC" as const, implementationId: "test", implementationVersion: "1.0.0", sourceRecordIds: ["attempt-observation"] },
+        value: {},
+      },
+    };
+    await service.recordObservation(foundry, { observationId: "observation-root", ...observationInput });
+    await expect(service.recordObservation(foundry, {
+      observationId: "observation-unlinked", ...observationInput,
+    })).rejects.toThrow("CURRENT_OBSERVATION_SUPERSESSION_REQUIRED");
+    const replacement = await service.recordObservation(foundry, {
+      observationId: "observation-leaf",
+      supersedesObservationId: "observation-root",
+      ...observationInput,
+    });
+
+    expect(replacement.supersedesObservationId).toBe("observation-root");
+    await expect(repository.getCurrentObservationForAttempt("attempt-observation")).resolves.toMatchObject({ id: "observation-leaf" });
+    expect((await repository.getLearningLoop("task-observation"))?.observations.map((item) => item.id)).toEqual([
+      "observation-root",
+      "observation-leaf",
+    ]);
+
+    await service.reviewObservation(teacher, {
+      reviewId: "review-observation-leaf",
+      observationId: "observation-leaf",
+      decision: "CORRECT",
+      rationale: "Correction stays on the current immutable observation.",
+      evidenceRefs: [],
+      correction: { correctionId: "correction-observation-leaf", reason: "Reviewed wording." },
+    });
+    await expect(repository.getCurrentObservationForAttempt("attempt-observation")).resolves.toMatchObject({
+      id: "observation-leaf",
+      corrections: [expect.objectContaining({ id: "correction-observation-leaf" })],
+    });
+    await expect(service.recordObservation(foundry, {
+      observationId: "observation-after-review",
+      supersedesObservationId: "observation-leaf",
+      ...observationInput,
+    })).rejects.toThrow("REVIEWED_OBSERVATION_CANNOT_BE_SUPERSEDED");
+    await expect(service.reviewObservation(teacher, {
+      reviewId: "review-stale-observation",
+      observationId: "observation-root",
+      decision: "ACCEPT",
+      rationale: "Stale observation must not be reviewed.",
+      evidenceRefs: [],
+    })).rejects.toThrow("CURRENT_OBSERVATION_REQUIRED");
   });
 
   it("supersedes Attempts only inside the same active task, episode and learner chain", async () => {

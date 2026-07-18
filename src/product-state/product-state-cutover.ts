@@ -5,6 +5,7 @@ import {
   type ProductStateActor,
   type ProductStateCutoverAcceptance,
   type ProductStateImportDecision,
+  type NoImportRequiredInventoryEvidence,
 } from "../core/ports/product-state-repository";
 import type { ProductStateMode } from "./product-state-mode";
 
@@ -26,6 +27,36 @@ function requireOperator(actor: ProductStateActor): void {
 function evidenceText(evidence: Readonly<Record<string, unknown>>, field: string, code: string): string {
   const value = evidence[field];
   return required(typeof value === "string" ? value : "", code);
+}
+
+const SHA256_HEX = /^[0-9a-f]{64}$/u;
+
+function requireNoImportInventoryEvidence(
+  evidence: Readonly<Record<string, unknown>>,
+  environment: string,
+  now: string,
+): NoImportRequiredInventoryEvidence {
+  const evidenceEnvironment = evidenceText(evidence, "environment", "IMPORT_EVIDENCE_ENVIRONMENT_REQUIRED");
+  const scope = evidenceText(evidence, "scope", "IMPORT_EVIDENCE_SCOPE_REQUIRED");
+  if (evidenceEnvironment !== environment || scope !== environment) {
+    throw new Error("IMPORT_EVIDENCE_SCOPE_MUST_MATCH_ENVIRONMENT");
+  }
+  if (evidence.evidenceKind !== "LEGACY_STATE_INVENTORY" || evidence.sourceSystem !== "LEGACY_SHOWCASE") {
+    throw new Error("LEGACY_STATE_INVENTORY_EVIDENCE_REQUIRED");
+  }
+  evidenceText(evidence, "inventoryId", "LEGACY_INVENTORY_ID_REQUIRED");
+  const sourceSystemScanHash = evidenceText(evidence, "sourceSystemScanHash", "LEGACY_INVENTORY_SCAN_HASH_REQUIRED");
+  if (!SHA256_HEX.test(sourceSystemScanHash)) throw new Error("LEGACY_INVENTORY_SCAN_HASH_INVALID");
+  if (evidence.recordCount !== 0) throw new Error("LEGACY_INVENTORY_ZERO_RECORD_COUNT_REQUIRED");
+  const inventoryTimestamp = evidenceText(evidence, "inventoryTimestamp", "LEGACY_INVENTORY_TIMESTAMP_REQUIRED");
+  const inventoryTime = Date.parse(inventoryTimestamp);
+  const decisionTime = Date.parse(now);
+  if (!Number.isFinite(inventoryTime) || !Number.isFinite(decisionTime) || inventoryTime > decisionTime) {
+    throw new Error("LEGACY_INVENTORY_TIMESTAMP_INVALID");
+  }
+  evidenceText(evidence, "scannerImplementationId", "LEGACY_INVENTORY_SCANNER_ID_REQUIRED");
+  evidenceText(evidence, "scannerImplementationVersion", "LEGACY_INVENTORY_SCANNER_VERSION_REQUIRED");
+  return structuredClone(evidence) as NoImportRequiredInventoryEvidence;
 }
 
 export class ProductStateCutoverService {
@@ -71,11 +102,14 @@ export class ProductStateCutoverService {
     const receiptId = typeof input.evidence.legacyImportReceiptId === "string"
       ? required(input.evidence.legacyImportReceiptId, "LEGACY_IMPORT_RECEIPT_EVIDENCE_REQUIRED")
       : undefined;
+    const decidedAt = this.clock.now();
     if (input.decision === "IMPORT_COMPLETED") {
       if (!receiptId) throw new Error("LEGACY_IMPORT_RECEIPT_EVIDENCE_REQUIRED");
       await this.requireNonemptyLegacyImportReceipt(receiptId);
     } else if (receiptId) {
       throw new Error("LEGACY_IMPORT_RECEIPT_NOT_ALLOWED_FOR_NO_IMPORT_DECISION");
+    } else {
+      requireNoImportInventoryEvidence(input.evidence, environment, decidedAt);
     }
     const decision: ProductStateImportDecision = {
       schemaVersion: PRODUCT_STATE_IMPORT_DECISION_SCHEMA_VERSION,
@@ -84,7 +118,7 @@ export class ProductStateCutoverService {
       scope,
       decision: input.decision,
       ...(receiptId ? { legacyImportReceiptId: receiptId } : {}),
-      decidedAt: this.clock.now(),
+      decidedAt,
       decidedBy: actor.actorId,
       evidence: structuredClone({ ...input.evidence, environment, scope, ...(receiptId ? { legacyImportReceiptId: receiptId } : {}) }),
     };
@@ -121,6 +155,8 @@ export class ProductStateCutoverService {
     if (importDecision.decision === "IMPORT_COMPLETED") {
       if (!importDecision.legacyImportReceiptId) throw new Error("LEGACY_IMPORT_RECEIPT_EVIDENCE_REQUIRED");
       await this.requireNonemptyLegacyImportReceipt(importDecision.legacyImportReceiptId);
+    } else {
+      requireNoImportInventoryEvidence(importDecision.evidence, environment, this.clock.now());
     }
     const acceptance: ProductStateCutoverAcceptance = {
       schemaVersion: PRODUCT_STATE_SCHEMA_VERSION,

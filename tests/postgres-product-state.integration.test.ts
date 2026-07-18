@@ -154,6 +154,54 @@ describeWithDatabase("Postgres canonical Product State", () => {
     expect(persisted.rows.map((row) => row.sequence)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
   });
 
+  it("keeps DiagnosticObservations immutable and derives the current leaf from explicit supersession", async () => {
+    await service.createTask(learner, { taskId: "task-observation-pg", goal: "Observation history", materialRefs: [] });
+    await service.startEpisode(learner, { episodeId: "episode-observation-pg", taskId: "task-observation-pg" });
+    await service.submitAttempt(learner, {
+      attemptId: "attempt-observation-pg", taskId: "task-observation-pg", episodeId: "episode-observation-pg", artifactRefs: [], evidenceRefs: [],
+    });
+    const observationInput = {
+      attemptId: "attempt-observation-pg",
+      sourceRefs: [],
+      evidenceRefs: [],
+      provenance: { executionId: "execution-observation-pg", policyVersion: "1.0.0" },
+      diagnosisPayload: {
+        representationVersion: "1.0.0",
+        derivedAt: at,
+        derivation: { kind: "DETERMINISTIC" as const, implementationId: "observation-test", implementationVersion: "1.0.0", sourceRecordIds: ["attempt-observation-pg"] },
+        value: {},
+      },
+    };
+    await service.recordObservation(foundry, { observationId: "observation-root-pg", ...observationInput });
+    await service.recordObservation(foundry, {
+      observationId: "observation-leaf-pg",
+      supersedesObservationId: "observation-root-pg",
+      ...observationInput,
+    });
+
+    await expect(repository.getCurrentObservationForAttempt("attempt-observation-pg")).resolves.toMatchObject({
+      id: "observation-leaf-pg",
+      supersedesObservationId: "observation-root-pg",
+    });
+    await expect(pool.query(
+      "UPDATE product_state.diagnostic_observation SET created_at = created_at + interval '1 second' WHERE id = 'observation-root-pg'",
+    )).rejects.toMatchObject({ code: "55000" });
+    await expect(pool.query(
+      `INSERT INTO product_state.diagnostic_observation
+        (id, attempt_id, supersedes_observation_id, created_at, source_refs, evidence_refs, provenance, diagnosis_payload)
+       SELECT 'observation-fork-pg', attempt_id, 'observation-root-pg', $1, source_refs, evidence_refs, provenance, diagnosis_payload
+       FROM product_state.diagnostic_observation WHERE id = 'observation-root-pg'`,
+      [at],
+    )).rejects.toMatchObject({ code: "23514" });
+    await expect(pool.query(
+      `INSERT INTO product_state.teacher_review
+        (id, observation_id, reviewer_id, reviewed_at, decision, rationale, evidence_refs)
+       VALUES ('review-stale-observation-pg', 'observation-root-pg', 'teacher-integration', $1,
+         'ACCEPT', 'stale leaf', '[]'::jsonb)`,
+      [at],
+    )).rejects.toMatchObject({ code: "23514" });
+  });
+
   it("enforces current Review, Retry and Attempt chains at both service and database boundaries", async () => {
     await service.createTask(learner, { taskId: "task-chain-pg", goal: "Govern chain integrity", materialRefs: [] });
     await service.startEpisode(learner, { episodeId: "episode-chain-pg", taskId: "task-chain-pg" });
@@ -303,6 +351,13 @@ describeWithDatabase("Postgres canonical Product State", () => {
         (id, schema_version, environment, scope, decision, decided_at, decided_by, evidence)
        VALUES ('missing-scope-evidence-pg', '1.1.0', 'other-env', 'other-env', 'NO_IMPORT_REQUIRED',
          $1, 'operator', '{}'::jsonb)`,
+      [at],
+    )).rejects.toMatchObject({ code: "23514" });
+    await expect(pool.query(
+      `INSERT INTO product_state.import_decision
+        (id, schema_version, environment, scope, decision, decided_at, decided_by, evidence)
+       VALUES ('strings-only-no-import-pg', '1.1.0', 'empty-env', 'empty-env', 'NO_IMPORT_REQUIRED',
+         $1, 'operator', '{"environment":"empty-env","scope":"empty-env"}'::jsonb)`,
       [at],
     )).rejects.toMatchObject({ code: "23514" });
   });

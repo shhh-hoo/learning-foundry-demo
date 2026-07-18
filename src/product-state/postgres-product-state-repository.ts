@@ -102,10 +102,11 @@ function correctionFrom(row: QueryResultRow): ObservationCorrection {
 }
 
 function observationFrom(row: QueryResultRow, corrections: readonly ObservationCorrection[]): DiagnosticObservation {
+  const supersedesObservationId = row.supersedes_observation_id as string | null;
   return {
     id: row.id as string,
     attemptId: row.attempt_id as string,
-    status: row.status as DiagnosticObservation["status"],
+    ...(supersedesObservationId ? { supersedesObservationId } : {}),
     createdAt: iso(row.created_at as string | Date),
     sourceRefs: row.source_refs as DiagnosticObservation["sourceRefs"],
     evidenceRefs: row.evidence_refs as DiagnosticObservation["evidenceRefs"],
@@ -194,12 +195,12 @@ async function insertAttempt(client: PoolClient, attempt: LearnerAttempt): Promi
 async function insertObservation(client: PoolClient, observation: DiagnosticObservation): Promise<void> {
   await client.query(
     `INSERT INTO product_state.diagnostic_observation
-      (id, attempt_id, status, created_at, source_refs, evidence_refs, provenance, diagnosis_payload)
+      (id, attempt_id, supersedes_observation_id, created_at, source_refs, evidence_refs, provenance, diagnosis_payload)
      VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7::jsonb, $8::jsonb)`,
     [
       observation.id,
       observation.attemptId,
-      observation.status,
+      observation.supersedesObservationId ?? null,
       observation.createdAt,
       json(observation.sourceRefs),
       json(observation.evidenceRefs),
@@ -356,6 +357,28 @@ export class PostgresProductStateRepository implements ProductStateRepository {
       const corrections = await client.query(
         "SELECT * FROM product_state.observation_correction WHERE observation_id = $1 ORDER BY created_at, id",
         [observationId],
+      );
+      return observationFrom(observation.rows[0], corrections.rows.map(correctionFrom));
+    });
+  }
+
+  async getCurrentObservationForAttempt(attemptId: string): Promise<DiagnosticObservation | null> {
+    return inRepeatableReadSnapshot(this.pool, async (client) => {
+      const observation = await client.query(
+        `SELECT observation.*
+         FROM product_state.diagnostic_observation observation
+         WHERE observation.attempt_id = $1
+           AND NOT EXISTS (
+             SELECT 1 FROM product_state.diagnostic_observation child
+             WHERE child.supersedes_observation_id = observation.id
+           )
+         LIMIT 1`,
+        [attemptId],
+      );
+      if (!observation.rows[0]) return null;
+      const corrections = await client.query(
+        "SELECT * FROM product_state.observation_correction WHERE observation_id = $1 ORDER BY created_at, id",
+        [observation.rows[0].id],
       );
       return observationFrom(observation.rows[0], corrections.rows.map(correctionFrom));
     });

@@ -93,8 +93,9 @@ Versioned migrations live under `migrations/product-state/`:
 2. `0002_import_and_cutover_acceptance.sql` creates Legacy import receipts,
    import/no-import decisions and environment cutover acceptance.
 3. `0003_learning_loop_invariants.sql` adds normalized import-receipt and
-   environment-scope evidence, current-leaf Review/Retry guards, same-scope
-   Attempt supersession and database protections for concurrent chains.
+   governed zero-record inventory evidence, append-only Observation,
+   Review/Retry current-leaf guards, same-scope Attempt supersession and
+   database protections for concurrent chains.
 
 Migration `0003` does not rewrite pre-existing append-only schema 1.0 import
 decisions. It preserves them as historical governance evidence; only a new
@@ -120,6 +121,19 @@ false` and an append-only acceptance record. `IMPORT_COMPLETED` additionally
 references a real nonempty Legacy receipt through a foreign key; both decision
 creation and acceptance verify that its imported event count still matches the
 canonical records.
+
+`NO_IMPORT_REQUIRED` additionally requires a governed `LEGACY_STATE_INVENTORY`
+record with a stable inventory ID, `LEGACY_SHOWCASE` source identity, SHA-256
+scan hash, zero record count, scan timestamp and scanner implementation/version.
+Both decision creation and cutover revalidate the evidence. Matching
+environment/scope strings alone cannot authorize cutover.
+
+Diagnostic Observations are immutable facts. They have no mutable
+`ACTIVE/SUPERSEDED` column. A replacement explicitly records
+`supersedesObservationId`; one root and one successor per link are enforced,
+and the current Observation is derived as the leaf with no successor. Teacher
+corrections remain append-only records on the same Observation and do not
+rewrite or implicitly replace it.
 
 ## Legacy importer
 

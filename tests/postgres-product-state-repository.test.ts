@@ -27,7 +27,7 @@ describe("Postgres Product State read snapshots", () => {
         return [{
           id: "observation-snapshot",
           attempt_id: "attempt-snapshot",
-          status: "ACTIVE",
+          supersedes_observation_id: null,
           created_at: "2026-07-18T10:00:00.000Z",
           source_refs: [],
           evidence_refs: [],
@@ -52,6 +52,34 @@ describe("Postgres Product State read snapshots", () => {
     expect(fixture.queries).toContain("COMMIT");
     expect(fixture.queries.some((sql) => sql.includes("observation_correction"))).toBe(true);
     expect(fixture.releases()).toBe(1);
+  });
+
+  it("resolves the current Observation leaf inside one repeatable-read snapshot", async () => {
+    const fixture = snapshotPool((sql) => sql.includes("NOT EXISTS")
+      ? [{
+          id: "observation-leaf",
+          attempt_id: "attempt-snapshot",
+          supersedes_observation_id: "observation-root",
+          created_at: "2026-07-18T10:01:00.000Z",
+          source_refs: [],
+          evidence_refs: [],
+          provenance: { executionId: "execution", policyVersion: "1.0.0" },
+          diagnosis_payload: {
+            representationVersion: "1.0.0",
+            derivedAt: "2026-07-18T10:01:00.000Z",
+            derivation: { kind: "DETERMINISTIC", implementationId: "test", implementationVersion: "1.0.0", sourceRecordIds: ["attempt-snapshot"] },
+            value: {},
+          },
+        }]
+      : []);
+    const repository = new PostgresProductStateRepository(fixture.pool);
+
+    await expect(repository.getCurrentObservationForAttempt("attempt-snapshot")).resolves.toMatchObject({
+      id: "observation-leaf",
+      supersedesObservationId: "observation-root",
+    });
+    expect(fixture.queries[0]).toBe("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY");
+    expect(fixture.queries).toContain("COMMIT");
   });
 
   it("loads the complete LearningLoop projection on one repeatable-read client", async () => {
