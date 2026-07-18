@@ -1,8 +1,13 @@
 import { z } from "zod";
 import type {
+  ApplicationResponseDisposition,
+  CapabilityResolutionResult,
   ContextSelectionDecision,
   EvidenceSufficiencyAssessment,
+  FinalTerminalCondition,
   GovernedWorkflowTrace,
+  TerminalToolRejection,
+  ToolPhaseState,
   ToolBudgetConsumption,
 } from "./control-plane/observability";
 import type { ExecutionPlanV1 } from "./control-plane/execution-plan";
@@ -74,6 +79,13 @@ export interface AgentTrace {
   readonly evidenceAssessments?: readonly EvidenceSufficiencyAssessment[];
   readonly stopReason?: string;
   readonly governedWorkflow?: GovernedWorkflowTrace;
+  readonly applicationResponseDisposition?: ApplicationResponseDisposition;
+  readonly capabilityResolution?: CapabilityResolutionResult;
+  readonly terminalToolRejection?: TerminalToolRejection;
+  readonly toolPhase?: ToolPhaseState;
+  readonly responseOnlyCorrectionCount?: number;
+  readonly deterministicFallbackUsed?: boolean;
+  readonly finalTerminalCondition?: FinalTerminalCondition;
   readonly provider: string;
   readonly model: string;
   readonly thinkingMode: "enabled" | "disabled";

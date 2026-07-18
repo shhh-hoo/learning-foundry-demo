@@ -101,7 +101,7 @@ export class PurposeAndRoleSeparatedFileRuntimeExecutionRecorder implements Runt
 function parseRuntimeExecutionRecord(value: unknown): RuntimeExecutionRecord {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("INVALID_RUNTIME_EXECUTION_RECORD");
   const record = value as Partial<RuntimeExecutionRecord>;
-  if (record.schemaVersion !== "1.0.0" && record.schemaVersion !== "1.1.0" && record.schemaVersion !== RUNTIME_EXECUTION_SCHEMA_VERSION) {
+  if (record.schemaVersion !== "1.0.0" && record.schemaVersion !== "1.1.0" && record.schemaVersion !== "1.2.0" && record.schemaVersion !== RUNTIME_EXECUTION_SCHEMA_VERSION) {
     throw new Error("UNSUPPORTED_RUNTIME_EXECUTION_SCHEMA_VERSION");
   }
   if (record.runPurpose !== "PRODUCT" && record.runPurpose !== "AGENT_EVAL") throw new Error("INVALID_RUNTIME_EXECUTION_RUN_PURPOSE");
@@ -112,7 +112,7 @@ function parseRuntimeExecutionRecord(value: unknown): RuntimeExecutionRecord {
   if (record.schemaVersion === "1.0.0" && (record.status === "RUNNING" || typeof record.completedAt !== "string")) {
     throw new Error("INVALID_RUNTIME_EXECUTION_1_0_TERMINAL_RECORD");
   }
-  if ((record.schemaVersion === "1.1.0" || record.schemaVersion === RUNTIME_EXECUTION_SCHEMA_VERSION)
+  if ((record.schemaVersion === "1.1.0" || record.schemaVersion === "1.2.0" || record.schemaVersion === RUNTIME_EXECUTION_SCHEMA_VERSION)
     && (record.status === "RUNNING" ? record.completedAt !== undefined : typeof record.completedAt !== "string")) {
     throw new Error("INVALID_RUNTIME_EXECUTION_LIFECYCLE_RECORD");
   }

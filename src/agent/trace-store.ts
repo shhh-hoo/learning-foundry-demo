@@ -8,9 +8,9 @@ import type {
   RunPurpose,
   TokenUsage,
 } from "./types";
-import type { ContextSelectionDecision, EvidenceSufficiencyAssessment, GovernedWorkflowTrace, ToolBudgetConsumption } from "./control-plane/observability";
+import type { ApplicationResponseDisposition, CapabilityResolutionResult, ContextSelectionDecision, EvidenceSufficiencyAssessment, FinalTerminalCondition, GovernedWorkflowTrace, TerminalToolRejection, ToolBudgetConsumption, ToolPhaseState } from "./control-plane/observability";
 
-export const AGENT_RUN_SCHEMA_VERSION = "1.1.0" as const;
+export const AGENT_RUN_SCHEMA_VERSION = "1.2.0" as const;
 
 export type AgentRunStatus = "RUNNING" | "COMPLETED" | "FAILED";
 
@@ -58,7 +58,7 @@ export interface PersistedToolExecution {
 }
 
 export interface PersistedAgentRun extends AgentRunStart {
-  readonly schemaVersion: "1.0.0" | typeof AGENT_RUN_SCHEMA_VERSION;
+  readonly schemaVersion: "1.0.0" | "1.1.0" | typeof AGENT_RUN_SCHEMA_VERSION;
   readonly status: AgentRunStatus;
   readonly observableModelMessages: readonly ObservableAgentMessage[];
   readonly toolExecutions: readonly PersistedToolExecution[];
@@ -69,6 +69,13 @@ export interface PersistedAgentRun extends AgentRunStart {
   readonly evidenceAssessments?: readonly EvidenceSufficiencyAssessment[];
   readonly stopReason?: string;
   readonly governedWorkflow?: GovernedWorkflowTrace;
+  readonly applicationResponseDisposition?: ApplicationResponseDisposition;
+  readonly capabilityResolution?: CapabilityResolutionResult;
+  readonly terminalToolRejection?: TerminalToolRejection;
+  readonly toolPhase?: ToolPhaseState;
+  readonly responseOnlyCorrectionCount?: number;
+  readonly deterministicFallbackUsed?: boolean;
+  readonly finalTerminalCondition?: FinalTerminalCondition;
   readonly completedAt?: string;
   readonly updatedAt: string;
   readonly terminalError?: { readonly code: string; readonly message: string };
@@ -88,6 +95,13 @@ export interface AgentRunObservability {
   readonly evidenceAssessments?: readonly EvidenceSufficiencyAssessment[];
   readonly stopReason?: string;
   readonly governedWorkflow?: GovernedWorkflowTrace;
+  readonly applicationResponseDisposition?: ApplicationResponseDisposition;
+  readonly capabilityResolution?: CapabilityResolutionResult;
+  readonly terminalToolRejection?: TerminalToolRejection;
+  readonly toolPhase?: ToolPhaseState;
+  readonly responseOnlyCorrectionCount?: number;
+  readonly deterministicFallbackUsed?: boolean;
+  readonly finalTerminalCondition?: FinalTerminalCondition;
 }
 
 export interface AgentTraceStore {
