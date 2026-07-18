@@ -75,8 +75,8 @@
         "caseId": "termination-insufficient-retrieval",
         "runPurpose": "AGENT_EVAL",
         "inputOrigin": "PRESET_INPUT",
-        "input": "Why does photosynthesis make the Moon orbit faster? Use the governed course evidence.",
-        "inputSha256": "d9f3e1f85c325efc2cb39d771d0224f3bf5b4e0530c36c47eb218f4bfff79a47",
+        "input": "哪些证据说明光合作用会让月球加速公转？请只使用受治理的课程证据。",
+        "inputSha256": "47db7f7680b709e5377013a42ab1e1fcb4cc7d1971aa3b14ee9a32f874fc9c0c",
         "requiredGate": "No or insufficient governed retrieval returns NEEDS_MORE_EVIDENCE without fabricated source refs."
       },
       {
