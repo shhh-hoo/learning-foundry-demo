@@ -229,8 +229,45 @@ Before a live run, automated checks must establish:
 - a balanced 72-attempt schedule and 72 unique initial conversation IDs;
 - all environment, corpus-delivery and reviewer-authorization gates pass.
 
-Without the required live provider, governed corpus, dependent services,
-delivery authorization and accepted provider-seed disposition, live validation
-is reported as:
+## Live execution closure
 
-`NOT RUN — required live environment or authority unavailable`
+The independent benchmark branch froze governed corpus index
+`v0.1-6f7e2a2945ca` and executed run
+`foundry-value-benchmark-1.0.0-live-01` using `deepseek-chat`, disabled
+thinking, provider-default unsent sampling fields, JSON response mode and the
+1,800-token maximum. Technical readiness, AgentEval delivery authorization,
+Registry, Trainer and authoritative Legacy gateway identity all passed the
+fail-closed live preflight.
+
+Exactly 72 starts and 72 terminal first attempts are present, with 72 unique
+execution IDs, 72 unique conversation IDs and 72 unique case/arm pairs. There
+were zero replacements. The two non-completed outcomes are retained:
+
+- `VB-S01-V3 / C_FULL_FOUNDRY`: `POLICY_FAILURE`;
+- `VB-S07-V1 / B_FOUNDRY_POLICY_NO_TOOLS`: `MODEL_QUALITY_FAILURE`.
+
+Neither outcome is an infrastructure failure, so neither is eligible for a
+replacement.
+
+| Arm | Terminal outcomes | Client latency | Tokens | Cache hit / miss | Tool calls | Source / Evidence refs |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| `A_BARE_LLM` | 24 completed | 32,620 ms | 5,285 | 128 / 3,818 | 0 | 0 / 0 |
+| `B_FOUNDRY_POLICY_NO_TOOLS` | 23 completed, 1 model-quality failure | 41,189 ms | 14,358 | 5,120 / 7,592 | 0 | 0 / 0 |
+| `C_FULL_FOUNDRY` | 23 completed, 1 policy failure | 104,866 ms | 74,518 | 44,544 / 21,416 | 17 | 3 / 18 |
+
+The pricing snapshot is `null` for this model, so cost is unknown rather than
+reported as zero.
+
+Live execution is complete, but blind pedagogy and Evidence assessment are
+**BLOCKED ON REVIEWER AUTHORIZATION**. The frozen manifest requires explicit
+external-reviewer authorization before packet delivery, and no reviewer
+identity, authorization record, blinding salt, decision file or lock timestamp
+was supplied. The implementation executor did not impersonate a blinded human
+reviewer. Therefore no arm mapping has been released, no review lock exists,
+no report or winner exists, and product value and learning effectiveness remain
+unclaimed.
+
+Once authorization and reviewer inputs are supplied, the existing immutable
+run can continue through `prepare-blind`, append-only pedagogy decisions,
+pedagogy lock, Evidence packet, append-only Evidence decisions and Evidence
+lock without rerunning any provider attempt.
