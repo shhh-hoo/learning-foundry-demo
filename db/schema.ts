@@ -11,6 +11,7 @@ import {
   timestamp,
   uniqueIndex,
   uuid,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
@@ -327,6 +328,10 @@ export const learningOutcomes = product.table("learning_outcomes", {
 export const components = product.table("components", {
   id: id(),
   institutionId: uuid("institution_id").notNull().references(() => institutions.id),
+  courseId: uuid("course_id").notNull().references(() => courses.id),
+  capabilityId: uuid("capability_id").notNull().references(() => capabilities.id),
+  referencePackKey: text("reference_pack_key").notNull(),
+  failureCode: text("failure_code"),
   key: text("key").notNull(),
   title: text("title").notNull(),
   status: text("status").default("CANDIDATE").notNull(),
@@ -340,8 +345,11 @@ export const componentVersions = product.table("component_versions", {
   id: id(),
   componentId: uuid("component_id").notNull().references(() => components.id, { onDelete: "cascade" }),
   version: text("version").notNull(),
+  successorOfVersionId: uuid("successor_of_version_id").references((): AnyPgColumn => componentVersions.id),
   contract: jsonb("contract").$type<Record<string, unknown>>().notNull(),
   content: jsonb("content").$type<Record<string, unknown>>().notNull(),
+  sourceObservationIds: uuid("source_observation_ids").array().notNull(),
+  sourceReviewIds: uuid("source_review_ids").array().notNull(),
   validation: jsonb("validation").$type<Record<string, unknown>>().notNull(),
   evalResult: jsonb("eval_result").$type<Record<string, unknown>>(),
   status: text("status").default("DRAFT").notNull(),
@@ -353,18 +361,69 @@ export const componentVersions = product.table("component_versions", {
   check("component_version_status_ck", sql`${table.status} IN ('DRAFT','PUBLISHED','REJECTED')`),
 ]);
 
+export const componentEvaluations = product.table("component_evaluations", {
+  id: id(),
+  componentVersionId: uuid("component_version_id").notNull().references(() => componentVersions.id),
+  institutionId: uuid("institution_id").notNull().references(() => institutions.id),
+  courseId: uuid("course_id").notNull().references(() => courses.id),
+  evaluatorKey: text("evaluator_key").notNull(),
+  evaluatorVersion: text("evaluator_version").notNull(),
+  contentHash: text("content_hash").notNull(),
+  inputHash: text("input_hash").notNull(),
+  systemStatus: text("system_status").notNull(),
+  systemChecks: jsonb("system_checks").$type<Array<Record<string, unknown>>>().notNull(),
+  sourceObservationIds: uuid("source_observation_ids").array().notNull(),
+  sourceReviewIds: uuid("source_review_ids").array().notNull(),
+  sourceAttemptIds: uuid("source_attempt_ids").array().notNull(),
+  fixtureExecution: jsonb("fixture_execution").$type<Record<string, unknown>>().notNull(),
+  evidenceChecks: jsonb("evidence_checks").$type<Array<Record<string, unknown>>>().notNull(),
+  providerChecks: jsonb("provider_checks").$type<Record<string, unknown>>().notNull(),
+  createdBy: uuid("created_by").notNull().references(() => users.id),
+  createdAt: createdAt(),
+}, (table) => [
+  uniqueIndex("component_evaluations_version_input_hash_uq").on(table.componentVersionId, table.inputHash),
+  index("component_evaluations_scope_idx").on(table.institutionId, table.courseId, table.createdAt),
+  check("component_evaluation_status_ck", sql`${table.systemStatus} IN ('PASSED','BLOCKED')`),
+]);
+
 export const publicationDecisions = product.table("publication_decisions", {
   id: id(),
   componentVersionId: uuid("component_version_id").notNull().references(() => componentVersions.id),
+  evaluationId: uuid("evaluation_id").references(() => componentEvaluations.id),
+  previousActiveVersionId: uuid("previous_active_version_id").references(() => componentVersions.id),
   expertId: uuid("expert_id").notNull().references(() => users.id),
   action: text("action").notNull(),
   rationale: text("rationale").notNull(),
+  humanRubric: jsonb("human_rubric").$type<Record<string, unknown>>(),
+  workflowThreadId: text("workflow_thread_id"),
   actorProvenance: jsonb("actor_provenance").$type<{ userId: string; institutionId: string; roles: string[]; authMethod: string; sessionId: string; authenticatedAt: string }>().notNull(),
   idempotencyKey: text("idempotency_key").notNull().unique(),
   createdAt: createdAt(),
 }, (table) => [
+  uniqueIndex("publication_terminal_version_uq").on(table.componentVersionId).where(sql`${table.action} IN ('APPROVE','REJECT')`),
   check("publication_action_ck", sql`${table.action} IN ('APPROVE','REJECT','ROLLBACK')`),
   check("publication_provenance_ck", sql`length(${table.actorProvenance}->>'userId') > 0 AND length(${table.actorProvenance}->>'institutionId') > 0 AND length(${table.actorProvenance}->>'authMethod') > 0 AND (${table.actorProvenance}->>'authMethod') NOT LIKE 'migrated-%'`),
+]);
+
+export const componentDeliveries = product.table("component_deliveries", {
+  id: id(),
+  institutionId: uuid("institution_id").notNull().references(() => institutions.id),
+  courseId: uuid("course_id").notNull().references(() => courses.id),
+  taskId: uuid("task_id").notNull().references(() => learningTasks.id),
+  episodeId: uuid("episode_id").notNull().references(() => learningEpisodes.id),
+  componentId: uuid("component_id").notNull().references(() => components.id),
+  componentVersionId: uuid("component_version_id").notNull().references(() => componentVersions.id),
+  observationId: uuid("observation_id").notNull().references(() => diagnosticObservations.id),
+  reviewId: uuid("review_id").notNull().references(() => teacherReviews.id),
+  deliveredBy: uuid("delivered_by").notNull().references(() => users.id),
+  audience: text("audience").notNull(),
+  supportSnapshot: jsonb("support_snapshot").$type<Record<string, unknown>>().notNull(),
+  idempotencyKey: text("idempotency_key").notNull().unique(),
+  createdAt: createdAt(),
+}, (table) => [
+  index("component_deliveries_task_idx").on(table.taskId, table.createdAt),
+  index("component_deliveries_component_idx").on(table.componentId, table.componentVersionId, table.createdAt),
+  check("component_delivery_audience_ck", sql`${table.audience} IN ('LEARNER','TEACHER')`),
 ]);
 
 export const libraryItems = product.table("library_items", {

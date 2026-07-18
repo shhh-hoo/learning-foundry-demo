@@ -40,3 +40,27 @@ export function isEligibleReviewDecision(decision: unknown): boolean {
   const parsed = ReviewDecision.safeParse(decision);
   return parsed.success && parsed.data !== "ESCALATE";
 }
+
+export function hasVerifiedReviewProvenance(review: {
+  teacherId: string;
+  actorProvenance: { userId?: string; institutionId?: string; authMethod?: string; sessionId?: string } | null;
+}, institutionId: string): boolean {
+  const provenance = review.actorProvenance;
+  return Boolean(
+    provenance
+    && provenance.userId === review.teacherId
+    && provenance.institutionId === institutionId
+    && provenance.authMethod
+    && provenance.sessionId
+    && !provenance.authMethod.startsWith("migrated-"),
+  );
+}
+
+export function requireVerifiedReviewProvenance(review: {
+  teacherId: string;
+  actorProvenance: { userId?: string; institutionId?: string; authMethod?: string; sessionId?: string } | null;
+}, institutionId: string): void {
+  if (!hasVerifiedReviewProvenance(review, institutionId)) {
+    throw new DomainInvariantError("Review lacks verified authenticated human provenance", "REVIEW_PROVENANCE_INVALID");
+  }
+}

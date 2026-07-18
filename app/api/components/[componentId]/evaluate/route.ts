@@ -7,15 +7,15 @@ import { getDb } from "@/db/client";
 import { componentVersions, components } from "@/db/schema";
 import { DomainInvariantError, requireRole } from "@/domain/invariants";
 
-const Preflight = z.object({ componentVersionId: z.string().uuid() });
+const Evaluation = z.object({ componentVersionId: z.string().uuid() }).strict();
 
 export async function POST(request: Request, context: { params: Promise<{ componentId: string }> }) {
   try {
     const actor = await requireApiActor();
     requireRole(actor, ["EXPERT", "ADMIN"]);
     const { componentId } = await context.params;
-    const body = Preflight.parse(await request.json());
-    const [row] = await getDb().select({ version: componentVersions, component: components })
+    const body = Evaluation.parse(await request.json());
+    const [row] = await getDb().select({ version: componentVersions })
       .from(componentVersions)
       .innerJoin(components, eq(components.id, componentVersions.componentId))
       .where(and(eq(componentVersions.id, body.componentVersionId), eq(components.id, componentId), eq(components.institutionId, actor.institutionId)))

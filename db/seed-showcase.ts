@@ -94,7 +94,7 @@ for (const [index, definition] of CHEMISTRY_CAPABILITIES.entries()) {
     id: versionId,
     capabilityId,
     version: "1.0.0",
-    contract: definition.contract,
+    contract: { ...definition.contract, evaluationFixture: definition.evaluationFixture },
     implementationKey: definition.implementationKey,
     status: "ACTIVE",
     contentHash: digest(JSON.stringify(definition)),

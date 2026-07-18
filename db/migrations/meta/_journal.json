@@ -8,6 +8,13 @@
       "when": 1784394406157,
       "tag": "0000_full_framework",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1784398774970,
+      "tag": "0001_full_framework",
+      "breakpoints": true
     }
   ]
 }

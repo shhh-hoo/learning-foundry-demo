@@ -1,9 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import {
   componentVersions,
+  componentDeliveries,
+  componentEvaluations,
   components,
+  capabilities,
   conversationEvents,
   courses,
   diagnosticObservations,
@@ -21,11 +24,13 @@ import {
   sourceRecords,
   subjects,
   teacherReviews,
+  publicationDecisions,
+  workflowRuns,
 } from "@/db/schema";
 import type { Actor } from "@/domain/model";
-import { ComponentContract } from "@/domain/component";
+import { ComponentContent, ComponentContract, ComponentHumanRubric, humanRubricPasses } from "@/domain/component";
 import { authorizeEvidenceUnitInstitution, authorizePersistedEvidence, evidenceAlignsToCourse } from "@/domain/evidence";
-import { parseReviewDecision, requireEligibleReviewDecision } from "@/domain/review";
+import { parseReviewDecision, requireEligibleReviewDecision, requireVerifiedReviewProvenance } from "@/domain/review";
 import { requireTaskEpisodeScope } from "@/application/task-scope";
 import {
   DomainInvariantError,
@@ -96,23 +101,6 @@ async function taskScope(taskId: string) {
   const [task] = await getDb().select().from(learningTasks).where(eq(learningTasks.id, taskId)).limit(1);
   if (!task) throw new DomainInvariantError("Learning Task not found", "TASK_NOT_FOUND");
   return task;
-}
-
-function requireVerifiedReviewProvenance(
-  review: typeof teacherReviews.$inferSelect,
-  institutionId: string,
-): void {
-  const provenance = review.actorProvenance;
-  if (
-    !provenance
-    || provenance.userId !== review.teacherId
-    || provenance.institutionId !== institutionId
-    || !provenance.authMethod
-    || !provenance.sessionId
-    || provenance.authMethod.startsWith("migrated-")
-  ) {
-    throw new DomainInvariantError("Review lacks verified authenticated human provenance", "REVIEW_PROVENANCE_INVALID");
-  }
 }
 
 export async function resolveRetryAuthority(actor: Actor, input: { observationId: string; reviewId: string }) {
@@ -701,49 +689,62 @@ export async function createOutcome(actor: Actor, input: { retryId: string; stat
   });
 }
 
-export async function decidePublication(actor: Actor, input: { componentVersionId: string; action: "APPROVE" | "REJECT"; rationale: string; idempotencyKey: string }) {
-  requireHumanCommand(actor, ["EXPERT", "ADMIN"]);
-  const [row] = await getDb().select({ version: componentVersions, component: components }).from(componentVersions).innerJoin(components, eq(components.id, componentVersions.componentId)).where(eq(componentVersions.id, input.componentVersionId)).limit(1);
-  if (!row || row.component.institutionId !== actor.institutionId) throw new DomainInvariantError("Component version not found in institution", "TENANT_ISOLATION");
-  void input;
-  throw new DomainInvariantError("Component publication is unavailable until a real evaluator executes the required capability, domain, pedagogy, safety and reuse checks", "COMPONENT_EVALUATOR_UNAVAILABLE");
-}
-
 export async function createComponentCandidate(actor: Actor, input: {
   observationId: string;
   key: string;
   title: string;
   purpose: string;
-  capabilityKey: string;
-  referencePackKey: string;
   content: Record<string, unknown>;
   idempotencyKey: string;
 }) {
   requireRole(actor, ["TEACHER", "EXPERT", "ADMIN"]);
-  const rows = await getDb().select({ task: learningTasks }).from(diagnosticObservations)
+  const rows = await getDb().select({ observation: diagnosticObservations, attempt: learnerAttempts, task: learningTasks, course: courses, subject: subjects, capability: capabilities }).from(diagnosticObservations)
     .innerJoin(learnerAttempts, eq(learnerAttempts.id, diagnosticObservations.attemptId))
     .innerJoin(learningTasks, eq(learningTasks.id, learnerAttempts.taskId))
-    .where(eq(diagnosticObservations.id, input.observationId)).limit(1);
-  const task = rows[0]?.task;
-  if (!task) throw new DomainInvariantError("Candidate requires a governed Observation", "OBSERVATION_NOT_FOUND");
-  requireCourseAccess(actor, task.institutionId, task.courseId);
+    .innerJoin(courses, eq(courses.id, learningTasks.courseId))
+    .innerJoin(subjects, eq(subjects.id, courses.subjectId))
+    .leftJoin(capabilities, eq(capabilities.id, learnerAttempts.capabilityId))
+    .where(and(
+      eq(diagnosticObservations.id, input.observationId),
+      eq(learningTasks.institutionId, actor.institutionId),
+      inArray(learningTasks.courseId, actor.courseIds),
+    )).limit(1);
+  const lineage = rows[0];
+  if (!lineage) throw new DomainInvariantError("Candidate Observation was not found in the actor's authorized scope", "OBSERVATION_NOT_FOUND");
+  requireCourseAccess(actor, lineage.task.institutionId, lineage.task.courseId);
+  const capability = lineage.capability;
+  if (
+    lineage.observation.supersededById
+    || lineage.observation.observationSource !== "CAPABILITY"
+    || !lineage.observation.failureCode
+    || !lineage.attempt.capabilityId
+    || !capability
+  ) {
+    throw new DomainInvariantError("Component Draft requires a real capability failure signal; unavailable or null-code observations are ineligible", "COMPONENT_SIGNAL_INELIGIBLE");
+  }
+  if (capability.activeVersionId !== lineage.observation.capabilityVersionId || capability.referencePackKey !== lineage.subject.referencePackKey) {
+    throw new DomainInvariantError("Component signal does not bind the active persisted Capability and Reference Pack", "COMPONENT_BINDING_INVALID");
+  }
   const [review] = await getDb().select().from(teacherReviews).where(eq(teacherReviews.observationId, input.observationId)).orderBy(desc(teacherReviews.createdAt), desc(teacherReviews.id)).limit(1);
   if (!review) throw new DomainInvariantError("Component candidate requires a current human TeacherReview", "REVIEW_REQUIRED");
-  requireVerifiedReviewProvenance(review, task.institutionId);
+  requireVerifiedReviewProvenance(review, lineage.task.institutionId);
   requireEligibleReviewDecision(review.decision, "Component candidate");
+  const content = ComponentContent.parse(input.content);
   const contract = ComponentContract.parse({
     title: input.title,
     purpose: input.purpose,
-    capabilityKey: input.capabilityKey,
-    referencePackKey: input.referencePackKey,
+    capabilityId: capability.id,
+    capabilityKey: capability.key,
+    referencePackKey: lineage.subject.referencePackKey,
     inputSchema: { type: "object" },
     outputSchema: { type: "object" },
     evidenceRequirements: ["DiagnosticObservation", "TeacherReview"],
+    evidencePolicy: content.evidenceRefs.length > 0 ? "REQUIRED" : "NOT_REQUIRED_DETERMINISTIC_SCAFFOLD",
     humanReviewRequired: true,
   });
   const componentId = randomUUID();
   const versionId = randomUUID();
-  const contentHash = createHash("sha256").update(JSON.stringify({ contract, content: input.content })).digest("hex");
+  const contentHash = createHash("sha256").update(JSON.stringify({ contract, content })).digest("hex");
   const commandType = "COMPONENT_CANDIDATE";
   const requestHash = commandRequestHash(actor, commandType, { ...input, idempotencyKey: undefined, reviewId: review.id });
   return getDb().transaction(async (tx) => {
@@ -752,43 +753,291 @@ export async function createComponentCandidate(actor: Actor, input: {
       const [existing] = await tx.select().from(idempotencyKeys).where(and(eq(idempotencyKeys.institutionId, actor.institutionId), eq(idempotencyKeys.commandType, commandType), eq(idempotencyKeys.key, input.idempotencyKey)));
       return { componentId: assertReplay(existing, commandType, requestHash), replayed: true };
     }
-    await tx.insert(components).values({ id: componentId, institutionId: actor.institutionId, key: input.key, title: input.title, sourceSignal: { observationId: input.observationId }, createdBy: actor.userId });
-    await tx.insert(componentVersions).values({ id: versionId, componentId, version: "0.1.0", contract, content: input.content, validation: { core: "PENDING", referencePack: "PENDING" }, status: "DRAFT", contentHash, createdBy: actor.userId });
-    await tx.insert(governanceEvents).values({ institutionId: actor.institutionId, actorUserId: actor.userId, entityType: "COMPONENT", entityId: componentId, action: "CANDIDATE_CREATED", payload: { versionId, observationId: input.observationId } });
+    await tx.execute(sql`SELECT set_config('foundry.governance_command', 'component_candidate', true)`);
+    await tx.insert(components).values({
+      id: componentId,
+      institutionId: actor.institutionId,
+      courseId: lineage.task.courseId,
+      capabilityId: capability.id,
+      referencePackKey: lineage.subject.referencePackKey,
+      failureCode: lineage.observation.failureCode,
+      key: input.key,
+      title: input.title,
+      sourceSignal: { observationId: input.observationId, reviewId: review.id, attemptId: lineage.attempt.id, capabilityVersionId: lineage.observation.capabilityVersionId, failureCode: lineage.observation.failureCode },
+      createdBy: actor.userId,
+    });
+    await tx.insert(componentVersions).values({ id: versionId, componentId, version: "0.1.0", contract, content, sourceObservationIds: [input.observationId], sourceReviewIds: [review.id], validation: { status: "PENDING_SYSTEM_EVALUATION" }, status: "DRAFT", contentHash, createdBy: actor.userId });
+    await tx.insert(governanceEvents).values({ institutionId: actor.institutionId, actorUserId: actor.userId, entityType: "COMPONENT", entityId: componentId, action: "CANDIDATE_CREATED", payload: { versionId, observationId: input.observationId, reviewId: review.id, attemptId: lineage.attempt.id, capabilityId: capability.id, failureCode: lineage.observation.failureCode } });
     return { componentId, versionId, replayed: false };
   });
 }
 
-export async function updateComponentVersion(actor: Actor, input: { componentId: string; componentVersionId: string; contract: Record<string, unknown>; content: Record<string, unknown>; idempotencyKey: string }) {
-  requireRole(actor, ["TEACHER", "EXPERT", "ADMIN"]);
+function nextComponentVersion(versions: string[]): string {
+  const greatestMinor = versions.reduce((greatest, version) => {
+    const match = /^0\.(\d+)\.0$/.exec(version);
+    return match ? Math.max(greatest, Number(match[1])) : greatest;
+  }, 0);
+  return `0.${greatestMinor + 1}.0`;
+}
+
+export async function updateComponentVersion(actor: Actor, input: { componentId: string; componentVersionId: string; title: string; purpose: string; content: Record<string, unknown>; idempotencyKey: string }) {
+  requireRole(actor, ["EXPERT", "ADMIN"]);
   const [row] = await getDb().select({ component: components, version: componentVersions }).from(components)
     .innerJoin(componentVersions, eq(componentVersions.componentId, components.id))
     .where(and(eq(components.id, input.componentId), eq(componentVersions.id, input.componentVersionId), eq(components.institutionId, actor.institutionId)))
     .limit(1);
   if (!row) throw new DomainInvariantError("Component version is outside the active institution", "TENANT_ISOLATION");
-  if (row.version.status === "PUBLISHED") throw new DomainInvariantError("Published versions are immutable; create a new version", "VERSION_IMMUTABLE");
-  const contract = ComponentContract.parse(input.contract);
-  const contentHash = createHash("sha256").update(JSON.stringify({ contract, content: input.content })).digest("hex");
+  const content = ComponentContent.parse(input.content);
   const commandType = "UPDATE_COMPONENT_VERSION";
-  const requestHash = commandRequestHash(actor, commandType, { componentId: input.componentId, componentVersionId: input.componentVersionId, contract, content: input.content });
+  const successorId = randomUUID();
   return getDb().transaction(async (tx) => {
-    const reserved = await tx.insert(idempotencyKeys).values({ institutionId: actor.institutionId, key: input.idempotencyKey, commandType, requestHash, resultId: row.version.id }).onConflictDoNothing().returning();
+    const [lockedComponent] = await tx.select().from(components).where(and(eq(components.id, row.component.id), eq(components.institutionId, actor.institutionId))).for("update").limit(1);
+    const [current] = await tx.select().from(componentVersions).where(and(eq(componentVersions.id, row.version.id), eq(componentVersions.componentId, row.component.id))).for("update").limit(1);
+    if (!lockedComponent || !current) throw new DomainInvariantError("Component version disappeared or changed lineage", "COMPONENT_VERSION_LINEAGE");
+    const contract = ComponentContract.parse({
+      ...current.contract,
+      title: input.title,
+      purpose: input.purpose,
+      evidencePolicy: content.evidenceRefs.length > 0 ? "REQUIRED" : "NOT_REQUIRED_DETERMINISTIC_SCAFFOLD",
+    });
+    if (contract.capabilityId !== lockedComponent.capabilityId || contract.referencePackKey !== lockedComponent.referencePackKey) {
+      throw new DomainInvariantError("A successor cannot change the governed Capability or Reference Pack binding", "COMPONENT_BINDING_INVALID");
+    }
+    const contentHash = createHash("sha256").update(JSON.stringify({ contract, content })).digest("hex");
+    const requestHash = commandRequestHash(actor, commandType, { componentId: input.componentId, componentVersionId: input.componentVersionId, contract, content });
+    const resultId = current.status === "DRAFT" ? current.id : successorId;
+    const reserved = await tx.insert(idempotencyKeys).values({ institutionId: actor.institutionId, key: input.idempotencyKey, commandType, requestHash, resultId }).onConflictDoNothing().returning();
     if (!reserved.length) {
       const [existing] = await tx.select().from(idempotencyKeys).where(and(eq(idempotencyKeys.institutionId, actor.institutionId), eq(idempotencyKeys.commandType, commandType), eq(idempotencyKeys.key, input.idempotencyKey)));
       return { componentVersionId: assertReplay(existing, commandType, requestHash), replayed: true };
     }
-    await tx.update(componentVersions).set({ contract, content: input.content, contentHash, validation: { status: "PENDING" }, evalResult: null, status: "DRAFT" }).where(and(eq(componentVersions.id, row.version.id), eq(componentVersions.componentId, row.component.id)));
-    await tx.insert(governanceEvents).values({ institutionId: actor.institutionId, actorUserId: actor.userId, entityType: "COMPONENT_VERSION", entityId: row.version.id, action: "DRAFT_UPDATED", payload: { componentId: row.component.id, contentHash } });
-    return { componentVersionId: row.version.id, replayed: false };
+    if (current.status === "DRAFT") {
+      const [updated] = await tx.update(componentVersions).set({ contract, content, contentHash, validation: { status: "PENDING_SYSTEM_EVALUATION" }, evalResult: null })
+        .where(and(eq(componentVersions.id, current.id), eq(componentVersions.status, "DRAFT"))).returning();
+      if (!updated) throw new DomainInvariantError("Draft changed during update", "COMPONENT_VERSION_CONFLICT");
+      if (!lockedComponent.activeVersionId) await tx.update(components).set({ title: contract.title }).where(eq(components.id, lockedComponent.id));
+      await tx.insert(governanceEvents).values({ institutionId: actor.institutionId, actorUserId: actor.userId, entityType: "COMPONENT_VERSION", entityId: current.id, action: "DRAFT_UPDATED", payload: { componentId: row.component.id, contentHash } });
+      return { componentVersionId: current.id, replayed: false, createdSuccessor: false };
+    }
+    const versionRows = await tx.select({ version: componentVersions.version }).from(componentVersions).where(eq(componentVersions.componentId, row.component.id));
+    const successorVersion = nextComponentVersion(versionRows.map((item) => item.version));
+    await tx.execute(sql`SELECT set_config('foundry.governance_command', 'component_successor', true)`);
+    await tx.insert(componentVersions).values({
+      id: successorId,
+      componentId: row.component.id,
+      version: successorVersion,
+      successorOfVersionId: current.id,
+      contract,
+      content,
+      sourceObservationIds: current.sourceObservationIds,
+      sourceReviewIds: current.sourceReviewIds,
+      validation: { status: "PENDING_SYSTEM_EVALUATION" },
+      status: "DRAFT",
+      contentHash,
+      createdBy: actor.userId,
+    });
+    await tx.insert(governanceEvents).values({ institutionId: actor.institutionId, actorUserId: actor.userId, entityType: "COMPONENT_VERSION", entityId: successorId, action: "SUCCESSOR_CREATED", payload: { componentId: row.component.id, successorOfVersionId: current.id, version: successorVersion, contentHash } });
+    return { componentVersionId: successorId, replayed: false, createdSuccessor: true };
   });
 }
 
-export async function rollbackComponent(actor: Actor, input: { componentId: string; targetVersionId: string; rationale: string; idempotencyKey: string }) {
+export async function decidePublication(actor: Actor, input: {
+  componentVersionId: string;
+  evaluationId: string;
+  workflowThreadId: string;
+  action: "APPROVE" | "REJECT";
+  rationale: string;
+  rubric: Record<string, unknown>;
+  idempotencyKey: string;
+}) {
   requireHumanCommand(actor, ["EXPERT", "ADMIN"]);
-  const [component] = await getDb().select().from(components).where(and(eq(components.id, input.componentId), eq(components.institutionId, actor.institutionId))).limit(1);
-  if (!component) throw new DomainInvariantError("Rollback target is outside the active institution", "TENANT_ISOLATION");
-  void input;
-  throw new DomainInvariantError("Component rollback is unavailable because no version can be published without a real evaluator", "COMPONENT_EVALUATOR_UNAVAILABLE");
+  const rationale = input.rationale.trim();
+  if (rationale.length < 5) throw new DomainInvariantError("Publication rationale must contain at least five characters", "PUBLICATION_RATIONALE_REQUIRED");
+  const rubric = ComponentHumanRubric.parse(input.rubric);
+  if (input.action === "APPROVE" && !humanRubricPasses(rubric)) {
+    throw new DomainInvariantError("APPROVE requires PASS attestations for domain correctness, pedagogy, safety, and reuse readiness", "HUMAN_RUBRIC_BLOCKED");
+  }
+  const decisionId = randomUUID();
+  const commandType = "COMPONENT_PUBLICATION_DECISION";
+  const requestHash = commandRequestHash(actor, commandType, { ...input, rubric, idempotencyKey: undefined });
+  return getDb().transaction(async (tx) => {
+    const reserved = await tx.insert(idempotencyKeys).values({ institutionId: actor.institutionId, key: input.idempotencyKey, commandType, requestHash, resultId: decisionId }).onConflictDoNothing().returning();
+    if (!reserved.length) {
+      const [existing] = await tx.select().from(idempotencyKeys).where(and(eq(idempotencyKeys.institutionId, actor.institutionId), eq(idempotencyKeys.commandType, commandType), eq(idempotencyKeys.key, input.idempotencyKey)));
+      return { decisionId: assertReplay(existing, commandType, requestHash), replayed: true };
+    }
+    const [binding] = await tx.select({ version: componentVersions, component: components, evaluation: componentEvaluations })
+      .from(componentVersions)
+      .innerJoin(components, eq(components.id, componentVersions.componentId))
+      .innerJoin(componentEvaluations, and(eq(componentEvaluations.id, input.evaluationId), eq(componentEvaluations.componentVersionId, componentVersions.id)))
+      .where(and(eq(componentVersions.id, input.componentVersionId), eq(components.institutionId, actor.institutionId)))
+      .for("update")
+      .limit(1);
+    if (!binding) throw new DomainInvariantError("Publication evaluation is outside the active institution or version lineage", "TENANT_ISOLATION");
+    const [workflow] = await tx.select().from(workflowRuns).where(and(
+      eq(workflowRuns.threadId, input.workflowThreadId),
+      eq(workflowRuns.institutionId, actor.institutionId),
+      eq(workflowRuns.workflowKind, "COMPONENT_LIFECYCLE"),
+      eq(workflowRuns.status, "RESUMING"),
+      eq(workflowRuns.interruptType, "EXPERT_PUBLICATION_REVIEW_REQUIRED"),
+    )).for("update").limit(1);
+    const productLinks = workflow?.productLinks ?? {};
+    if (!workflow
+      || productLinks.componentId !== binding.component.id
+      || productLinks.componentVersionId !== binding.version.id
+      || productLinks.evaluationId !== binding.evaluation.id
+      || workflow.interruptVersion < 1) {
+      throw new DomainInvariantError("Publication decision does not match the current expert workflow interrupt and evaluated version", "PUBLICATION_WORKFLOW_MISMATCH");
+    }
+    if (binding.version.status !== "DRAFT") throw new DomainInvariantError("Component version already has a terminal publication decision", "PUBLICATION_CONFLICT");
+    if (binding.evaluation.contentHash !== binding.version.contentHash) throw new DomainInvariantError("Publication evaluation is stale for this Component content", "COMPONENT_EVALUATION_STALE");
+    const currentSignals = await tx.select({ observation: diagnosticObservations, attempt: learnerAttempts, task: learningTasks, review: teacherReviews })
+      .from(diagnosticObservations)
+      .innerJoin(learnerAttempts, eq(learnerAttempts.id, diagnosticObservations.attemptId))
+      .innerJoin(learningTasks, eq(learningTasks.id, learnerAttempts.taskId))
+      .innerJoin(teacherReviews, eq(teacherReviews.observationId, diagnosticObservations.id))
+      .where(and(
+        inArray(diagnosticObservations.id, binding.evaluation.sourceObservationIds),
+        inArray(teacherReviews.id, binding.evaluation.sourceReviewIds),
+        isNull(diagnosticObservations.supersededById),
+        eq(learningTasks.institutionId, actor.institutionId),
+        eq(learningTasks.courseId, binding.evaluation.courseId),
+      ));
+    const currentObservationIds = new Set(currentSignals.map(({ observation }) => observation.id));
+    const currentReviewIds = new Set(currentSignals.map(({ review }) => review.id));
+    const currentAttemptIds = new Set(currentSignals.map(({ attempt }) => attempt.id));
+    const evaluationLineageCurrent = currentObservationIds.size === binding.evaluation.sourceObservationIds.length
+      && currentReviewIds.size === binding.evaluation.sourceReviewIds.length
+      && currentAttemptIds.size === binding.evaluation.sourceAttemptIds.length
+      && binding.evaluation.sourceObservationIds.every((id) => currentObservationIds.has(id))
+      && binding.evaluation.sourceReviewIds.every((id) => currentReviewIds.has(id))
+      && binding.evaluation.sourceAttemptIds.every((id) => currentAttemptIds.has(id))
+      && currentSignals.every(({ review }) => requireEligibleReviewDecision(review.decision, "Component publication") && (requireVerifiedReviewProvenance(review, actor.institutionId), true));
+    if (!evaluationLineageCurrent) throw new DomainInvariantError("Publication evaluation source Reviews or Observations are no longer current", "COMPONENT_EVALUATION_STALE");
+    if (input.action === "APPROVE" && binding.evaluation.systemStatus !== "PASSED") throw new DomainInvariantError("System evaluation gates block publication", "COMPONENT_SYSTEM_GATES_BLOCKED");
+    await tx.execute(sql`SELECT set_config('foundry.governance_command', 'component_publication', true)`);
+    await tx.insert(publicationDecisions).values({
+      id: decisionId,
+      componentVersionId: binding.version.id,
+      evaluationId: binding.evaluation.id,
+      previousActiveVersionId: binding.component.activeVersionId,
+      expertId: actor.userId,
+      action: input.action,
+      rationale,
+      humanRubric: rubric,
+      workflowThreadId: input.workflowThreadId,
+      actorProvenance: actorProvenance(actor),
+      idempotencyKey: input.idempotencyKey,
+    });
+    const [terminalVersion] = await tx.update(componentVersions).set({ status: input.action === "APPROVE" ? "PUBLISHED" : "REJECTED" }).where(and(eq(componentVersions.id, binding.version.id), eq(componentVersions.status, "DRAFT"))).returning();
+    if (!terminalVersion) throw new DomainInvariantError("Component version already received a terminal decision", "PUBLICATION_CONFLICT");
+    if (input.action === "APPROVE") {
+      const contract = ComponentContract.parse(binding.version.contract);
+      await tx.update(components).set({ activeVersionId: binding.version.id, status: "PUBLISHED", title: contract.title }).where(eq(components.id, binding.component.id));
+    } else if (!binding.component.activeVersionId) {
+      await tx.update(components).set({ status: "REJECTED" }).where(eq(components.id, binding.component.id));
+    }
+    await tx.insert(governanceEvents).values({ institutionId: actor.institutionId, actorUserId: actor.userId, entityType: "PUBLICATION_DECISION", entityId: decisionId, action: input.action, payload: { componentId: binding.component.id, componentVersionId: binding.version.id, evaluationId: binding.evaluation.id, workflowThreadId: input.workflowThreadId, humanRubric: rubric } });
+    return { decisionId, componentId: binding.component.id, componentVersionId: binding.version.id, action: input.action, replayed: false };
+  });
+}
+
+export async function rollbackComponent(actor: Actor, input: { componentId: string; targetVersionId: string; expectedActiveVersionId: string; rationale: string; idempotencyKey: string }) {
+  requireHumanCommand(actor, ["EXPERT", "ADMIN"]);
+  const rationale = input.rationale.trim();
+  if (rationale.length < 5) throw new DomainInvariantError("Rollback rationale must contain at least five characters", "ROLLBACK_RATIONALE_REQUIRED");
+  const decisionId = randomUUID();
+  const commandType = "COMPONENT_ROLLBACK";
+  const requestHash = commandRequestHash(actor, commandType, { ...input, idempotencyKey: undefined });
+  return getDb().transaction(async (tx) => {
+    const reserved = await tx.insert(idempotencyKeys).values({ institutionId: actor.institutionId, key: input.idempotencyKey, commandType, requestHash, resultId: decisionId }).onConflictDoNothing().returning();
+    if (!reserved.length) {
+      const [existing] = await tx.select().from(idempotencyKeys).where(and(eq(idempotencyKeys.institutionId, actor.institutionId), eq(idempotencyKeys.commandType, commandType), eq(idempotencyKeys.key, input.idempotencyKey)));
+      return { decisionId: assertReplay(existing, commandType, requestHash), replayed: true };
+    }
+    const [component] = await tx.select().from(components).where(and(eq(components.id, input.componentId), eq(components.institutionId, actor.institutionId))).for("update").limit(1);
+    if (!component) throw new DomainInvariantError("Rollback target is outside the active institution", "TENANT_ISOLATION");
+    if (component.activeVersionId !== input.expectedActiveVersionId) throw new DomainInvariantError("Component active version changed before rollback", "ROLLBACK_CONFLICT");
+    if (component.activeVersionId === input.targetVersionId) throw new DomainInvariantError("Rollback target is already active", "ROLLBACK_NO_CHANGE");
+    const [target] = await tx.select().from(componentVersions).where(and(eq(componentVersions.id, input.targetVersionId), eq(componentVersions.componentId, component.id), eq(componentVersions.status, "PUBLISHED"))).limit(1);
+    if (!target) throw new DomainInvariantError("Rollback requires an already-published version from this Component", "ROLLBACK_TARGET_INVALID");
+    await tx.execute(sql`SELECT set_config('foundry.governance_command', 'component_rollback', true)`);
+    await tx.insert(publicationDecisions).values({ id: decisionId, componentVersionId: target.id, previousActiveVersionId: component.activeVersionId, expertId: actor.userId, action: "ROLLBACK", rationale, actorProvenance: actorProvenance(actor), idempotencyKey: input.idempotencyKey });
+    const targetContract = ComponentContract.parse(target.contract);
+    const [updatedComponent] = await tx.update(components).set({ activeVersionId: target.id, status: "PUBLISHED", title: targetContract.title }).where(and(eq(components.id, component.id), eq(components.activeVersionId, input.expectedActiveVersionId))).returning();
+    if (!updatedComponent) throw new DomainInvariantError("Component active version changed before rollback", "ROLLBACK_CONFLICT");
+    await tx.insert(governanceEvents).values({ institutionId: actor.institutionId, actorUserId: actor.userId, entityType: "PUBLICATION_DECISION", entityId: decisionId, action: "ROLLBACK", payload: { componentId: component.id, previousActiveVersionId: component.activeVersionId, targetVersionId: target.id } });
+    return { decisionId, componentId: component.id, activeVersionId: target.id, replayed: false };
+  });
+}
+
+export async function deliverActiveComponentSupport(actor: Actor, input: { observationId: string; idempotencyKey: string }) {
+  requireHumanCommand(actor, ["TEACHER", "ADMIN"]);
+  const [lineage] = await getDb().select({ observation: diagnosticObservations, attempt: learnerAttempts, task: learningTasks, subject: subjects, review: teacherReviews })
+    .from(diagnosticObservations)
+    .innerJoin(learnerAttempts, eq(learnerAttempts.id, diagnosticObservations.attemptId))
+    .innerJoin(learningTasks, eq(learningTasks.id, learnerAttempts.taskId))
+    .innerJoin(courses, eq(courses.id, learningTasks.courseId))
+    .innerJoin(subjects, eq(subjects.id, courses.subjectId))
+    .innerJoin(teacherReviews, eq(teacherReviews.observationId, diagnosticObservations.id))
+    .where(and(eq(diagnosticObservations.id, input.observationId), isNull(diagnosticObservations.supersededById)))
+    .orderBy(desc(teacherReviews.createdAt), desc(teacherReviews.id))
+    .limit(1);
+  if (!lineage) throw new DomainInvariantError("Component delivery requires a reviewed Observation", "OBSERVATION_NOT_FOUND");
+  requireCourseAccess(actor, lineage.task.institutionId, lineage.task.courseId);
+  requireVerifiedReviewProvenance(lineage.review, lineage.task.institutionId);
+  requireEligibleReviewDecision(lineage.review.decision, "Component delivery");
+  if (lineage.observation.observationSource !== "CAPABILITY" || !lineage.observation.failureCode || !lineage.attempt.capabilityId) {
+    throw new DomainInvariantError("No governed capability failure signal is available for Component delivery", "COMPONENT_SIGNAL_INELIGIBLE");
+  }
+  const capabilityId = lineage.attempt.capabilityId;
+  const failureCode = lineage.observation.failureCode;
+  const deliveryId = randomUUID();
+  const commandType = "DELIVER_COMPONENT_SUPPORT";
+  const requestHash = commandRequestHash(actor, commandType, { observationId: input.observationId });
+  return getDb().transaction(async (tx) => {
+    const reserved = await tx.insert(idempotencyKeys).values({ institutionId: actor.institutionId, key: input.idempotencyKey, commandType, requestHash, resultId: deliveryId }).onConflictDoNothing().returning();
+    if (!reserved.length) {
+      const [existing] = await tx.select().from(idempotencyKeys).where(and(eq(idempotencyKeys.institutionId, actor.institutionId), eq(idempotencyKeys.commandType, commandType), eq(idempotencyKeys.key, input.idempotencyKey)));
+      return { deliveryId: assertReplay(existing, commandType, requestHash), replayed: true };
+    }
+    const [lockedObservation] = await tx.select().from(diagnosticObservations).where(eq(diagnosticObservations.id, lineage.observation.id)).for("update").limit(1);
+    if (!lockedObservation || lockedObservation.supersededById) throw new DomainInvariantError("Component delivery source Observation was superseded", "COMPONENT_SIGNAL_SUPERSEDED");
+    const [currentReview] = await tx.select().from(teacherReviews).where(eq(teacherReviews.observationId, lockedObservation.id)).orderBy(desc(teacherReviews.createdAt), desc(teacherReviews.id)).limit(1);
+    if (!currentReview || currentReview.id !== lineage.review.id) throw new DomainInvariantError("Component delivery requires the current human Review leaf", "STALE_REVIEW");
+    requireVerifiedReviewProvenance(currentReview, lineage.task.institutionId);
+    requireEligibleReviewDecision(currentReview.decision, "Component delivery");
+    const [component] = await tx.select().from(components).where(and(
+      eq(components.institutionId, actor.institutionId),
+      eq(components.courseId, lineage.task.courseId),
+      eq(components.capabilityId, capabilityId),
+      eq(components.failureCode, failureCode),
+      eq(components.referencePackKey, lineage.subject.referencePackKey),
+      eq(components.status, "PUBLISHED"),
+    )).for("update").limit(1);
+    if (!component?.activeVersionId) throw new DomainInvariantError("No active published Component matches this reviewed signal", "COMPONENT_SUPPORT_UNAVAILABLE");
+    const [version] = await tx.select().from(componentVersions).where(and(eq(componentVersions.id, component.activeVersionId), eq(componentVersions.componentId, component.id), eq(componentVersions.status, "PUBLISHED"))).limit(1);
+    if (!version) throw new DomainInvariantError("Component active version is not a published version", "COMPONENT_ACTIVE_VERSION_INVALID");
+    const content = ComponentContent.parse(version.content);
+    const contract = ComponentContract.parse(version.contract);
+    await tx.insert(componentDeliveries).values({
+      id: deliveryId,
+      institutionId: actor.institutionId,
+      courseId: lineage.task.courseId,
+      taskId: lineage.task.id,
+      episodeId: lineage.attempt.episodeId,
+      componentId: component.id,
+      componentVersionId: version.id,
+      observationId: lineage.observation.id,
+      reviewId: currentReview.id,
+      deliveredBy: actor.userId,
+      audience: "LEARNER",
+      supportSnapshot: { title: contract.title, purpose: contract.purpose, version: version.version, ...content },
+      idempotencyKey: input.idempotencyKey,
+    });
+    await tx.insert(governanceEvents).values({ institutionId: actor.institutionId, actorUserId: actor.userId, entityType: "COMPONENT_DELIVERY", entityId: deliveryId, action: "SUPPORT_DELIVERED", payload: { taskId: lineage.task.id, observationId: lineage.observation.id, reviewId: currentReview.id, componentId: component.id, componentVersionId: version.id } });
+    return { deliveryId, componentId: component.id, componentVersionId: version.id, version: version.version, replayed: false };
+  });
 }
 
 export async function latestReview(observationId: string) {

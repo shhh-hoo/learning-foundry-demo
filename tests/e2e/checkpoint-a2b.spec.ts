@@ -6,7 +6,7 @@ const password = process.env.E2E_SHOWCASE_PASSWORD ?? "";
 const accounts = {
   learner: { email: "learner@showcase.invalid", route: "/learner", heading: "Learn from a governed evidence chain" },
   teacher: { email: "teacher@showcase.invalid", route: "/teacher", heading: "Inspect, correct and resume" },
-  expert: { email: "expert@showcase.invalid", route: "/foundry", heading: "Turn reviewed signals into governed Drafts" },
+  expert: { email: "expert@showcase.invalid", route: "/foundry", heading: "Author, evaluate, publish, reuse and roll back Components" },
   engineer: { email: "engineer@showcase.invalid", route: "/engineering", heading: "Inspect what actually ran" },
 } as const;
 
@@ -53,9 +53,9 @@ test("wrong-role navigation redirects to a data-free denied page", async ({ page
   await expect(page.getByRole("heading", { name: "Course-scoped failure codes" })).toHaveCount(0);
 });
 
-test("available Learning Loop, Foundry Draft/preflight, and Engineering honesty", async ({ browser }, testInfo) => {
+test("complete Learning Loop and governed Component Asset Loop", async ({ browser }, testInfo) => {
   test.skip(testInfo.project.name === "mobile", "The mobile project runs authentication and route smoke; the stateful loop runs once on desktop.");
-  test.setTimeout(180_000);
+  test.setTimeout(240_000);
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
   const taskTitle = `E2E governed reasoning ${suffix}`;
   const taskGoal = "Use authorized Evidence, direct human Review, and a governed Retry to improve the reasoning.";
@@ -64,7 +64,12 @@ test("available Learning Loop, Foundry Draft/preflight, and Engineering honesty"
   const retryResponse = `Retry result ${suffix}: I justified each transformation and verified the units.`;
   const outcomeNarrative = `E2E Outcome ${suffix}: the learner improved after the linked Retry and human Review.`;
   const candidateTitle = `E2E reviewed support ${suffix}`;
+  const successorTitle = `${candidateTitle} concise`;
   const candidateKey = `e2e-reviewed-support-${suffix}`.toLowerCase();
+  const capabilityResponses = [
+    `Capability signal one ${suffix}: I did not convert the volume before dividing.`,
+    `Capability signal two ${suffix}: I repeated the same volume-unit error.`,
+  ];
   const opened: BrowserContext[] = [];
 
   try {
@@ -124,6 +129,27 @@ test("available Learning Loop, Foundry Draft/preflight, and Engineering honesty"
     await expect(learner.page.getByText(outcomeNarrative, { exact: true })).toBeVisible();
     await expect(learner.page.getByText("IMPROVED", { exact: true })).toBeVisible();
 
+    for (const capabilityResponse of capabilityResponses) {
+      const capabilityAttempt = learner.page.getByTestId("attempt-form");
+      await capabilityAttempt.getByLabel("Deterministic Capability (optional)").selectOption({ label: "Molar concentration" });
+      await capabilityAttempt.getByLabel("Capability input JSON").fill(JSON.stringify({ amount: { value: 1, unit: "mol" }, volume: { value: 2, unit: "L" }, learnerAnswer: 2, tolerance: 0.001 }));
+      await capabilityAttempt.getByLabel("Your Attempt").fill(capabilityResponse);
+      await capabilityAttempt.getByRole("button", { name: "Capture Attempt" }).click();
+      await expect(learner.page.getByText(capabilityResponse, { exact: true })).toBeVisible();
+    }
+
+    await teacher.page.reload();
+    for (const capabilityResponse of capabilityResponses) {
+      let signalCard = teacher.page.locator("section.card").filter({ hasText: capabilityResponse });
+      const signalReview = signalCard.getByTestId("teacher-review-form");
+      await signalReview.locator('select[name="decision"]').selectOption("CORRECT");
+      await signalReview.getByPlaceholder("Required correction").fill("Convert the volume to the target unit before calculating concentration.");
+      await signalReview.getByPlaceholder("Teaching support").fill("Use a unit ledger and state the target concentration unit before substitution.");
+      await signalReview.getByRole("button", { name: "Review & resume" }).click();
+      signalCard = teacher.page.locator("section.card").filter({ hasText: capabilityResponse });
+      await expect(signalCard.getByTestId("retry-form")).toBeVisible();
+    }
+
     const expert = await openRole(browser, "expert");
     opened.push(expert.context);
     const matchingCandidateSources = expert.page.getByTestId("foundry-candidate-source").filter({ hasText: taskTitle });
@@ -132,26 +158,96 @@ test("available Learning Loop, Foundry Draft/preflight, and Engineering honesty"
     const candidate = candidateSource.getByTestId("candidate-form");
     await candidate.getByPlaceholder("candidate-key").fill(candidateKey);
     await candidate.getByPlaceholder("Candidate title").fill(candidateTitle);
-    await candidate.getByPlaceholder("Purpose grounded in the reviewed pattern").fill("Reuse support that was grounded in this direct human Review.");
-    await candidate.getByPlaceholder("capability-key").fill("reviewed-reasoning-support");
-    await candidate.getByPlaceholder("Reference Pack key").fill("chemistry-caie-9701");
-    await candidate.getByPlaceholder("Editable teaching support").fill("Require explicit units and justification for each transformation.");
+    await candidate.getByPlaceholder("Purpose grounded in the reviewed pattern").fill("Reuse support grounded in two reviewed concentration unit-conversion failures.");
+    await candidate.getByPlaceholder("Teaching support").fill("Require explicit units and justification for each concentration transformation.");
+    await candidate.getByPlaceholder("Scaffold or hint").fill("Write the target unit first.");
+    await candidate.getByPlaceholder("Worked example").fill("Convert 500 mL to 0.500 L before dividing amount by volume.");
+    await candidate.getByPlaceholder("Learner action").fill("Annotate and justify every unit conversion.");
     await candidate.getByRole("button", { name: "Create reviewed Component candidate" }).click();
     await expect(expert.page.getByRole("heading", { level: 2, name: candidateTitle, exact: true })).toBeVisible();
 
     let component = taskCard(expert.page, candidateTitle);
-    const versionForm = component.getByTestId("component-version-form");
-    await versionForm.getByLabel("Content JSON").fill(JSON.stringify({ support: "Edited by the expert: verify units and justify every transformation." }, null, 2));
-    await versionForm.getByRole("button", { name: "Save draft & reset structural preflight" }).click();
+    let versionForm = component.getByTestId("component-version-form").first();
+    await versionForm.getByLabel("Teaching support").fill("Expert-edited support: verify units and justify every concentration transformation.");
+    await versionForm.getByRole("button", { name: "Save Draft and reset Component evaluation" }).click();
     await expect(versionForm.getByText("Saved", { exact: true })).toBeVisible();
     component = taskCard(expert.page, candidateTitle);
-    await component.getByTestId("structural-preflight-button").click();
+    await component.getByTestId("component-evaluation-button").click();
     component = taskCard(expert.page, candidateTitle);
-    await expect(component).toContainText("STRUCTURAL_PREFLIGHT");
-    await expect(component).toContainText("publicationEligible");
-    await expect(component).toContainText("UNAVAILABLE");
-    await expect(expert.page.getByText("No expert decision has been recorded.")).toBeVisible();
-    await expect(expert.page.getByRole("button", { name: /publish|approve/i })).toHaveCount(0);
+    await expect(component).toContainText("repeated-pattern-distinct-attempts");
+    await expect(component).toContainText("deterministic-capability-fixture");
+    await expect(component).toContainText("NOT_REQUIRED");
+    const publicationReview = component.getByTestId("publication-review-form");
+    await publicationReview.getByLabel("Expert rubric notes").fill("Expert verified domain correctness, pedagogy, safety and reuse readiness.");
+    await publicationReview.getByLabel("Immutable decision rationale").fill("Two reviewed Attempts and every deterministic system gate support publication.");
+    await publicationReview.getByRole("button", { name: "Approve and publish immutable version" }).click();
+    component = taskCard(expert.page, candidateTitle);
+    await expect(component.getByText("ACTIVE", { exact: true })).toBeVisible();
+
+    await teacher.page.reload();
+    let firstSignalCard = teacher.page.locator("section.card").filter({ hasText: capabilityResponses[0] });
+    await expect(firstSignalCard.getByTestId("active-component-support")).toContainText(candidateTitle);
+    await firstSignalCard.getByTestId("component-delivery-button").click();
+    firstSignalCard = teacher.page.locator("section.card").filter({ hasText: capabilityResponses[0] });
+    await expect(firstSignalCard.getByTestId("active-component-support")).toContainText("Delivered to the learner");
+    await learner.page.reload();
+    await learner.page.getByRole("link", { name: new RegExp(taskTitle) }).click();
+    await expect(learner.page.getByTestId("learner-component-support").filter({ hasText: candidateTitle })).toContainText("v0.1.0");
+
+    await expert.page.reload();
+    component = taskCard(expert.page, candidateTitle);
+    const publishedV1 = component.getByTestId("component-version-card").filter({ has: expert.page.getByText(`${candidateTitle} · v0.1.0`, { exact: true }) });
+    await expect(publishedV1.getByText("PUBLISHED", { exact: true })).toBeVisible();
+    const successorDetails = publishedV1.locator("details").filter({ hasText: "Create a semantic successor from this immutable version" });
+    const successorSummary = successorDetails.getByText("Create a semantic successor from this immutable version", { exact: true });
+    await expect(successorSummary).toBeVisible();
+    await successorSummary.click();
+    versionForm = successorDetails.getByTestId("component-version-form");
+    await expect(versionForm).toBeVisible();
+    await versionForm.getByLabel("Title").fill(successorTitle);
+    await versionForm.getByLabel("Purpose").fill("Reuse a concise successor while preserving the same reviewed failure lineage.");
+    await versionForm.getByLabel("Scaffold or hint").fill("Write target units first, then convert.");
+    await versionForm.getByRole("button", { name: "Save Draft and reset Component evaluation" }).click();
+    await expect(versionForm.getByText("Saved", { exact: true })).toBeVisible();
+    component = taskCard(expert.page, candidateTitle);
+    const immutableV1 = component.getByTestId("component-version-card").filter({ has: expert.page.getByText(`${candidateTitle} · v0.1.0`, { exact: true }) });
+    await expect(immutableV1.getByText("PUBLISHED", { exact: true })).toBeVisible();
+    const successorCard = component.getByTestId("component-version-card").filter({ has: expert.page.getByText(`${successorTitle} · v0.2.0`, { exact: true }) });
+    await expect(successorCard.getByText("DRAFT", { exact: true })).toBeVisible();
+    await successorCard.getByTestId("component-evaluation-button").click();
+    const successorReview = taskCard(expert.page, candidateTitle).getByTestId("component-version-card").filter({ hasText: successorTitle }).getByTestId("publication-review-form");
+    await successorReview.getByLabel("Expert rubric notes").fill("Expert completed the successor rubric independently.");
+    await successorReview.getByLabel("Immutable decision rationale").fill("The successor preserves lineage and passes all current gates.");
+    await successorReview.getByRole("button", { name: "Approve and publish immutable version" }).click();
+    await expect(expert.page.getByRole("heading", { level: 2, name: successorTitle, exact: true })).toBeVisible();
+
+    await teacher.page.reload();
+    let secondSignalCard = teacher.page.locator("section.card").filter({ hasText: capabilityResponses[1] });
+    await expect(secondSignalCard.getByTestId("active-component-support")).toContainText("v0.2.0");
+    await secondSignalCard.getByTestId("component-delivery-button").click();
+    secondSignalCard = teacher.page.locator("section.card").filter({ hasText: capabilityResponses[1] });
+    await expect(secondSignalCard.getByTestId("active-component-support")).toContainText("Delivered to the learner");
+
+    await expert.page.reload();
+    component = taskCard(expert.page, successorTitle);
+    const rollback = component.getByTestId("component-rollback-form");
+    await rollback.locator('select[name="targetVersionId"]').selectOption({ label: "0.1.0" });
+    await rollback.getByPlaceholder("Rollback rationale").fill("Restore the earlier expert-reviewed scaffold after comparing both published versions.");
+    await rollback.getByRole("button", { name: "Activate earlier published version" }).click();
+    await expect(expert.page.getByRole("heading", { level: 2, name: candidateTitle, exact: true })).toBeVisible();
+    await expect(taskCard(expert.page, candidateTitle).getByText("ACTIVE", { exact: true })).toBeVisible();
+
+    await teacher.page.reload();
+    secondSignalCard = teacher.page.locator("section.card").filter({ hasText: capabilityResponses[1] });
+    await expect(secondSignalCard.getByTestId("active-component-support")).toContainText("v0.1.0");
+    await secondSignalCard.getByTestId("component-delivery-button").click();
+    secondSignalCard = teacher.page.locator("section.card").filter({ hasText: capabilityResponses[1] });
+    await expect(secondSignalCard.getByTestId("active-component-support")).toContainText("Delivered to the learner");
+    await learner.page.reload();
+    await learner.page.getByRole("link", { name: new RegExp(taskTitle) }).click();
+    const deliveredSupport = learner.page.getByTestId("learner-component-support");
+    await expect(deliveredSupport.filter({ hasText: "v0.2.0" })).toBeVisible();
+    await expect(deliveredSupport.filter({ hasText: "v0.1.0" }).first()).toBeVisible();
 
     const engineer = await openRole(browser, "engineer");
     opened.push(engineer.context);
@@ -160,6 +256,8 @@ test("available Learning Loop, Foundry Draft/preflight, and Engineering honesty"
     await expect(engineer.page.getByText("productEval")).toBeVisible();
     await expect(engineer.page.getByText("learningEffectivenessEval")).toBeVisible();
     await expect(engineer.page.getByText("UNAVAILABLE", { exact: true }).first()).toBeVisible();
+    await expect(engineer.page.getByRole("heading", { name: "Component evaluations, human decisions and reuse" })).toBeVisible();
+    await expect(engineer.page.getByText(candidateTitle, { exact: false }).first()).toBeVisible();
   } finally {
     await Promise.all(opened.map((context) => context.close()));
   }

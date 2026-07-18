@@ -1,8 +1,10 @@
-import { and, desc, eq, inArray, lte } from "drizzle-orm";
+import { and, desc, eq, inArray, lte, or, sql } from "drizzle-orm";
 import { getCheckpointSql, getDb, getSql } from "@/db/client";
 import {
   componentVersions,
   components,
+  componentDeliveries,
+  componentEvaluations,
   capabilityVersions,
   conversationEvents,
   contextCompilations,
@@ -141,11 +143,18 @@ export async function getTaskDetail(actor: Actor, taskId: string) {
   const contexts = await db.select().from(contextCompilations).where(eq(contextCompilations.taskId, taskId)).orderBy(desc(contextCompilations.createdAt)).limit(10);
   const assets = await db.select().from(fileAssets).where(and(eq(fileAssets.taskId, taskId), eq(fileAssets.institutionId, actor.institutionId))).orderBy(desc(fileAssets.createdAt));
   const sources = assets.some((asset) => asset.sourceId) ? await db.select().from(sourceRecords).where(inArray(sourceRecords.id, assets.flatMap((asset) => asset.sourceId ? [asset.sourceId] : []))) : [];
-  return { task, episodes, events, attempts, observations, reviews, retries, outcomes, contexts, assets, sources };
+  const componentSupport = await db.select({ delivery: componentDeliveries, component: components, version: componentVersions })
+    .from(componentDeliveries)
+    .innerJoin(components, eq(components.id, componentDeliveries.componentId))
+    .innerJoin(componentVersions, eq(componentVersions.id, componentDeliveries.componentVersionId))
+    .where(and(eq(componentDeliveries.taskId, taskId), eq(componentDeliveries.institutionId, actor.institutionId)))
+    .orderBy(desc(componentDeliveries.createdAt));
+  return { task, episodes, events, attempts, observations, reviews, retries, outcomes, contexts, assets, sources, componentSupport };
 }
 
 export async function getTeacherWorkspace(actor: Actor) {
   requireRole(actor, ["TEACHER", "ADMIN"]);
+  const db = getDb();
   const sql = getSql();
   const authorizedTasks = await getDb().select({ id: learningTasks.id }).from(learningTasks).where(and(
     eq(learningTasks.institutionId, actor.institutionId),
@@ -184,9 +193,15 @@ export async function getTeacherWorkspace(actor: Actor) {
       AND t.course_id = ANY(${actor.courseIds}::uuid[])
       AND o.observation_source = 'CAPABILITY'
       AND o.failure_code IS NOT NULL
+      AND o.superseded_by_id IS NULL
       AND EXISTS (
         SELECT 1 FROM foundry_product.teacher_reviews r
         WHERE r.observation_id = o.id
+          AND r.decision IN ('ACCEPT','CORRECT','SUPPLEMENT')
+          AND r.actor_provenance->>'userId' = r.teacher_id::text
+          AND r.actor_provenance->>'institutionId' = t.institution_id::text
+          AND length(COALESCE(r.actor_provenance->>'sessionId', '')) > 0
+          AND COALESCE(r.actor_provenance->>'authMethod', '') NOT LIKE 'migrated-%'
       )
     GROUP BY o.failure_code
     ORDER BY count(*) DESC
@@ -210,28 +225,82 @@ export async function getTeacherWorkspace(actor: Actor) {
       eq(fileAssets.purpose, "LEARNING_MATERIAL"),
       inArray(fileAssets.courseId, actor.courseIds.length ? actor.courseIds : ["00000000-0000-0000-0000-000000000000"]),
     )).orderBy(desc(fileAssets.createdAt));
-  return { queue, patterns, retries, pendingWorkflows, sourceReviews };
+  const componentSupport = await getSql()<Array<Record<string, unknown>>>`
+    SELECT o.id AS observation_id, c.id AS component_id, c.title AS component_title,
+           v.id AS component_version_id, v.version AS component_version, v.content,
+           d.id AS delivery_id, d.created_at AS delivered_at
+    FROM foundry_product.diagnostic_observations o
+    JOIN foundry_product.learner_attempts a ON a.id = o.attempt_id
+    JOIN foundry_product.learning_tasks t ON t.id = a.task_id
+    JOIN LATERAL (
+      SELECT r.* FROM foundry_product.teacher_reviews r
+      WHERE r.observation_id = o.id
+      ORDER BY r.created_at DESC, r.id DESC LIMIT 1
+    ) current_review ON true
+    JOIN foundry_product.components c ON c.institution_id = t.institution_id
+      AND c.course_id = t.course_id AND c.capability_id = a.capability_id
+      AND c.failure_code = o.failure_code AND c.status = 'PUBLISHED'
+    JOIN foundry_product.component_versions v ON v.id = c.active_version_id
+      AND v.component_id = c.id AND v.status = 'PUBLISHED'
+    LEFT JOIN LATERAL (
+      SELECT delivered.id, delivered.created_at
+      FROM foundry_product.component_deliveries delivered
+      WHERE delivered.observation_id = o.id AND delivered.component_version_id = v.id
+      ORDER BY delivered.created_at DESC LIMIT 1
+    ) d ON true
+    WHERE t.institution_id = ${actor.institutionId}
+      AND t.course_id = ANY(${actor.courseIds}::uuid[])
+      AND o.observation_source = 'CAPABILITY' AND o.failure_code IS NOT NULL
+      AND o.superseded_by_id IS NULL
+      AND current_review.decision IN ('ACCEPT','CORRECT','SUPPLEMENT')
+      AND current_review.actor_provenance->>'userId' = current_review.teacher_id::text
+      AND current_review.actor_provenance->>'institutionId' = t.institution_id::text
+  `;
+  const deliveries = await db.select({ delivery: componentDeliveries, component: components, version: componentVersions })
+    .from(componentDeliveries)
+    .innerJoin(components, eq(components.id, componentDeliveries.componentId))
+    .innerJoin(componentVersions, eq(componentVersions.id, componentDeliveries.componentVersionId))
+    .where(and(
+      eq(componentDeliveries.institutionId, actor.institutionId),
+      inArray(componentDeliveries.courseId, actor.courseIds.length ? actor.courseIds : ["00000000-0000-0000-0000-000000000000"]),
+    )).orderBy(desc(componentDeliveries.createdAt));
+  return { queue, patterns, retries, pendingWorkflows, sourceReviews, componentSupport, deliveries };
 }
 
 export async function getFoundryWorkspace(actor: Actor) {
   requireRole(actor, ["EXPERT", "ADMIN"]);
   const db = getDb();
-  const candidateRows = await db.select({ component: components, version: componentVersions })
+  const candidateBaseRows = await db.select({ component: components, version: componentVersions, capability: capabilities })
     .from(components)
     .leftJoin(componentVersions, eq(componentVersions.componentId, components.id))
-    .where(eq(components.institutionId, actor.institutionId))
+    .innerJoin(capabilities, eq(capabilities.id, components.capabilityId))
+    .where(and(
+      eq(components.institutionId, actor.institutionId),
+      inArray(components.courseId, actor.courseIds.length ? actor.courseIds : ["00000000-0000-0000-0000-000000000000"]),
+    ))
     .orderBy(desc(componentVersions.createdAt));
+  const versionIds = candidateBaseRows.flatMap(({ version }) => version ? [version.id] : []);
+  const evaluationRows = versionIds.length ? await db.select().from(componentEvaluations)
+    .where(inArray(componentEvaluations.componentVersionId, versionIds))
+    .orderBy(desc(componentEvaluations.createdAt)) : [];
+  const latestEvaluationByVersion = new Map<string, typeof componentEvaluations.$inferSelect>();
+  for (const evaluation of evaluationRows) if (!latestEvaluationByVersion.has(evaluation.componentVersionId)) latestEvaluationByVersion.set(evaluation.componentVersionId, evaluation);
+  const candidateRows = candidateBaseRows.map((row) => ({ ...row, evaluation: row.version ? latestEvaluationByVersion.get(row.version.id) ?? null : null }));
   const decisions = await db.select({ decision: publicationDecisions }).from(publicationDecisions)
     .innerJoin(componentVersions, eq(componentVersions.id, publicationDecisions.componentVersionId))
     .innerJoin(components, eq(components.id, componentVersions.componentId))
-    .where(eq(components.institutionId, actor.institutionId))
+    .where(and(
+      eq(components.institutionId, actor.institutionId),
+      inArray(components.courseId, actor.courseIds.length ? actor.courseIds : ["00000000-0000-0000-0000-000000000000"]),
+    ))
     .orderBy(desc(publicationDecisions.createdAt));
   const reviewedPatterns = await getSql()<Array<Record<string, unknown>>>`
-    SELECT o.failure_code AS pattern, count(*)::int AS count, max(r.created_at) AS last_reviewed_at,
+    SELECT o.failure_code AS pattern, a.capability_id, t.course_id, s.reference_pack_key,
+           count(DISTINCT a.id)::int AS count, max(r.created_at) AS last_reviewed_at,
            (array_agg(o.id ORDER BY r.created_at DESC, o.id DESC))[1]::text AS observation_id
     FROM foundry_product.diagnostic_observations o
     JOIN LATERAL (
-      SELECT reviewed.created_at
+      SELECT reviewed.id, reviewed.created_at, reviewed.decision, reviewed.teacher_id, reviewed.actor_provenance
       FROM foundry_product.teacher_reviews reviewed
       WHERE reviewed.observation_id = o.id
       ORDER BY reviewed.created_at DESC, reviewed.id DESC
@@ -239,33 +308,96 @@ export async function getFoundryWorkspace(actor: Actor) {
     ) r ON true
     JOIN foundry_product.learner_attempts a ON a.id = o.attempt_id
     JOIN foundry_product.learning_tasks t ON t.id = a.task_id
+    JOIN foundry_product.capabilities cap ON cap.id = a.capability_id
+      AND cap.active_version_id = o.capability_version_id
+    JOIN foundry_product.courses course_scope ON course_scope.id = t.course_id
+    JOIN foundry_product.subjects s ON s.id = course_scope.subject_id
+      AND s.reference_pack_key = cap.reference_pack_key
     WHERE t.institution_id = ${actor.institutionId}
       AND t.course_id = ANY(${actor.courseIds}::uuid[])
       AND o.observation_source = 'CAPABILITY'
       AND o.failure_code IS NOT NULL
-    GROUP BY o.failure_code
+      AND o.superseded_by_id IS NULL
+      AND r.decision IN ('ACCEPT','CORRECT','SUPPLEMENT')
+      AND r.actor_provenance->>'userId' = r.teacher_id::text
+      AND r.actor_provenance->>'institutionId' = t.institution_id::text
+      AND COALESCE(r.actor_provenance->>'authMethod', '') NOT LIKE 'migrated-%'
+    GROUP BY o.failure_code, a.capability_id, t.course_id, s.reference_pack_key
     ORDER BY count(*) DESC
   `;
   const candidateSources = await getSql()<Array<Record<string, unknown>>>`
-    SELECT o.id AS observation_id, o.observation_source, o.summary,
-           t.id AS task_id, t.title AS task_title, current_review.decision AS review_decision
+    SELECT o.id AS observation_id, o.observation_source, o.summary, o.failure_code,
+           t.id AS task_id, t.title AS task_title, t.course_id,
+           current_review.id AS review_id, current_review.decision AS review_decision,
+           cap.id AS capability_id, cap.key AS capability_key, cap.name AS capability_name,
+           subject.reference_pack_key,
+           (
+             SELECT count(DISTINCT matching_attempt.id)::int
+             FROM foundry_product.diagnostic_observations matching
+             JOIN foundry_product.learner_attempts matching_attempt ON matching_attempt.id = matching.attempt_id
+             JOIN foundry_product.learning_tasks matching_task ON matching_task.id = matching_attempt.task_id
+             JOIN foundry_product.capabilities matching_capability ON matching_capability.id = matching_attempt.capability_id
+               AND matching_capability.active_version_id = matching.capability_version_id
+             JOIN foundry_product.courses matching_course ON matching_course.id = matching_task.course_id
+             JOIN foundry_product.subjects matching_subject ON matching_subject.id = matching_course.subject_id
+               AND matching_subject.reference_pack_key = matching_capability.reference_pack_key
+             JOIN LATERAL (
+               SELECT matching_review.* FROM foundry_product.teacher_reviews matching_review
+               WHERE matching_review.observation_id = matching.id
+               ORDER BY matching_review.created_at DESC, matching_review.id DESC LIMIT 1
+             ) matching_review ON true
+             WHERE matching_task.institution_id = t.institution_id
+               AND matching_task.course_id = t.course_id
+               AND matching_attempt.capability_id = a.capability_id
+               AND matching.observation_source = 'CAPABILITY'
+               AND matching.failure_code = o.failure_code
+               AND matching.superseded_by_id IS NULL
+               AND matching_review.decision IN ('ACCEPT','CORRECT','SUPPLEMENT')
+               AND matching_review.actor_provenance->>'userId' = matching_review.teacher_id::text
+               AND matching_review.actor_provenance->>'institutionId' = t.institution_id::text
+           ) AS repeated_attempt_count
     FROM foundry_product.diagnostic_observations o
     JOIN foundry_product.learner_attempts a ON a.id = o.attempt_id
     JOIN foundry_product.learning_tasks t ON t.id = a.task_id
     JOIN LATERAL (
-      SELECT r.decision
+      SELECT r.*
       FROM foundry_product.teacher_reviews r
       WHERE r.observation_id = o.id
       ORDER BY r.created_at DESC, r.id DESC
       LIMIT 1
     ) current_review ON true
+    JOIN foundry_product.capabilities cap ON cap.id = a.capability_id
+      AND cap.active_version_id = o.capability_version_id
+    JOIN foundry_product.courses course_scope ON course_scope.id = t.course_id
+    JOIN foundry_product.subjects subject ON subject.id = course_scope.subject_id
+      AND subject.reference_pack_key = cap.reference_pack_key
     WHERE t.institution_id = ${actor.institutionId}
       AND t.course_id = ANY(${actor.courseIds}::uuid[])
+      AND o.observation_source = 'CAPABILITY'
+      AND o.failure_code IS NOT NULL
+      AND o.superseded_by_id IS NULL
       AND current_review.decision IN ('ACCEPT','CORRECT','SUPPLEMENT')
+      AND current_review.actor_provenance->>'userId' = current_review.teacher_id::text
+      AND current_review.actor_provenance->>'institutionId' = t.institution_id::text
+      AND COALESCE(current_review.actor_provenance->>'authMethod', '') NOT LIKE 'migrated-%'
     ORDER BY o.created_at DESC
   `;
-  const pendingWorkflows = await db.select().from(workflowRuns).where(and(eq(workflowRuns.institutionId, actor.institutionId), eq(workflowRuns.workflowKind, "COMPONENT_LIFECYCLE"), eq(workflowRuns.status, "INTERRUPTED"))).orderBy(desc(workflowRuns.startedAt));
-  return { candidates: candidateRows, decisions, reviewedPatterns, candidateSources, pendingWorkflows };
+  const authorizedComponentIds = [...new Set(candidateRows.map(({ component }) => component.id))];
+  const pendingWorkflows = authorizedComponentIds.length ? await db.select().from(workflowRuns).where(and(
+    eq(workflowRuns.institutionId, actor.institutionId),
+    eq(workflowRuns.workflowKind, "COMPONENT_LIFECYCLE"),
+    eq(workflowRuns.status, "INTERRUPTED"),
+    inArray(sql<string>`${workflowRuns.productLinks}->>'componentId'`, authorizedComponentIds),
+  )).orderBy(desc(workflowRuns.startedAt)) : [];
+  const evidenceOptions = await db.select({ evidence: evidenceUnits, source: sourceRecords })
+    .from(evidenceUnits)
+    .innerJoin(sourceRecords, eq(sourceRecords.id, evidenceUnits.sourceId))
+    .where(and(
+      eq(sourceRecords.active, true),
+      eq(sourceRecords.rightsAuthorizationStatus, "APPROVED"),
+      inArray(sourceRecords.courseId, actor.courseIds.length ? actor.courseIds : ["00000000-0000-0000-0000-000000000000"]),
+    )).orderBy(evidenceUnits.createdAt);
+  return { candidates: candidateRows, decisions, reviewedPatterns, candidateSources, pendingWorkflows, evidenceOptions };
 }
 
 export async function getEngineeringWorkspace(actor: Actor) {
@@ -276,11 +408,41 @@ export async function getEngineeringWorkspace(actor: Actor) {
     inArray(learningTasks.courseId, actor.courseIds.length ? actor.courseIds : ["00000000-0000-0000-0000-000000000000"]),
   ));
   const taskIds = authorizedTasks.map((task) => task.id);
-  const runs = await db.select().from(workflowRuns).where(and(eq(workflowRuns.institutionId, actor.institutionId), taskIds.length ? inArray(workflowRuns.taskId, taskIds) : eq(workflowRuns.taskId, "00000000-0000-0000-0000-000000000000"))).orderBy(desc(workflowRuns.startedAt)).limit(50);
+  const authorizedComponents = await db.select({ id: components.id }).from(components).where(and(
+    eq(components.institutionId, actor.institutionId),
+    inArray(components.courseId, actor.courseIds.length ? actor.courseIds : ["00000000-0000-0000-0000-000000000000"]),
+  ));
+  const taskRunScope = taskIds.length ? inArray(workflowRuns.taskId, taskIds) : sql`false`;
+  const componentRunScope = authorizedComponents.length ? and(
+    eq(workflowRuns.workflowKind, "COMPONENT_LIFECYCLE"),
+    inArray(sql<string>`${workflowRuns.productLinks}->>'componentId'`, authorizedComponents.map(({ id }) => id)),
+  ) : sql`false`;
+  const runs = await db.select().from(workflowRuns).where(and(
+    eq(workflowRuns.institutionId, actor.institutionId),
+    or(taskRunScope, componentRunScope),
+  )).orderBy(desc(workflowRuns.startedAt)).limit(50);
   const evaluations = await db.select().from(evalRuns).where(eq(evalRuns.institutionId, actor.institutionId)).orderBy(desc(evalRuns.createdAt)).limit(20);
   const retrieval = taskIds.length ? await db.select().from(retrievalRuns).where(and(eq(retrievalRuns.institutionId, actor.institutionId), inArray(retrievalRuns.taskId, taskIds))).orderBy(desc(retrievalRuns.createdAt)).limit(50) : [];
   const models = await db.select().from(modelRuns).where(eq(modelRuns.institutionId, actor.institutionId)).orderBy(desc(modelRuns.createdAt)).limit(50);
   const staleResumingRuns = await getStaleResumingRuns(actor);
+  const componentEvaluationRecords = await db.select({ evaluation: componentEvaluations, component: components, version: componentVersions })
+    .from(componentEvaluations)
+    .innerJoin(componentVersions, eq(componentVersions.id, componentEvaluations.componentVersionId))
+    .innerJoin(components, eq(components.id, componentVersions.componentId))
+    .where(and(eq(componentEvaluations.institutionId, actor.institutionId), inArray(componentEvaluations.courseId, actor.courseIds.length ? actor.courseIds : ["00000000-0000-0000-0000-000000000000"])))
+    .orderBy(desc(componentEvaluations.createdAt)).limit(50);
+  const componentDecisionRecords = await db.select({ decision: publicationDecisions, component: components, version: componentVersions })
+    .from(publicationDecisions)
+    .innerJoin(componentVersions, eq(componentVersions.id, publicationDecisions.componentVersionId))
+    .innerJoin(components, eq(components.id, componentVersions.componentId))
+    .where(and(eq(components.institutionId, actor.institutionId), inArray(components.courseId, actor.courseIds.length ? actor.courseIds : ["00000000-0000-0000-0000-000000000000"])))
+    .orderBy(desc(publicationDecisions.createdAt)).limit(50);
+  const componentDeliveryRecords = await db.select({ delivery: componentDeliveries, component: components, version: componentVersions })
+    .from(componentDeliveries)
+    .innerJoin(components, eq(components.id, componentDeliveries.componentId))
+    .innerJoin(componentVersions, eq(componentVersions.id, componentDeliveries.componentVersionId))
+    .where(and(eq(componentDeliveries.institutionId, actor.institutionId), inArray(componentDeliveries.courseId, actor.courseIds.length ? actor.courseIds : ["00000000-0000-0000-0000-000000000000"])))
+    .orderBy(desc(componentDeliveries.createdAt)).limit(50);
   let checkpointCounts: Array<Record<string, unknown>> = [];
   try {
     checkpointCounts = await getCheckpointSql()<Array<Record<string, unknown>>>`
@@ -297,6 +459,9 @@ export async function getEngineeringWorkspace(actor: Actor) {
     retrieval,
     models,
     staleResumingRuns,
+    componentEvaluationRecords,
+    componentDecisionRecords,
+    componentDeliveryRecords,
     checkpointCounts,
     serviceStatus: {
       model: process.env.DEEPSEEK_API_KEY || process.env.OPENAI_API_KEY ? "CONFIGURED_NOT_VERIFIED" : "UNAVAILABLE",

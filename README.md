@@ -14,6 +14,8 @@ The real-intelligence work package adds governed PDF/image intake, PDF.js page e
 
 Uploaded bytes are stored through the server-only `FileStorage` port and never in Product State rows. Local verification uses `.local-data/uploads` (or `FILE_STORAGE_LOCAL_ROOT`); production startup fails without an explicit storage root until a managed storage adapter is selected. Extracted text, content hashes, ownership, rights decisions, locators, and ingestion status remain governed Product State.
 
+The internal Asset Loop now supports a structured Component editor, repeated reviewed-signal eligibility, versioned system checks, real deterministic Capability fixture execution with expected outputs, an authenticated expert LangGraph publication interrupt, immutable approve/reject decisions, successor versions, governed rollback, and version-pinned support delivery into Teacher and Learner workspaces. Rights/citation checks are recorded as `NOT_REQUIRED`, never `PASSED`, when a narrow deterministic scaffold declares no Evidence. Automated domain, pedagogy and safety scoring remains unavailable; a complete authenticated expert rubric is separately required. This is an internal product-visible package, not product completion or public-preview authorization.
+
 Optional live integrations:
 
 - `OPENAI_API_KEY`: embeddings and image/handwriting interpretation; also synthesis when `FOUNDRY_SYNTHESIS_PROVIDER=OPENAI`.
@@ -46,6 +48,15 @@ npm run db:migrate
 npm run db:checkpoint
 SYNTHETIC_SHOWCASE_MODE=true SHOWCASE_PASSWORD='<unique local secret>' npm run db:seed
 npm run test:integration
+npm run test:integration:rerun
+```
+
+An accepted-baseline upgrade rehearsal uses a separately named guarded local database. It constructs the exact old `{observationId}`-only Component shape before applying the Asset Loop migration, then verifies current authenticated Review backfill and audit quarantine of only non-bindable pre-Eval shells:
+
+```bash
+UPGRADE_REHEARSAL_ALLOWED=true \
+UPGRADE_REHEARSAL_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/learning_foundry_upgrade_rehearsal \
+npm run test:migration-upgrade
 ```
 
 Synthetic credentials authentication is disabled unless `SYNTHETIC_SHOWCASE_MODE=true`. The showcase password has no repository default and must be supplied through the environment.

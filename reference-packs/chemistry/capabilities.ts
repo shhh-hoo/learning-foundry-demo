@@ -9,6 +9,10 @@ export type ChemistryCapabilityDefinition = {
   name: string;
   implementationKey: string;
   contract: Record<string, unknown>;
+  evaluationFixture: {
+    input: Record<string, unknown>;
+    expected: Pick<CapabilityExecution, "expected" | "unit" | "status" | "failureCode" | "firstInvalidStep">;
+  };
 };
 
 export type CapabilityExecution = {
@@ -70,24 +74,40 @@ export const CHEMISTRY_CAPABILITIES: ChemistryCapabilityDefinition[] = [
     name: "Molar concentration",
     implementationKey: "chemistry.molar-concentration.v1",
     contract: { input: "amount + volume + learnerAnswer", output: "mol/L with deterministic tolerance comparison" },
+    evaluationFixture: {
+      input: { amount: { value: 1, unit: "mol" }, volume: { value: 2, unit: "L" }, learnerAnswer: 0.5, tolerance: 0.001 },
+      expected: { expected: 0.5, unit: "mol/L", status: "CORRECT", failureCode: null, firstInvalidStep: null },
+    },
   },
   {
     key: "chemistry-solution-dilution",
     name: "Solution dilution",
     implementationKey: "chemistry.solution-dilution.v1",
     contract: { input: "initial concentration and volumes + learnerAnswer", output: "final mol/L with deterministic tolerance comparison" },
+    evaluationFixture: {
+      input: { initialConcentration: { value: 1, unit: "mol/L" }, initialVolume: { value: 100, unit: "mL" }, finalVolume: { value: 500, unit: "mL" }, learnerAnswer: 0.2, tolerance: 0.001 },
+      expected: { expected: 0.2, unit: "mol/L", status: "CORRECT", failureCode: null, firstInvalidStep: null },
+    },
   },
   {
     key: "chemistry-ideal-gas-moles",
     name: "Ideal-gas amount",
     implementationKey: "chemistry.ideal-gas-moles.v1",
     contract: { input: "pressure + volume + temperature + learnerAnswer", output: "amount in mol using n=PV/RT" },
+    evaluationFixture: {
+      input: { pressure: { value: 101.325, unit: "kPa" }, volume: { value: 24.465, unit: "L" }, temperature: { value: 298.15, unit: "K" }, learnerAnswer: 1, tolerance: 0.001 },
+      expected: { expected: 0.9999834992692898, unit: "mol", status: "CORRECT", failureCode: null, firstInvalidStep: null },
+    },
   },
   {
     key: "chemistry-ph-from-hydrogen-ion",
     name: "pH from hydrogen-ion concentration",
     implementationKey: "chemistry.ph-from-hydrogen-ion.v1",
     contract: { input: "positive [H+] + learnerAnswer", output: "pH using -log10([H+])" },
+    evaluationFixture: {
+      input: { hydrogenIonConcentration: 0.001, learnerAnswer: 3, tolerance: 0.001 },
+      expected: { expected: 3, unit: "pH", status: "CORRECT", failureCode: null, firstInvalidStep: null },
+    },
   },
 ];
 

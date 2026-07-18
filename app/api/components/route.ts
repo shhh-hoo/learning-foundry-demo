@@ -8,11 +8,9 @@ const Candidate = z.object({
   key: z.string().regex(/^[a-z0-9-]+$/),
   title: z.string().min(3),
   purpose: z.string().min(10),
-  capabilityKey: z.string().regex(/^[a-z0-9-]+$/),
-  referencePackKey: z.string().min(1),
   content: z.record(z.string(), z.unknown()),
   idempotencyKey: z.string().min(8),
-});
+}).strict();
 
 export async function POST(request: Request) {
   try {

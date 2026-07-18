@@ -7,6 +7,6 @@ export async function POST(request: Request, context: { params: Promise<{ compon
     requireRole(await requireApiActor(), ["EXPERT", "ADMIN"]);
     await request.json();
     await context.params;
-    throw new DomainInvariantError("Component publication is unavailable until a real evaluator exists", "COMPONENT_EVALUATOR_UNAVAILABLE");
+    throw new DomainInvariantError("Publication decisions are accepted only by resuming the current LangGraph expert interrupt", "PUBLICATION_WORKFLOW_REQUIRED");
   } catch (error) { return errorResponse(error); }
 }

@@ -22,15 +22,25 @@ describe("fresh migration contract", () => {
     expect(migration).toContain("IN ('APPROVED','REVIEW_REQUIRED','DENIED')");
   });
 
-  it("uses one clean rewrite migration without fabricated Legacy provenance", async () => {
+  it("keeps the clean rewrite history and adds governed Asset Loop enforcement", async () => {
     const directory = new URL("../../db/migrations/", import.meta.url);
     const migrations = (await readdir(directory)).filter((name) => name.endsWith(".sql"));
-    expect(migrations).toEqual(["0000_full_framework.sql"]);
+    expect(migrations).toEqual(["0000_full_framework.sql", "0001_full_framework.sql"]);
     const migration = await readFile(new URL("../../db/migrations/0000_full_framework.sql", import.meta.url), "utf8");
+    const assetMigration = await readFile(new URL("../../db/migrations/0001_full_framework.sql", import.meta.url), "utf8");
     expect(migration).not.toMatch(/migrated-legacy-record|legacy-review|legacy-outcome|legacy-publication|HUMAN_COMMAND/);
     expect(migration).toContain('CREATE TRIGGER "retry_lineage_guard"');
-    expect(migration).toContain('CREATE TRIGGER "publication_fail_closed_guard"');
     expect(migration).toContain('CREATE TRIGGER "published_component_version_immutable_guard"');
+    expect(assetMigration).toContain('DROP TRIGGER IF EXISTS "publication_fail_closed_guard"');
+    expect(assetMigration).toContain('CREATE TRIGGER "component_version_immutable_guard"');
+    expect(assetMigration).toContain('CREATE TRIGGER "component_active_version_guard"');
+    expect(assetMigration).toContain('CREATE TRIGGER "publication_decision_governance_guard"');
+    expect(assetMigration).toContain('CREATE TRIGGER "publication_decision_immutable_guard"');
+    expect(assetMigration).toContain("EXPERT_PUBLICATION_REVIEW_REQUIRED");
+    expect(assetMigration).toMatch(/ADD COLUMN "source_review_ids" uuid\[\];[\s\S]*JOIN LATERAL[\s\S]*teacher_reviews[\s\S]*ALTER COLUMN "source_review_ids" SET NOT NULL/);
+    expect(assetMigration).toContain("PRE_EVAL_DRAFT_QUARANTINED");
+    expect(assetMigration).toContain("Component versions must begin as governed Drafts");
+    expect(assetMigration).toContain("Components must begin as governed Candidates without an active version");
   });
 
   it("enforces one canonical TeacherReview per Observation", async () => {

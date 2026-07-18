@@ -213,32 +213,109 @@ export function RetryResultReviewForm({ threadId, expectedVersion }: { threadId:
   </form>;
 }
 
-export function CandidateForm({ observationId }: { observationId: string }) {
+type EvidenceOption = { id: string; title: string; locator: string; sourceTitle: string };
+
+function componentContent(form: FormData) {
+  const evidenceUnitId = String(form.get("evidenceUnitId") ?? "");
+  const attribution = String(form.get("attribution") ?? "").trim();
+  return {
+    teachingSupport: form.get("teachingSupport"),
+    scaffoldHint: form.get("scaffoldHint"),
+    workedExample: form.get("workedExample"),
+    learnerAction: form.get("learnerAction"),
+    evidenceRefs: evidenceUnitId ? [{ evidenceUnitId, attribution }] : [],
+  };
+}
+
+function contentValue(content: Record<string, unknown>, key: string): string {
+  return typeof content[key] === "string" ? String(content[key]) : "";
+}
+
+export function CandidateForm({ observationId, evidenceOptions = [] }: { observationId: string; evidenceOptions?: EvidenceOption[] }) {
   const action = useAction();
   return <form className="stack compact" data-testid="candidate-form" onSubmit={async (event) => {
     event.preventDefault(); const form = new FormData(event.currentTarget);
-    try { await action.run("/api/components", { observationId, key: form.get("key"), title: form.get("title"), purpose: form.get("purpose"), capabilityKey: form.get("capabilityKey"), referencePackKey: form.get("referencePackKey"), content: { support: form.get("support") }, idempotencyKey: randomKey("candidate") }); }
+    try { await action.run("/api/components", { observationId, key: form.get("key"), title: form.get("title"), purpose: form.get("purpose"), content: componentContent(form), idempotencyKey: randomKey("candidate") }); }
     catch (error) { action.setMessage(error instanceof Error ? error.message : "Unable to create candidate"); }
   }}>
     <input name="key" required pattern="[a-z0-9-]+" placeholder="candidate-key"/><input name="title" required placeholder="Candidate title"/>
-    <textarea name="purpose" required placeholder="Purpose grounded in the reviewed pattern"/><input name="capabilityKey" required pattern="[a-z0-9-]+" placeholder="capability-key"/>
-    <input name="referencePackKey" required placeholder="Reference Pack key"/><textarea name="support" required placeholder="Editable teaching support"/>
+    <textarea name="purpose" required minLength={10} placeholder="Purpose grounded in the reviewed pattern"/>
+    <textarea name="teachingSupport" required minLength={10} placeholder="Teaching support"/>
+    <textarea name="scaffoldHint" required minLength={5} placeholder="Scaffold or hint"/>
+    <textarea name="workedExample" required minLength={10} placeholder="Worked example"/>
+    <textarea name="learnerAction" required minLength={5} placeholder="Learner action"/>
+    <label>Governed Evidence (optional for a deterministic scaffold)<select name="evidenceUnitId" defaultValue=""><option value="">No Evidence claim — explicit NOT_REQUIRED policy</option>{evidenceOptions.map((option) => <option key={option.id} value={option.id}>{option.title} · {option.locator}</option>)}</select></label>
+    <input name="attribution" placeholder="Evidence attribution (required when selected)"/>
+    <small>Capability and Reference Pack bindings are derived from the persisted reviewed Observation; they are not editable free text.</small>
     <button className="secondary" disabled={action.pending}>Create reviewed Component candidate</button><FormStatus value={action.message}/>
   </form>;
 }
 
-export function ComponentVersionForm({ componentId, versionId, contract, content }: { componentId: string; versionId: string; contract: Record<string, unknown>; content: Record<string, unknown> }) {
+export function ComponentVersionForm({ componentId, versionId, contract, content, evidenceOptions = [] }: { componentId: string; versionId: string; contract: Record<string, unknown>; content: Record<string, unknown>; evidenceOptions?: EvidenceOption[] }) {
   const action = useAction();
+  const currentEvidence = Array.isArray(content.evidenceRefs) ? content.evidenceRefs[0] as { evidenceUnitId?: string; attribution?: string } | undefined : undefined;
   return <form className="stack compact" data-testid="component-version-form" onSubmit={async (event) => {
     event.preventDefault(); const form = new FormData(event.currentTarget);
-    try { await action.run(`/api/components/${componentId}/versions/${versionId}`, { contract: JSON.parse(String(form.get("contract"))), content: JSON.parse(String(form.get("content"))), idempotencyKey: randomKey("version") }, "PATCH"); }
+    try { await action.run(`/api/components/${componentId}/versions/${versionId}`, { title: form.get("title"), purpose: form.get("purpose"), content: componentContent(form), idempotencyKey: randomKey("version") }, "PATCH"); }
     catch (error) { action.setMessage(error instanceof Error ? error.message : "Unable to update draft"); }
-  }}><label>Contract JSON<textarea name="contract" defaultValue={JSON.stringify(contract, null, 2)} /></label><label>Content JSON<textarea name="content" defaultValue={JSON.stringify(content, null, 2)} /></label><button disabled={action.pending}>Save draft & reset structural preflight</button><FormStatus value={action.message}/></form>;
+  }}>
+    <label>Title<input name="title" required minLength={3} defaultValue={String(contract.title ?? "")}/></label>
+    <label>Purpose<textarea name="purpose" required minLength={10} defaultValue={String(contract.purpose ?? "")}/></label>
+    <label>Teaching support<textarea name="teachingSupport" required minLength={10} defaultValue={contentValue(content, "teachingSupport")}/></label>
+    <label>Scaffold or hint<textarea name="scaffoldHint" required minLength={5} defaultValue={contentValue(content, "scaffoldHint")}/></label>
+    <label>Worked example<textarea name="workedExample" required minLength={10} defaultValue={contentValue(content, "workedExample")}/></label>
+    <label>Learner action<textarea name="learnerAction" required minLength={5} defaultValue={contentValue(content, "learnerAction")}/></label>
+    <label>Governed Evidence<select name="evidenceUnitId" defaultValue={currentEvidence?.evidenceUnitId ?? ""}><option value="">No Evidence claim — explicit NOT_REQUIRED policy</option>{evidenceOptions.map((option) => <option key={option.id} value={option.id}>{option.title} · {option.locator}</option>)}</select></label>
+    <input name="attribution" defaultValue={currentEvidence?.attribution ?? ""} placeholder="Evidence attribution (required when selected)"/>
+    <details><summary>Advanced version contract JSON (read only)</summary><pre>{JSON.stringify(contract, null, 2)}</pre></details>
+    <button disabled={action.pending}>Save Draft and reset Component evaluation</button><FormStatus value={action.message}/>
+  </form>;
 }
 
-export function StructuralPreflightButton({ componentId, versionId }: { componentId: string; versionId: string }) {
+export function ComponentEvaluationButton({ componentId, versionId }: { componentId: string; versionId: string }) {
   const action = useAction();
-  return <div><button data-testid="structural-preflight-button" disabled={action.pending} onClick={async () => { try { await action.run(`/api/components/${componentId}/preflight`, { componentVersionId: versionId }); } catch (error) { action.setMessage(error instanceof Error ? error.message : "Structural preflight failed"); } }}>Run structural preflight</button><FormStatus value={action.message}/></div>;
+  return <div><button data-testid="component-evaluation-button" disabled={action.pending} onClick={async () => { try { await action.run(`/api/components/${componentId}/evaluate`, { componentVersionId: versionId }); } catch (error) { action.setMessage(error instanceof Error ? error.message : "Component evaluation failed"); } }}>Run system evaluation & request expert decision</button><FormStatus value={action.message}/></div>;
+}
+
+export function PublicationReviewForm({ threadId, expectedVersion, approvalAllowed }: { threadId: string; expectedVersion: number; approvalAllowed: boolean }) {
+  const action = useAction();
+  const [decision, setDecision] = useState<"APPROVE" | "REJECT">(approvalAllowed ? "APPROVE" : "REJECT");
+  return <form className="stack compact" data-testid="publication-review-form" onSubmit={async (event) => {
+    event.preventDefault(); const form = new FormData(event.currentTarget);
+    try { await action.run(`/api/workflows/${encodeURIComponent(threadId)}/resume`, {
+      expectedVersion,
+      action: decision,
+      rationale: form.get("rationale"),
+      rubric: {
+        domainCorrectness: form.get("domainCorrectness"),
+        pedagogy: form.get("pedagogy"),
+        safety: form.get("safety"),
+        reuseReadiness: form.get("reuseReadiness"),
+        notes: form.get("notes"),
+      },
+      idempotencyKey: randomKey("publication"),
+    }); } catch (error) { action.setMessage(error instanceof Error ? error.message : "Unable to record publication decision"); }
+  }}>
+    <label>Decision<select value={decision} onChange={(event) => setDecision(event.target.value as "APPROVE" | "REJECT")}><option value="APPROVE" disabled={!approvalAllowed}>APPROVE</option><option value="REJECT">REJECT</option></select></label>
+    {(["domainCorrectness", "pedagogy", "safety", "reuseReadiness"] as const).map((field) => <label key={field}>{field}<select name={field} defaultValue="PASS"><option>PASS</option><option>FAIL</option></select></label>)}
+    <label>Expert rubric notes<textarea name="notes" required minLength={5}/></label>
+    <label>Immutable decision rationale<textarea name="rationale" required minLength={5}/></label>
+    <button disabled={action.pending}>{decision === "APPROVE" ? "Approve and publish immutable version" : "Reject immutable version"}</button><FormStatus value={action.message}/>
+  </form>;
+}
+
+export function RollbackForm({ componentId, expectedActiveVersionId, versions }: { componentId: string; expectedActiveVersionId: string; versions: Array<{ id: string; version: string }> }) {
+  const action = useAction();
+  return <form className="inline-form" data-testid="component-rollback-form" onSubmit={async (event) => {
+    event.preventDefault(); const form = new FormData(event.currentTarget);
+    try { await action.run(`/api/components/${componentId}/rollback`, { targetVersionId: form.get("targetVersionId"), expectedActiveVersionId, rationale: form.get("rationale"), idempotencyKey: randomKey("rollback") }); }
+    catch (error) { action.setMessage(error instanceof Error ? error.message : "Unable to roll back Component"); }
+  }}><select name="targetVersionId" required defaultValue=""><option value="" disabled>Select published version</option>{versions.filter((version) => version.id !== expectedActiveVersionId).map((version) => <option key={version.id} value={version.id}>{version.version}</option>)}</select><input name="rationale" required minLength={5} placeholder="Rollback rationale"/><button disabled={action.pending}>Activate earlier published version</button><FormStatus value={action.message}/></form>;
+}
+
+export function ComponentDeliveryForm({ observationId }: { observationId: string }) {
+  const action = useAction();
+  return <div><button data-testid="component-delivery-button" disabled={action.pending} onClick={async () => { try { await action.run("/api/components/deliveries", { observationId, idempotencyKey: randomKey("component-delivery") }); } catch (error) { action.setMessage(error instanceof Error ? error.message : "Unable to deliver Component support"); } }}>Deliver active Component support</button><FormStatus value={action.message}/></div>;
 }
 
 export function RunFrameworkContractChecksButton() {

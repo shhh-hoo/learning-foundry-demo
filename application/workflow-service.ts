@@ -5,7 +5,7 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import type { Actor } from "@/domain/model";
 import { resolveRetryAuthority } from "@/application/commands";
-import { DomainInvariantError, requireRole } from "@/domain/invariants";
+import { DomainInvariantError, requireCourseAccess, requireRole } from "@/domain/invariants";
 import { getDb } from "@/db/client";
 import { componentVersions, components, diagnosticObservations, learnerAttempts, workflowRuns } from "@/db/schema";
 import { getWorkflowCheckpointer } from "@/workflows/checkpointer";
@@ -162,9 +162,11 @@ async function authorizeWorkflowStart(input: {
       eq(componentVersions.id, parsed.componentVersionId),
       eq(componentVersions.componentId, components.id),
     ))
-    .where(and(eq(components.id, parsed.componentId), eq(components.institutionId, input.actor.institutionId)))
+    .where(eq(components.id, parsed.componentId))
     .limit(1);
   if (!binding) throw new DomainInvariantError("Component version does not belong to the Component in this institution", "COMPONENT_VERSION_LINEAGE");
+  if (binding.component.institutionId !== input.actor.institutionId) throw new DomainInvariantError("Component workflow is outside the active institution", "TENANT_ISOLATION");
+  requireCourseAccess(input.actor, binding.component.institutionId, binding.component.courseId);
   if (input.taskId || input.episodeId) throw new DomainInvariantError("Component workflow cannot be bound to caller-supplied Task lineage", "WORKFLOW_BINDING_MISMATCH");
   return { state: parsed, taskId: undefined, episodeId: undefined };
 }
@@ -201,7 +203,8 @@ export async function startWorkflow(input: { kind: WorkflowKind; actor: Actor; s
   });
   const started = performance.now();
   try {
-    const result = await traced(`foundry.workflow.${input.kind.toLowerCase()}`, { userId: input.actor.userId, institutionId: input.actor.institutionId, taskId: taskId ?? "", "workflow.thread_id": threadId }, () => graphFor(input.kind).invoke({ ...state, actor: input.actor }, { configurable: { thread_id: threadId }, recursionLimit: 50 }));
+    const graphState = input.kind === "COMPONENT_LIFECYCLE" ? { ...state, workflowThreadId: threadId, actor: input.actor } : { ...state, actor: input.actor };
+    const result = await traced(`foundry.workflow.${input.kind.toLowerCase()}`, { userId: input.actor.userId, institutionId: input.actor.institutionId, taskId: taskId ?? "", "workflow.thread_id": threadId }, () => graphFor(input.kind).invoke(graphState, { configurable: { thread_id: threadId }, recursionLimit: 50 }));
     const interrupted = interruptType(result);
     const status = interrupted ? "INTERRUPTED" : "COMPLETED";
     const interruptVersion = interrupted ? 1 : 0;
@@ -215,7 +218,7 @@ export async function startWorkflow(input: { kind: WorkflowKind; actor: Actor; s
 
 function extractProductLinks(result: unknown): Record<string, string> {
   const state = result as Record<string, unknown>;
-  const keys = ["taskId", "episodeId", "attemptId", "observationId", "reviewId", "retryId", "outcomeId", "componentId", "componentVersionId", "decisionId"];
+  const keys = ["taskId", "episodeId", "attemptId", "observationId", "reviewId", "retryId", "outcomeId", "componentId", "componentVersionId", "evaluationId", "decisionId"];
   return Object.fromEntries(keys.flatMap((key) => typeof state?.[key] === "string" ? [[key, state[key] as string]] : []));
 }
 
@@ -226,6 +229,7 @@ export async function resumeWorkflow(actor: Actor, threadId: string, payload: Re
   if (run.status !== "INTERRUPTED") throw new DomainInvariantError("Workflow is not waiting for a human decision", "WORKFLOW_NOT_INTERRUPTED");
   if (run.interruptType === "TEACHER_REVIEW_REQUIRED" || run.interruptType === "RETRY_RESULT_REVIEW_REQUIRED") requireRole(actor, ["TEACHER", "ADMIN"]);
   if (run.interruptType === "LEARNER_RETRY_REQUIRED") requireRole(actor, ["LEARNER", "ADMIN"]);
+  if (run.interruptType === "EXPERT_PUBLICATION_REVIEW_REQUIRED") requireRole(actor, ["EXPERT", "ADMIN"]);
   if (Boolean(run.taskId) !== Boolean(run.episodeId)) {
     throw new DomainInvariantError("Task-bound workflow lineage is incomplete", "WORKFLOW_BINDING_INTEGRITY");
   }

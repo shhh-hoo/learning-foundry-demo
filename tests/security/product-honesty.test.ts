@@ -20,9 +20,11 @@ describe("A2a product-honesty surfaces", () => {
 
   it("aggregates only reviewed CAPABILITY observations with failure codes", async () => {
     const queries = await readFile(new URL("../../application/queries.ts", import.meta.url), "utf8");
-    expect(queries.match(/o\.observation_source = 'CAPABILITY'/g)).toHaveLength(2);
-    expect(queries.match(/o\.failure_code IS NOT NULL/g)).toHaveLength(2);
-    expect(queries).toContain("EXISTS (\n        SELECT 1 FROM foundry_product.teacher_reviews");
+    expect(queries.match(/o\.observation_source = 'CAPABILITY'/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(queries.match(/o\.failure_code IS NOT NULL/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(queries).toContain("o.superseded_by_id IS NULL");
+    expect(queries).toContain("current_review.decision IN ('ACCEPT','CORRECT','SUPPLEMENT')");
+    expect(queries).toContain("current_review.actor_provenance->>'userId' = current_review.teacher_id::text");
     expect(queries).not.toContain("coalesce(o.failure_code, 'NO_FAILURE')");
   });
 

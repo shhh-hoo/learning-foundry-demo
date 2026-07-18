@@ -9,6 +9,7 @@ describe("Chemistry Reference Pack deterministic capabilities", () => {
       "chemistry.ideal-gas-moles.v1",
       "chemistry.ph-from-hydrogen-ion.v1",
     ]);
+    expect(CHEMISTRY_CAPABILITIES.every((item) => typeof item.evaluationFixture.input === "object" && typeof item.evaluationFixture.expected.expected === "number")).toBe(true);
   });
 
   it("executes unit-aware molar concentration", () => {

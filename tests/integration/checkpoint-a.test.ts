@@ -9,13 +9,10 @@ import {
   createTeacherReview,
   createComponentCandidate,
   createTask,
-  decidePublication,
   linkRetryResult,
   persistUnavailableObservation,
   scheduleStudyReview,
-  updateComponentVersion,
 } from "@/application/commands";
-import { runComponentStructuralPreflight } from "@/application/component-preflight";
 import { compileAndPersistContext } from "@/application/context-service";
 import { getActor } from "@/application/actor";
 import { getAuthorizedEvidenceCatalog, getFoundryWorkspace, getStaleResumingRuns, getTaskDetail, getTeacherWorkspace, STALE_RESUMING_TIMEOUT_MS } from "@/application/queries";
@@ -23,10 +20,68 @@ import { retrieveEvidence } from "@/application/retrieval";
 import { resumeWorkflow, startWorkflow } from "@/application/workflow-service";
 import { closeDb, getDb, getSql } from "@/db/client";
 import { SEED } from "@/db/ids";
-import { componentVersions, courseEnrollments, courses, evidenceUnits, idempotencyKeys, institutionMemberships, learningOutcomes, libraryItems, publicationDecisions, retryAttempts, scheduleItems, sourceRecords, teacherReviews, users, workflowRuns } from "@/db/schema";
+import { courseEnrollments, courses, evidenceUnits, idempotencyKeys, institutionMemberships, learningOutcomes, libraryItems, retryAttempts, scheduleItems, sourceRecords, teacherReviews, users, workflowRuns } from "@/db/schema";
 import type { Actor } from "@/domain/model";
 import { DomainInvariantError } from "@/domain/invariants";
 import { closeWorkflowCheckpointer } from "@/workflows/checkpointer";
+
+type EligiblePatternSignal = {
+  observation_id: string;
+  failure_code: string;
+  attempt_id: string;
+  learner_id: string;
+  capability_id: string;
+  course_id: string;
+  reference_pack_key: string;
+};
+
+async function queryEligiblePatternSignals(actor: Actor, requireCurrentCapabilityBinding: boolean): Promise<EligiblePatternSignal[]> {
+  return getSql()<EligiblePatternSignal[]>`
+    SELECT o.id AS observation_id, o.failure_code, a.id AS attempt_id, a.learner_id,
+           a.capability_id, t.course_id, subject.reference_pack_key
+    FROM foundry_product.diagnostic_observations o
+    JOIN foundry_product.learner_attempts a ON a.id = o.attempt_id
+    JOIN foundry_product.learning_tasks t ON t.id = a.task_id
+    JOIN foundry_product.courses course_scope ON course_scope.id = t.course_id
+    JOIN foundry_product.subjects subject ON subject.id = course_scope.subject_id
+    JOIN LATERAL (
+      SELECT r.decision, r.teacher_id, r.actor_provenance
+      FROM foundry_product.teacher_reviews r
+      WHERE r.observation_id = o.id
+      ORDER BY r.created_at DESC, r.id DESC
+      LIMIT 1
+    ) current_review ON true
+    WHERE t.institution_id = ${actor.institutionId}
+      AND t.course_id = ANY(${actor.courseIds}::uuid[])
+      AND o.observation_source = 'CAPABILITY'
+      AND o.failure_code IS NOT NULL
+      AND o.superseded_by_id IS NULL
+      AND a.capability_id IS NOT NULL
+      AND (
+        ${!requireCurrentCapabilityBinding}
+        OR EXISTS (
+          SELECT 1
+          FROM foundry_product.capabilities current_capability
+          WHERE current_capability.id = a.capability_id
+            AND current_capability.active_version_id = o.capability_version_id
+            AND subject.reference_pack_key = current_capability.reference_pack_key
+        )
+      )
+      AND current_review.decision IN ('ACCEPT','CORRECT','SUPPLEMENT')
+      AND current_review.actor_provenance->>'userId' = current_review.teacher_id::text
+      AND current_review.actor_provenance->>'institutionId' = t.institution_id::text
+      AND length(COALESCE(current_review.actor_provenance->>'sessionId', '')) > 0
+      AND COALESCE(current_review.actor_provenance->>'authMethod', '') NOT LIKE 'migrated-%'
+  `;
+}
+
+function getTeacherPatternHistorySignals(actor: Actor): Promise<EligiblePatternSignal[]> {
+  return queryEligiblePatternSignals(actor, false);
+}
+
+function getCurrentReusablePatternSignals(actor: Actor): Promise<EligiblePatternSignal[]> {
+  return queryEligiblePatternSignals(actor, true);
+}
 
 describe.sequential("Checkpoint A PostgreSQL integration", () => {
   let learner: Actor;
@@ -269,7 +324,18 @@ describe.sequential("Checkpoint A PostgreSQL integration", () => {
     const authorizedWorkspace = await getTeacherWorkspace(teacher);
     expect(authorizedWorkspace.queue.length).toBeGreaterThan(0);
     expect(authorizedWorkspace.queue[0]).toHaveProperty("waiting_interrupt_version");
-    expect(authorizedWorkspace.patterns).toEqual([]);
+    const eligibleSignals = await getTeacherPatternHistorySignals(teacher);
+    expect(eligibleSignals.map((signal) => signal.observation_id)).not.toContain(fixtureObservationId);
+    const expectedPatterns = new Map<string, { count: number; learners: Set<string> }>();
+    for (const signal of eligibleSignals) {
+      const pattern = expectedPatterns.get(signal.failure_code) ?? { count: 0, learners: new Set<string>() };
+      pattern.count += 1;
+      pattern.learners.add(signal.learner_id);
+      expectedPatterns.set(signal.failure_code, pattern);
+    }
+    expect(authorizedWorkspace.patterns.map((pattern) => ({ pattern: String(pattern.pattern), count: Number(pattern.count), learners: Number(pattern.learners) })).sort((left, right) => left.pattern.localeCompare(right.pattern))).toEqual(
+      [...expectedPatterns].map(([pattern, proof]) => ({ pattern, count: proof.count, learners: proof.learners.size })).sort((left, right) => left.pattern.localeCompare(right.pattern)),
+    );
     const outsider: Actor = { ...teacher, institutionId: randomUUID(), sessionId: "outsider", courseIds: [SEED.course] };
     await expect(getTaskDetail(outsider, SEED.task)).rejects.toMatchObject({ code: "TENANT_ISOLATION" });
     const workspace = await getTeacherWorkspace(outsider);
@@ -380,17 +446,15 @@ describe.sequential("Checkpoint A PostgreSQL integration", () => {
         key: `decision-${decision.toLowerCase()}-${key.slice(0, 8)}`,
         title: `${decision} reviewed support`,
         purpose: "Verify decision-controlled Component candidate authority.",
-        capabilityKey: "reviewed-reasoning-support",
-        referencePackKey: "chemistry-caie-9701",
-        content: { support: "Inspect each transformation." },
+        content: { teachingSupport: "Inspect each transformation carefully.", scaffoldHint: "Track units.", workedExample: "Convert the volume before applying the equation.", learnerAction: "Explain every conversion.", evidenceRefs: [] },
         idempotencyKey: `decision-component:${key}`,
       };
       if (decision === "ESCALATE") {
         await expect(createRetry(teacher, retryInput)).rejects.toMatchObject({ code: "REVIEW_ESCALATED" });
-        await expect(createComponentCandidate(teacher, candidateInput)).rejects.toMatchObject({ code: "REVIEW_ESCALATED" });
+        await expect(createComponentCandidate(teacher, candidateInput)).rejects.toMatchObject({ code: "COMPONENT_SIGNAL_INELIGIBLE" });
       } else {
         await expect(createRetry(teacher, retryInput)).resolves.toMatchObject({ activityType: "RETRY" });
-        await expect(createComponentCandidate(teacher, candidateInput)).resolves.toMatchObject({ replayed: false });
+        await expect(createComponentCandidate(teacher, candidateInput)).rejects.toMatchObject({ code: "COMPONENT_SIGNAL_INELIGIBLE" });
       }
     }
   });
@@ -532,40 +596,41 @@ describe.sequential("Checkpoint A PostgreSQL integration", () => {
     expect(workspace.queue.find((row) => row.observation_id === resultObservationId)?.review_decision).toBe("ESCALATE");
   });
 
-  it("records structural preflight without conferring publication eligibility", async () => {
+  it("rejects unavailable signals and mismatched Component workflow lineage", async () => {
     const [currentReview] = await getDb().select().from(teacherReviews).where(eq(teacherReviews.observationId, fixtureObservationId)).orderBy(desc(teacherReviews.createdAt)).limit(1);
-    const candidate = await createComponentCandidate(teacher, {
+    await expect(createComponentCandidate(teacher, {
       observationId: fixtureObservationId,
       key: `reviewed-support-${randomUUID().slice(0, 8)}`,
       title: "Reviewed reasoning support",
       purpose: "Reuse a directly teacher-reviewed reasoning support pattern.",
-      capabilityKey: "reviewed-reasoning-support",
-      referencePackKey: "chemistry-caie-9701",
-      content: { support: "Ask the learner to justify every transformation and verify units." },
+      content: { teachingSupport: "Ask the learner to justify every transformation and verify units.", scaffoldHint: "Track every unit.", workedExample: "Convert millilitres to litres before substitution.", learnerAction: "Annotate each transformation.", evidenceRefs: [] },
       idempotencyKey: `component:${currentReview.id}:${randomUUID()}`,
-    });
-    const preflight = await runComponentStructuralPreflight(expert, candidate.versionId!);
-    expect(preflight.status).toBe("STRUCTURAL_PREFLIGHT_COMPLETE");
-    expect(preflight.evalResult.status).toBe("UNAVAILABLE");
-    expect(preflight.publicationEligible).toBe(false);
-    expect(JSON.stringify(preflight)).not.toContain('"PASS"');
+    })).rejects.toMatchObject({ code: "COMPONENT_SIGNAL_INELIGIBLE" });
     const foundryWorkspace = await getFoundryWorkspace(expert);
-    expect(foundryWorkspace.candidates.some((row) => row.component.id === candidate.componentId)).toBe(true);
-    expect(foundryWorkspace.reviewedPatterns).toEqual([]);
+    const eligibleSignals = await getCurrentReusablePatternSignals(expert);
+    expect(eligibleSignals.map((signal) => signal.observation_id)).not.toContain(fixtureObservationId);
+    const expectedPatterns = new Map<string, Set<string>>();
+    for (const signal of eligibleSignals) {
+      const key = [signal.failure_code, signal.capability_id, signal.course_id, signal.reference_pack_key].join("|");
+      const attempts = expectedPatterns.get(key) ?? new Set<string>();
+      attempts.add(signal.attempt_id);
+      expectedPatterns.set(key, attempts);
+    }
+    const actualPatterns = foundryWorkspace.reviewedPatterns.map((pattern) => ({
+      key: [pattern.pattern, pattern.capability_id, pattern.course_id, pattern.reference_pack_key].join("|"),
+      count: Number(pattern.count),
+      observationId: String(pattern.observation_id),
+    }));
+    expect(actualPatterns.map(({ key, count }) => ({ key, count })).sort((left, right) => left.key.localeCompare(right.key))).toEqual(
+      [...expectedPatterns].map(([key, attempts]) => ({ key, count: attempts.size })).sort((left, right) => left.key.localeCompare(right.key)),
+    );
+    for (const pattern of actualPatterns) {
+      expect(eligibleSignals.some((signal) => signal.observation_id === pattern.observationId && [signal.failure_code, signal.capability_id, signal.course_id, signal.reference_pack_key].join("|") === pattern.key)).toBe(true);
+    }
     await expect(startWorkflow({
       kind: "COMPONENT_LIFECYCLE",
       actor: expert,
-      state: { componentId: candidate.componentId, componentVersionId: randomUUID() },
+      state: { componentId: randomUUID(), componentVersionId: randomUUID() },
     })).rejects.toMatchObject({ code: "COMPONENT_VERSION_LINEAGE" });
-    const outsider: Actor = { ...expert, institutionId: randomUUID(), courseIds: [], sessionId: "outsider-expert" };
-    const [version] = await getDb().select().from(componentVersions).where(eq(componentVersions.id, candidate.versionId!)).limit(1);
-    expect(version.status).toBe("DRAFT");
-    const publicationResults = await Promise.allSettled([
-      decidePublication(expert, { componentVersionId: version.id, action: "APPROVE", rationale: "Must fail closed without Eval.", idempotencyKey: `publication-one:${randomUUID()}` }),
-      decidePublication(expert, { componentVersionId: version.id, action: "APPROVE", rationale: "Concurrent attempt must also fail closed.", idempotencyKey: `publication-two:${randomUUID()}` }),
-    ]);
-    expect(publicationResults.every((result) => result.status === "rejected" && result.reason instanceof DomainInvariantError && result.reason.code === "COMPONENT_EVALUATOR_UNAVAILABLE")).toBe(true);
-    expect(await getDb().select().from(publicationDecisions).where(eq(publicationDecisions.componentVersionId, version.id))).toEqual([]);
-    await expect(updateComponentVersion(outsider, { componentId: candidate.componentId, componentVersionId: version.id, contract: version.contract, content: version.content, idempotencyKey: `outsider:${randomUUID()}` })).rejects.toMatchObject({ code: "TENANT_ISOLATION" });
   });
 });

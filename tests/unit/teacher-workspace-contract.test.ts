@@ -15,9 +15,9 @@ describe("Teacher escalation workspace contract", () => {
     expect(page).toMatch(/reviewDecision === "ESCALATE" \? [\s\S]*terminal-escalation[\s\S]* : waitingThread \?[\s\S]* : reviewId \? <><RetryForm[\s\S]*<CandidateForm/);
   });
 
-  it("uses structural-preflight language for Draft edits", async () => {
+  it("uses honest Component evaluation language for Draft edits", async () => {
     const actions = await readFile(new URL("../../components/ClientActions.tsx", import.meta.url), "utf8");
-    expect(actions).toContain("Save draft & reset structural preflight");
+    expect(actions).toContain("Save Draft and reset Component evaluation");
     expect(actions).not.toContain("Save draft & reset Eval");
   });
 });
