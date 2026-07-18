@@ -79,7 +79,13 @@ function validateGovernedIdentityClaims(
   if (unsupportedCapabilities.length) throw new AgentRunError("AGENT_UNSUPPORTED_CLAIM", `Final response named capability identities absent from Registry evidence: ${unsupportedCapabilities.join(", ")}`);
 
   const executedTools = new Set(records.map((record) => record.name));
-  const namedUnexecutedTools = knownToolIds.filter((toolId) => text.includes(toolId) && !executedTools.has(toolId));
+  const sentences = text.split(/[.!?\n]+/u);
+  const namedUnexecutedTools = knownToolIds.filter((toolId) => !executedTools.has(toolId) && sentences.some((sentence) => {
+    if (!sentence.includes(toolId)) return false;
+    const executionClaim = /\b(?:called|completed|executed|invoked|ran|returned|searched|succeeded|used)\b/iu.test(sentence);
+    const negated = /\b(?:cannot|can't|did not|didn't|does not|doesn't|never|without)\b/iu.test(sentence);
+    return executionClaim && !negated;
+  }));
   if (namedUnexecutedTools.length) throw new AgentRunError("AGENT_UNSUPPORTED_CLAIM", `Final response claimed tool identities absent from the current trace: ${namedUnexecutedTools.join(", ")}`);
 
   const requestedReference = explicitCapabilityReference(currentUserMessage);

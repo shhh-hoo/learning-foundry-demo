@@ -32,6 +32,16 @@ describe("Foundry Control Plane", () => {
       matchedCapabilities: [],
       missingClarification: expect.any(String),
     });
+    const noisySingleRegistryResult = [{
+      id: "supported-example",
+      version: "1.0.0",
+      purpose: "Diagnose one governed calculation family.",
+      requiredInput: "Provide equations and values and complete working.",
+    }];
+    expect(assessor.assess({ route: "SOLVE_WITH_CHECKS", requestText: "I need a diagnosis across two unrelated domains, but I have not supplied equations, values or working.", registryEvidenceRef: "registry-3", registryResult: noisySingleRegistryResult })).toMatchObject({
+      status: "REQUEST_AMBIGUOUS",
+      matchedCapabilities: [],
+    });
     expect(assessor.executionFailed("REGISTRY_UNAVAILABLE")).toEqual({
       status: "REGISTRY_EXECUTION_FAILED",
       returnedCapabilities: [],

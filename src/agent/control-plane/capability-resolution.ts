@@ -9,8 +9,10 @@ interface ResolutionInput {
 }
 
 const STOP_WORDS = new Set([
-  "available", "capability", "capabilities", "current", "diagnose", "diagnosis", "entire",
-  "learner", "main", "recommended", "required", "structured", "supported", "tool", "tools", "working",
+  "a", "an", "and", "available", "but", "can", "cannot", "capability", "capabilities", "could", "current",
+  "diagnose", "diagnosis", "does", "entire", "from", "has", "have", "learner", "main", "need", "not", "of",
+  "one", "only", "or", "provide", "recommended", "required", "structured", "supported", "the", "this", "to",
+  "tool", "tools", "two", "with", "without", "working",
 ]);
 
 function record(value: unknown): Record<string, unknown> | null {
@@ -78,12 +80,15 @@ export class CapabilityResolutionAssessor {
       matchedCapabilities = returnedCapabilities.filter((identity) => explicitMatches(explicit, identity, input.registryResult));
     } else {
       const requestWords = words(input.requestText);
-      const scored = returnedCapabilities.map((identity) => ({
-        identity,
-        score: [...words(searchableText(input.registryResult, identity))].filter((token) => requestWords.has(token)).length,
-      }));
+      const scored = returnedCapabilities.map((identity) => {
+        const identityWords = words(identity.id);
+        const searchableWords = words(searchableText(input.registryResult, identity));
+        const identityScore = [...identityWords].filter((token) => requestWords.has(token)).length * 3;
+        const descriptionScore = [...searchableWords].filter((token) => !identityWords.has(token) && requestWords.has(token)).length;
+        return { identity, score: identityScore + descriptionScore };
+      });
       const maximum = Math.max(0, ...scored.map((candidate) => candidate.score));
-      if (maximum > 0) matchedCapabilities = scored.filter((candidate) => candidate.score === maximum).map((candidate) => candidate.identity);
+      if (maximum >= 3) matchedCapabilities = scored.filter((candidate) => candidate.score === maximum).map((candidate) => candidate.identity);
     }
 
     if (matchedCapabilities.length === 1) return {
