@@ -1,0 +1,42 @@
+{
+  "schemaVersion": "1.0.0",
+  "planCases": [
+    {
+      "caseId": "ordinary-as-is-not-a-course-level-token",
+      "input": "Can you explain this as a simpler comparison?",
+      "expectedIntent": "OPEN_EXPLANATION",
+      "expectedRoute": "COURSE_EXPLANATION",
+      "requiredTools": ["search_learning_resources"],
+      "forbiddenTools": ["run_learner_diagnosis"]
+    },
+    {
+      "caseId": "incomplete-attempt-stops-before-diagnosis",
+      "input": "I only have part of my working and no original problem. Where is my first mistake?",
+      "expectedIntent": "INCOMPLETE_ATTEMPT_DIAGNOSIS",
+      "expectedRoute": "LEARNER_DIAGNOSIS_INCOMPLETE",
+      "requiredTools": [],
+      "forbiddenTools": ["run_learner_diagnosis"]
+    },
+    {
+      "caseId": "unsupported-capability-inspection-remains-orthogonal",
+      "input": "Can your current tools diagnose an arbitrary proof from a diagram I did not attach?",
+      "expectedIntent": "CAPABILITY_DISCOVERY",
+      "expectedRoute": "SOLVE_WITH_CHECKS",
+      "requiredTools": ["list_capabilities"],
+      "forbiddenTools": ["run_learner_diagnosis"]
+    }
+  ],
+  "contextCases": [
+    {
+      "caseId": "prior-task-instance-does-not-contaminate-current-task",
+      "activeTaskId": "task-current",
+      "messages": [
+        { "role": "user", "content": "prior instance", "context": { "taskId": "task-prior", "lifecycle": "ACTIVE" } },
+        { "role": "assistant", "content": "superseded observation", "context": { "taskId": "task-current", "lifecycle": "SUPERSEDED" } },
+        { "role": "user", "content": "current request", "context": { "taskId": "task-current", "lifecycle": "ACTIVE" } }
+      ],
+      "selectedMessageIndexes": [2],
+      "excludedReasons": ["OTHER_TASK", "SUPERSEDED"]
+    }
+  ]
+}

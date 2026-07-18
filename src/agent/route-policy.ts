@@ -1,4 +1,8 @@
 import type { AgentExecutionPlan, AgentObligations, AgentResponseEnvelope, AgentRoute, AgentRunRequest, AgentToolCallRecord } from "./types";
+import { ContextCompiler } from "./control-plane/context-compiler";
+import { ExecutionPlanner } from "./control-plane/execution-planner";
+import type { CapabilityResolutionResult, EvidenceSufficiencyAssessment, TerminalToolRejection, ToolBudgetConsumption } from "./control-plane/observability";
+import type { ExecutionPlanV1 } from "./control-plane/execution-plan";
 
 interface SuccessfulToolResult { readonly name: string; readonly data: unknown }
 
@@ -20,6 +24,7 @@ function looksLikeIncompleteWorking(input: string): boolean {
 
 function looksLikeExplanation(input: string): boolean {
   return /^(?:why|how|explain|what evidence|which titres|find the course source|what does the syllabus)/iu.test(input.trim())
+    || /^(?:can|could|would)\s+you\s+explain\b/iu.test(input.trim())
     || /^(?:为什么|怎么|如何|解释|哪些证据|课程要求|大纲)/u.test(input.trim())
     || /\b(?:course explanation|course source|learning outcome)\b/iu.test(input);
 }
@@ -45,16 +50,8 @@ export function classifyAgentRoute(request: AgentRunRequest, response?: AgentRes
 }
 
 export function resolveAgentExecutionPlan(request: AgentRunRequest): AgentExecutionPlan {
-  const route = classifyAgentRoute(request);
-  const input = currentUserMessage(request);
-  return {
-    route,
-    obligations: {
-      retrievalRequired: route === "COURSE_EXPLANATION",
-      capabilityInspectionRequired: route === "LEARNER_DIAGNOSIS_COMPLETE" || route === "CAPABILITY_GAP" || requiresCapabilityInspection(input),
-      diagnosisRequired: route === "LEARNER_DIAGNOSIS_COMPLETE",
-    },
-  };
+  const context = new ContextCompiler().compile(request);
+  return new ExecutionPlanner().plan(request, context);
 }
 
 export function routeInstruction(route: AgentRoute): string {
@@ -88,26 +85,45 @@ export function enforceRoutePolicy(
   successfulToolResults: readonly SuccessfulToolResult[],
   initialRoute: AgentRoute = classifyAgentRoute(request),
   obligations: AgentObligations = resolveAgentExecutionPlan(request).obligations,
+  evidenceAssessments: readonly EvidenceSufficiencyAssessment[] = [],
+  executionPlan: ExecutionPlanV1 = resolveAgentExecutionPlan(request),
+  budgetConsumption: readonly ToolBudgetConsumption[] = [],
+  terminalToolRejection?: TerminalToolRejection,
+  capabilityResolution?: CapabilityResolutionResult,
 ): AgentRoute {
   const route = initialRoute;
   const successfulCalls = toolCalls.filter((call) => call.status === "SUCCEEDED");
-
-  if (route === "COURSE_EXPLANATION" && response.status !== "ANSWERED") {
-    throw new RoutePolicyError(route, "A course explanation with governed retrieval must return ANSWERED, not change application route from model output.");
-  }
+  const successfulNames = new Set(successfulCalls.map((call) => call.name));
+  const missingRequiredTools = executionPlan.toolPolicy.required.filter((tool) => !successfulNames.has(tool));
+  if (executionPlan.execution.mode === "PRODUCT_ACTION" && missingRequiredTools.length > 0) throw new RoutePolicyError(route, `Execution Plan required tools did not succeed: ${missingRequiredTools.join(", ")}.`);
 
   if (route === "COURSE_EXPLANATION") {
     const retrievalCalls = successfulCalls.filter((call) => call.name === "search_learning_resources");
-    if (retrievalCalls.length === 0 || !searchHasGovernedSource(successfulToolResults) || response.sourceRefs.length === 0 || !retrievalCalls.some((call) => response.evidenceRefs?.includes(call.resultRef))) {
+    const latestAssessment = [...evidenceAssessments].reverse().find((item) => item.toolId === "search_learning_resources");
+    const sufficient = latestAssessment ? latestAssessment.outcome === "SUFFICIENT_EVIDENCE" : searchHasGovernedSource(successfulToolResults);
+    const retrievalBudget = budgetConsumption.find((item) => item.toolId === "search_learning_resources");
+    const shouldContinue = Boolean(latestAssessment?.anotherCallJustified && retrievalBudget && retrievalBudget.consumed < retrievalBudget.maximum && !terminalToolRejection);
+    if (shouldContinue) throw new RoutePolicyError(route, "Evidence assessment requires one justified, materially different retrieval before stopping.");
+    if (!sufficient) {
+      if (response.status !== "NEEDS_MORE_EVIDENCE") throw new RoutePolicyError(route, "Insufficient governed Evidence must return NEEDS_MORE_EVIDENCE, never an unsupported ANSWERED response.");
+    } else if (response.status !== "ANSWERED") {
+      throw new RoutePolicyError(route, "Sufficient governed Evidence means the route must return ANSWERED.");
+    }
+    if (sufficient && (retrievalCalls.length === 0 || response.sourceRefs.length === 0 || !retrievalCalls.some((call) => response.evidenceRefs?.includes(call.resultRef)))) {
       throw new RoutePolicyError(route, "ANSWERED requires successful retrieval of at least one curriculum or Teacher Note source.");
     }
   }
 
-  if (route === "LEARNER_DIAGNOSIS_COMPLETE" && response.status !== "ANSWERED") {
+  const capabilityBlocksDiagnosis = capabilityResolution?.status === "REQUESTED_CAPABILITY_NOT_FOUND" || capabilityResolution?.status === "REQUEST_AMBIGUOUS";
+  if (route === "LEARNER_DIAGNOSIS_COMPLETE" && capabilityBlocksDiagnosis) {
+    if (response.status !== "NEEDS_MORE_EVIDENCE" || successfulCalls.some((call) => call.name === "run_learner_diagnosis")) {
+      throw new RoutePolicyError(route, "Unresolved capability Evidence must return NEEDS_MORE_EVIDENCE without running Diagnosis.");
+    }
+  } else if (route === "LEARNER_DIAGNOSIS_COMPLETE" && response.status !== "ANSWERED") {
     throw new RoutePolicyError(route, "A completed governed Diagnosis must return ANSWERED and reference its persisted trace.");
   }
 
-  if (route === "LEARNER_DIAGNOSIS_COMPLETE") {
+  if (route === "LEARNER_DIAGNOSIS_COMPLETE" && !capabilityBlocksDiagnosis) {
     const listIndex = successfulCalls.findIndex((call) => call.name === "list_capabilities");
     const getIndex = successfulCalls.findIndex((call) => call.name === "get_capability");
     const diagnosisIndex = successfulCalls.findIndex((call) => call.name === "run_learner_diagnosis");

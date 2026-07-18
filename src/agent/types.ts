@@ -1,4 +1,27 @@
 import { z } from "zod";
+import type {
+  ApplicationResponseDisposition,
+  CapabilityResolutionResult,
+  ContextSelectionDecision,
+  EvidenceSufficiencyAssessment,
+  FinalTerminalCondition,
+  GovernedWorkflowTrace,
+  TerminalToolRejection,
+  ToolPhaseState,
+  ToolBudgetConsumption,
+} from "./control-plane/observability";
+import type { ExecutionPlanV1 } from "./control-plane/execution-plan";
+export type {
+  ContextSelectionDecision,
+  EvidenceRequirement,
+  ExecutionDirective,
+  ExecutionIntent,
+  ExecutionMode,
+  ExecutionPlanV1,
+  GovernedWorkflowIdentity,
+  TerminalCondition,
+  ToolId,
+} from "./control-plane/execution-plan";
 
 export const inputOriginSchema = z.enum(["USER_INPUT", "PRESET_INPUT"]);
 export type InputOrigin = z.infer<typeof inputOriginSchema>;
@@ -13,10 +36,7 @@ export interface AgentObligations {
   readonly diagnosisRequired: boolean;
 }
 
-export interface AgentExecutionPlan {
-  readonly route: AgentRoute;
-  readonly obligations: AgentObligations;
-}
+export type AgentExecutionPlan = ExecutionPlanV1;
 
 export const agentResponseEnvelopeSchema = z.object({
   status: z.enum(["ANSWERED", "NEEDS_MORE_EVIDENCE", "CAPABILITY_GAP"]),
@@ -53,6 +73,19 @@ export interface AgentTrace {
   readonly initialRoute?: AgentRoute;
   readonly route?: AgentRoute;
   readonly obligations?: AgentObligations;
+  readonly executionPlan?: ExecutionPlanV1;
+  readonly contextSelection?: ContextSelectionDecision;
+  readonly budgetConsumption?: readonly ToolBudgetConsumption[];
+  readonly evidenceAssessments?: readonly EvidenceSufficiencyAssessment[];
+  readonly stopReason?: string;
+  readonly governedWorkflow?: GovernedWorkflowTrace;
+  readonly applicationResponseDisposition?: ApplicationResponseDisposition;
+  readonly capabilityResolution?: CapabilityResolutionResult;
+  readonly terminalToolRejection?: TerminalToolRejection;
+  readonly toolPhase?: ToolPhaseState;
+  readonly responseOnlyCorrectionCount?: number;
+  readonly deterministicFallbackUsed?: boolean;
+  readonly finalTerminalCondition?: FinalTerminalCondition;
   readonly provider: string;
   readonly model: string;
   readonly thinkingMode: "enabled" | "disabled";
@@ -66,12 +99,22 @@ export interface AgentTrace {
   readonly latencyMs: number;
 }
 
-export interface AgentConversationMessage { readonly role: "user" | "assistant"; readonly content: string }
+export interface AgentConversationMessage {
+  readonly role: "user" | "assistant";
+  readonly content: string;
+  readonly context?: {
+    readonly taskId?: string;
+    readonly episodeId?: string;
+    readonly lifecycle?: "ACTIVE" | "STALE" | "SUPERSEDED";
+  };
+}
 
 export interface AgentRunRequest {
   readonly conversationId: string;
   readonly inputOrigin: InputOrigin;
   readonly runPurpose: RunPurpose;
   readonly evalCaseId?: string;
+  readonly activeTaskId?: string;
+  readonly activeEpisodeId?: string;
   readonly messages: readonly AgentConversationMessage[];
 }

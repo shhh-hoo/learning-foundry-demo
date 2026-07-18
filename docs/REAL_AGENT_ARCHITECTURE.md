@@ -1,5 +1,27 @@
 # Real Agent architecture
 
+Docs authority: `learning-foundry-docs@260747722e8040972deceed3290bce237676f225`
+
+## Foundry-owned Control Plane
+
+The gateway compiles Context and creates one immutable `ExecutionPlanV1`
+before invoking a runtime. The Plan owns domain-neutral intent and execution
+mode, Legacy route/obligation projections, active/required/forbidden tools,
+per-tool budgets, terminal conditions and Evidence requirements.
+
+The bounded Agent runtime executes that Plan. It does not classify intent,
+increase budgets or treat successful transport as sufficient Evidence.
+Known-order complete Diagnosis is application-sequenced through
+`DiagnosisSequenceGovernor`; the model still supplies structured tool calls
+and arguments and composes the learner response, but cannot skip or reorder
+governed steps. This is not yet a deterministic application executor.
+
+Agent schema `1.1.0` and runtime schema `1.2.0` record Plan and Context
+indexes, budget consumption, Evidence assessments, stop reasons and workflow
+identity. Earlier Agent `1.0.0` and runtime `1.0.0`/`1.1.0` records remain
+readable. See
+[CONTROL_PLANE_EXECUTION_ACCEPTANCE.md](CONTROL_PLANE_EXECUTION_ACCEPTANCE.md).
+
 The server-side DeepSeek Agent Gateway on port 4176 receives a conversation, creates a file-backed `RUNNING` AgentTrace, calls DeepSeek, validates requested tools locally, executes them, appends real tool results by `tool_call_id`, and continues for at most six rounds. Each model response and tool execution is atomically persisted. The terminal record is `COMPLETED` or `FAILED`, and survives service restart.
 
 The browser never receives the API key. The gateway health response exposes only configuration status, provider, model and thinking-mode status. Missing key or model produces `AGENT_NOT_CONFIGURED` and no Trace.

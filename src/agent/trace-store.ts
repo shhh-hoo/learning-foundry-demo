@@ -3,10 +3,14 @@ import type {
   AgentResponseEnvelope,
   AgentRoute,
   AgentRunRequest,
+  ExecutionPlanV1,
   InputOrigin,
   RunPurpose,
   TokenUsage,
 } from "./types";
+import type { ApplicationResponseDisposition, CapabilityResolutionResult, ContextSelectionDecision, EvidenceSufficiencyAssessment, FinalTerminalCondition, GovernedWorkflowTrace, TerminalToolRejection, ToolBudgetConsumption, ToolPhaseState } from "./control-plane/observability";
+
+export const AGENT_RUN_SCHEMA_VERSION = "1.2.0" as const;
 
 export type AgentRunStatus = "RUNNING" | "COMPLETED" | "FAILED";
 
@@ -33,6 +37,8 @@ export interface AgentRunStart {
   readonly request: AgentRunRequest;
   readonly initialRoute?: AgentRoute;
   readonly obligations?: AgentObligations;
+  readonly executionPlan?: ExecutionPlanV1;
+  readonly contextSelection?: ContextSelectionDecision;
   readonly provider: string;
   readonly model: string;
   readonly thinkingMode: "enabled" | "disabled";
@@ -52,13 +58,24 @@ export interface PersistedToolExecution {
 }
 
 export interface PersistedAgentRun extends AgentRunStart {
-  readonly schemaVersion: "1.0.0";
+  readonly schemaVersion: "1.0.0" | "1.1.0" | typeof AGENT_RUN_SCHEMA_VERSION;
   readonly status: AgentRunStatus;
   readonly observableModelMessages: readonly ObservableAgentMessage[];
   readonly toolExecutions: readonly PersistedToolExecution[];
   readonly tokenUsage?: TokenUsage;
   readonly finalResponse?: AgentResponseEnvelope;
   readonly route?: AgentRoute;
+  readonly budgetConsumption?: readonly ToolBudgetConsumption[];
+  readonly evidenceAssessments?: readonly EvidenceSufficiencyAssessment[];
+  readonly stopReason?: string;
+  readonly governedWorkflow?: GovernedWorkflowTrace;
+  readonly applicationResponseDisposition?: ApplicationResponseDisposition;
+  readonly capabilityResolution?: CapabilityResolutionResult;
+  readonly terminalToolRejection?: TerminalToolRejection;
+  readonly toolPhase?: ToolPhaseState;
+  readonly responseOnlyCorrectionCount?: number;
+  readonly deterministicFallbackUsed?: boolean;
+  readonly finalTerminalCondition?: FinalTerminalCondition;
   readonly completedAt?: string;
   readonly updatedAt: string;
   readonly terminalError?: { readonly code: string; readonly message: string };
@@ -73,13 +90,27 @@ export interface AgentRunQuery {
   readonly startedTo?: string;
 }
 
+export interface AgentRunObservability {
+  readonly budgetConsumption?: readonly ToolBudgetConsumption[];
+  readonly evidenceAssessments?: readonly EvidenceSufficiencyAssessment[];
+  readonly stopReason?: string;
+  readonly governedWorkflow?: GovernedWorkflowTrace;
+  readonly applicationResponseDisposition?: ApplicationResponseDisposition;
+  readonly capabilityResolution?: CapabilityResolutionResult;
+  readonly terminalToolRejection?: TerminalToolRejection;
+  readonly toolPhase?: ToolPhaseState;
+  readonly responseOnlyCorrectionCount?: number;
+  readonly deterministicFallbackUsed?: boolean;
+  readonly finalTerminalCondition?: FinalTerminalCondition;
+}
+
 export interface AgentTraceStore {
   start(input: AgentRunStart): Promise<void>;
   get(traceId: string): Promise<PersistedAgentRun | null>;
   appendModelResponse(traceId: string, message: ObservableAgentMessage, usage?: TokenUsage): Promise<void>;
   appendToolExecution(traceId: string, execution: PersistedToolExecution): Promise<void>;
-  complete(traceId: string, finalResponse: AgentResponseEnvelope, completedAt: string, route?: AgentRoute): Promise<void>;
-  fail(traceId: string, terminalError: { readonly code: string; readonly message: string }, completedAt: string): Promise<void>;
+  complete(traceId: string, finalResponse: AgentResponseEnvelope, completedAt: string, route?: AgentRoute, observability?: AgentRunObservability): Promise<void>;
+  fail(traceId: string, terminalError: { readonly code: string; readonly message: string }, completedAt: string, observability?: AgentRunObservability): Promise<void>;
   query(query?: AgentRunQuery): Promise<readonly PersistedAgentRun[]>;
   clear(): Promise<void>;
 }

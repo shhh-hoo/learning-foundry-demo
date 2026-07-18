@@ -45,6 +45,11 @@ const searchSchema = z.object({
   learningOutcomeId: z.string().optional(),
   sourceType: z.enum(["OFFICIAL_SYLLABUS", "SECONDARY_REFERENCE", "TEACHER_NOTE", "STRUCTURED_CASE"]).optional(),
   distributionScope: z.enum(["SCHOOL_INTERNAL", "PUBLIC"]).optional(),
+  retrievalJustification: z.object({
+    priorAssessmentId: z.string().min(1),
+    missingAspect: z.string().min(1),
+    expectedCoverageGain: z.string().min(1),
+  }).strict().optional(),
 }).strict();
 const capabilitySchema = z.object({ id: z.string().min(1) }).strict();
 const diagnosisSchema = z.object({
@@ -180,7 +185,7 @@ export function createAgentToolExecutor(options: ToolExecutorOptions): AgentTool
     async execute(name, value): Promise<AgentToolResult> {
       if (name === "search_learning_resources") {
         const input = searchSchema.parse(value);
-        const { query, ...filters } = input;
+        const { query, retrievalJustification: _retrievalJustification, ...filters } = input;
         const governedFilters = canonicalCourseSearchFilters(options.currentUserMessage ?? "", filters);
         const result = await options.corpus.search(query, governedFilters, { conversationId: options.conversationId, conversationEvidenceHash: options.conversationEvidenceHash, route: "COURSE_RETRIEVAL" });
         if (!options.corpusDeliveryPolicy || !options.provider || !options.runPurpose) throw new ToolBoundaryError("CORPUS_DELIVERY_POLICY_REQUIRED", "Corpus excerpts require an explicit provider, purpose and versioned delivery policy.");
