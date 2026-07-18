@@ -18,15 +18,19 @@ authority changes in this PR.
 ## Public Interfaces and deep Modules
 
 - `ExecutionPlanV1` is the immutable, domain-neutral execution contract.
-- `ContextCompiler` records selected and excluded message indexes and
-  reasons without copying message content into the Plan.
+- `TaskLocalContextFilterV1` (exported as `ContextCompiler` for the public
+  contract) records lifecycle/task-selected and excluded message indexes
+  without copying message content into the Plan. Trace fields explicitly
+  mark semantic relevance as `NOT_IMPLEMENTED`.
 - `ExecutionPlanner` owns intent, execution mode, Legacy route and
   obligation projections, tool availability, per-tool budgets, terminal
   conditions and Evidence requirements.
 - `EvidenceSufficiencyAssessor` distinguishes execution failure, no result,
   low relevance, partial coverage and sufficient Evidence.
-- `DiagnosisWorkflow` owns the fixed inspection, resolution, provenance,
-  Attempt, capability, persisted-result and response order.
+- `DiagnosisSequenceGovernor` owns which Diagnosis tool may be exposed next
+  and prevents reordering. The model still supplies tool calls and arguments;
+  provenance, Attempt and persisted-result checks remain in the governed tool
+  Adapter. This is not a deterministic application executor.
 
 These Modules have one Implementation. No speculative Adapter Seam was
 introduced. Their small Interfaces concentrate policy and provide
@@ -41,7 +45,7 @@ Leverage and Locality to the gateway, runtime evidence and tests.
 - Exact and near-duplicate calls are rejected before execution.
 - Every permitted tool has a Plan-owned call budget.
 - Tool transport success is assessed separately from educational Evidence.
-- Complete Diagnosis exposes only the next application-owned step; a
+- Complete Diagnosis exposes only the next application-governed step; a
   governed execution failure blocks later steps.
 - Context selection happens before model messages are assembled.
 - The regression fixture contains observed failure shapes; production
@@ -101,8 +105,16 @@ message content or source bytes.
 - Existing clients do not yet send canonical Task/Episode metadata. Without
   it, Context history is treated as task-local for compatibility; explicit
   metadata activates stale, superseded and other-Task exclusion.
-- Evidence sufficiency currently uses deterministic result metadata. It is
-  not a semantic retrieval grader or retrieval-engine benchmark.
+- The Task-local bootstrap does not implement Topic-shift detection, semantic
+  relevance or a token budget. Long metadata-free history remains selected;
+  therefore Context contamination is not claimed solved.
+- Evidence sufficiency fails closed on missing/nonpositive relevance scores,
+  incomplete citation lineage, declared missing aspects and contamination.
+  A positive lexical score is still only a baseline topical signal; there is
+  no semantic reranker/grader or requested-aspect coverage grader in this PR.
+- Diagnosis tool calls and arguments remain model-generated. The application
+  governs the sequence and validates each execution boundary, but does not
+  directly execute a fully deterministic workflow in this PR.
 - The current Legacy tool descriptions and capability Adapter still contain
   Chemistry Reference Pack shapes; this PR does not claim Core/Pack
   extraction.

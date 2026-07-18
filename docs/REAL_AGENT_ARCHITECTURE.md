@@ -11,9 +11,10 @@ per-tool budgets, terminal conditions and Evidence requirements.
 
 The bounded Agent runtime executes that Plan. It does not classify intent,
 increase budgets or treat successful transport as sufficient Evidence.
-Known-order complete Diagnosis is application-owned through
-`DiagnosisWorkflow`; the model can supply structured arguments and compose
-the learner response but cannot skip or reorder governed steps.
+Known-order complete Diagnosis is application-sequenced through
+`DiagnosisSequenceGovernor`; the model still supplies structured tool calls
+and arguments and composes the learner response, but cannot skip or reorder
+governed steps. This is not yet a deterministic application executor.
 
 Agent schema `1.1.0` and runtime schema `1.2.0` record Plan and Context
 indexes, budget consumption, Evidence assessments, stop reasons and workflow

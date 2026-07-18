@@ -24,6 +24,18 @@ type LaunchAuthorization =
   | { readonly ok: true; readonly component: GovernedExternalLearningComponent; readonly url: string }
   | { readonly ok: false; readonly reason: ExternalLaunchDenialReason };
 
+export class ExternalLaunchTerminalTelemetryError extends Error {
+  readonly requestId: string;
+  readonly observedWindowStatus: "WINDOW_CREATED" | "POPUP_BLOCKED";
+
+  constructor(requestId: string, observedWindowStatus: "WINDOW_CREATED" | "POPUP_BLOCKED", cause: unknown) {
+    super(`External launch ${requestId} observed ${observedWindowStatus}, but terminal telemetry could not be appended.`, { cause });
+    this.name = "ExternalLaunchTerminalTelemetryError";
+    this.requestId = requestId;
+    this.observedWindowStatus = observedWindowStatus;
+  }
+}
+
 function defaultRequestId(): string {
   return `external-launch-${globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)}`;
 }
@@ -81,12 +93,19 @@ export class ExternalComponentService {
       opened = null;
     }
     const status = opened ? "WINDOW_CREATED" : "POPUP_BLOCKED";
-    await this.telemetryRepository.append({
-      ...common,
-      eventId: `${requestId}:terminal`,
-      occurredAt: this.now(),
-      type: status,
-    });
+    try {
+      await this.telemetryRepository.append({
+        ...common,
+        eventId: `${requestId}:terminal`,
+        occurredAt: this.now(),
+        type: status,
+      });
+    } catch (cause) {
+      // The already-appended request is intentionally retained. A browser
+      // window cannot be undone, so callers receive the observed operational
+      // state without any claim that terminal telemetry was preserved.
+      throw new ExternalLaunchTerminalTelemetryError(requestId, status, cause);
+    }
     return { status, requestId };
   }
 }

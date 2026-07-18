@@ -41,6 +41,8 @@ export type ContextExclusionReason = "OTHER_TASK" | "STALE" | "SUPERSEDED" | "OU
 
 export interface ContextSelectionDecision {
   readonly schemaVersion: "1.0.0";
+  readonly contextPolicyId: "TASK_LOCAL_CONTEXT_FILTER";
+  readonly semanticRelevance: "NOT_IMPLEMENTED";
   readonly activeTaskId?: string;
   readonly activeEpisodeId?: string;
   readonly candidateMessageIndexes: readonly number[];
