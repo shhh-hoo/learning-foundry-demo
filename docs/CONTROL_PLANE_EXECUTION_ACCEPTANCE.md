@@ -94,7 +94,7 @@ Standard Trainer. The separate delivery gate used corpus delivery policy
 `1.0.0`, which authorizes provider `deepseek`, purpose `AGENT_EVAL`, scope
 `SCHOOL_INTERNAL` and the four governed source types present in the policy.
 
-| Manifest attempt | Eval run ID | Result | Preserved review |
+| Manifest attempt | Eval run ID | Result | Preserved assessment |
 | --- | --- | --- | --- |
 | `control-plane-checkpoint-01` | `agenteval-2026-07-18T08-38-32-537Z-92f5e7ce` | 5/6 | `B-incomplete-working`: response did not explicitly name missing Evidence |
 | `control-plane-checkpoint-02` | `agenteval-2026-07-18T08-40-04-309Z-d028c7f1` | 5/6 | same grader difference; independent first attempt, not a replacement |
