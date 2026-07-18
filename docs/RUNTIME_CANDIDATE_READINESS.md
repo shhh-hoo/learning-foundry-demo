@@ -1,12 +1,19 @@
 # Runtime candidate readiness memo
 
-Docs authority: `learning-foundry-docs@e6ec2408d18fc6850e92c996b36712dbd5be9df5`
+Docs authority: `learning-foundry-docs@260747722e8040972deceed3290bce237676f225`
 
-Assessment basis: parity implementation `2653544e5bc78168a64e91c1d6eaab4c2b081bc5` stacked on shadow foundation `21b1208e8b520c62696b71dba0902c5c76851453`.
+Assessment basis: the current stable runtime boundary, shadow and parity
+foundation plus the separately reviewed AI SDK 7 transport candidate described in
+`AI_SDK_RUNTIME_CANDIDATE_ACCEPTANCE.md`.
 
 ## Decision
 
-The Foundry-owned harness is ready to receive one candidate `RuntimeExecutor` adapter in a later, separately reviewed PR. The system is not ready to grant candidate authority because no candidate is installed or evaluated.
+One real AI SDK 7 DeepSeek model/provider transport candidate is installed
+behind a `RuntimeExecutor`-shaped default-off shadow boundary. The existing
+handwritten `runAgent` still owns the tool loop; no AI SDK loop candidate is
+installed or evaluated. The system is not ready to grant candidate
+authority because live checkpoint, reliability, baseline and parity
+evidence have not been executed.
 
 ## Ready prerequisites
 
@@ -43,12 +50,20 @@ The candidate PR must not move route resolution, obligations, tool policy, corpu
 
 ## Current blockers
 
-- No candidate executor or candidate framework dependency exists.
-- Therefore candidate checkpoint and baseline parity are both unexecuted.
+- The implementation-time environment had no DeepSeek key/model or
+  governed corpus index.
+- Candidate checkpoint, repeated-run reliability and baseline parity are
+  therefore unexecuted.
+- The transport candidate does not test replacement of the handwritten Agent
+  loop and cannot support an orchestration-authority or deletion decision.
 - The live Legacy baseline remains stochastic and currently has two quality failures; parity must not be used to conceal them.
 - Corrected-head live evidence shows provider variance across two consecutive checkpoint runs (5/6, then 6/6); candidate reliability evidence must therefore use repeated runs rather than selecting a favorable sample.
 - No candidate authority, release-gate authority or Legacy-deletion authority has been granted.
 
-## Recommended next PR
+## Recommended next action
 
-Add exactly one default-off candidate adapter behind `RuntimeExecutor`, with no policy migration and no product authority. Run checkpoint first. Stop and report if candidate evidence is unavailable, if any case is missing, or if infrastructure failure prevents comparison. Baseline follows only after checkpoint evidence is reviewable.
+Run the committed candidate manifest in an authorized environment. Preserve
+all three checkpoint and two baseline attempts, then produce the case-level
+decision report. Stop and report if any case is unexplained or if an
+infrastructure failure prevents comparison. Do not grant authority in the
+evidence-collection change.

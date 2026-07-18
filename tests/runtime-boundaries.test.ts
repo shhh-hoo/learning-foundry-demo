@@ -13,12 +13,13 @@ describe("replaceable runtime boundaries", () => {
         : Response.json({ ok: true, diagnosis: { traceId: "trainer-trace" } });
     });
 
+    const signal = new AbortController().signal;
     await expect(runtime.execute({
       capabilityId: "any-learning-capability",
       capabilityVersion: "1.0.0",
       input: { componentId: "any-learning-capability", componentVersion: "1.0.0", learnerAttempt: "evidenced input" },
       runPurpose: "PRODUCT",
-    })).resolves.toEqual({ traceId: "trainer-trace", result: { traceId: "trainer-trace", decision: "SOLVED" } });
+    }, signal)).resolves.toEqual({ traceId: "trainer-trace", result: { traceId: "trainer-trace", decision: "SOLVED" } });
     expect(requests.map((item) => [item.url, item.init?.method])).toEqual([
       ["http://127.0.0.1:4177/diagnose", "POST"],
       ["http://127.0.0.1:4177/diagnoses/trainer-trace", undefined],
@@ -29,6 +30,7 @@ describe("replaceable runtime boundaries", () => {
       componentVersion: "1.0.0",
       runPurpose: "PRODUCT",
     });
+    expect(requests.map((item) => item.init?.signal)).toEqual([signal, signal]);
   });
 
   it("preserves AGENT_EVAL purpose when the optional capability version is omitted", async () => {
@@ -56,6 +58,25 @@ describe("replaceable runtime boundaries", () => {
 
     expect(requests).toEqual(["http://127.0.0.1:4177/health"]);
     expect(health).toEqual({ diagnosisEndpointHash: trainerDiagnosisEndpointHash(diagnosisUrl), ready: true, service: "trainer-diagnosis-api", governedCaseCount: 5 });
+  });
+
+  it("marks shadow capability evidence and cancels an in-flight Trainer write", async () => {
+    let payload: Record<string, unknown> | undefined;
+    let writeStarted!: () => void;
+    const started = new Promise<void>((resolve) => { writeStarted = resolve; });
+    const runtime = new LegacyTrainerCapabilityRuntime("http://127.0.0.1:4277/diagnose", async (_input, init) => {
+      payload = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      writeStarted();
+      await new Promise<void>((_resolve, reject) => init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true }));
+      throw new Error("unreachable");
+    });
+    const controller = new AbortController();
+    const execution = runtime.execute({ capabilityId: "capability", input: {}, runPurpose: "AGENT_EVAL", executionRole: "SHADOW" }, controller.signal);
+    await started;
+    controller.abort(new Error("shadow timeout"));
+
+    await expect(execution).rejects.toThrow("shadow timeout");
+    expect(payload).toMatchObject({ runPurpose: "AGENT_EVAL", executionRole: "SHADOW" });
   });
 
   it("preserves the structured failure when a Legacy Trainer trace cannot be resolved", async () => {

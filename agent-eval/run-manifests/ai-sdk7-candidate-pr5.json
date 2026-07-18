@@ -1,0 +1,112 @@
+{
+  "schemaVersion": "1.0.0",
+  "manifestId": "ai-sdk7-candidate-pr5-live-evidence",
+  "docsAuthority": "learning-foundry-docs@260747722e8040972deceed3290bce237676f225",
+  "implementationRef": "CONTENT_HASHED_SNAPSHOT",
+  "implementationFiles": {
+    "src/runtime/ai-sdk-runtime-executor.ts": "27b70050907a1a8d2340725fee9e3e0afd86a4e0dde04df229260c955c542edc",
+    "scripts/agent-gateway-server.ts": "2685c1db0eed91dd5b64a376d9029ecdf0e06bacc62c50f3b13a2982103e4d1a",
+    "src/runtime/runtime-shadow.ts": "1dc679df7c27a4e3dae5012fb445343f10b4ffe3679c6d6187c9338c78f3c50d",
+    "src/agent/run-agent.ts": "0604820fa232f55e71aa7b4afb9cd5e9e34007307dce122fc3e847a84fe31af1",
+    "src/agent/tool-executor.ts": "c28f1f6faebd55ef3fd2bc9b667df41e14ef7df38dc197a4e89fa7f1794ff57e",
+    "src/runtime/learning-capability-runtime.ts": "4f513063b2fccda90ac985d2d04ce90bac51038dacc3a87558718ecafb2427c2",
+    "scripts/lib/corpus-repository.ts": "b848808b13eb359d960928f05a916df43c1045fbac1083b40d622671953c0cfc",
+    "package-lock.json": "9b5abdd3e61bc20f37926095e2a4ef21779e6f3b7d46d515433c58d6ed6689e4"
+  },
+  "status": "PLANNED_NOT_EXECUTED",
+  "candidateHypothesis": "AI_SDK_DEEPSEEK_MODEL_PROVIDER_TRANSPORT",
+  "candidate": {
+    "adapterId": "ai-sdk7-deepseek-transport",
+    "adapterVersion": "1.0.0",
+    "authority": "NOT_GRANTED",
+    "packages": {
+      "ai": "7.0.31",
+      "@ai-sdk/deepseek": "3.0.12"
+    }
+  },
+  "modelConfiguration": {
+    "provider": "deepseek",
+    "model": "deepseek-chat",
+    "thinkingMode": "disabled",
+    "sampling": {
+      "temperature": "PROVIDER_DEFAULT_NOT_SENT",
+      "topP": "PROVIDER_DEFAULT_NOT_SENT",
+      "seed": "UNSUPPORTED_NOT_SENT",
+      "maximumOutputTokens": 1800
+    },
+    "aiSdkMaxRetries": 0
+  },
+  "preconditions": {
+    "technicalEnvironment": [
+      "DEEPSEEK_API_KEY and DEEPSEEK_MODEL configured server-side",
+      "governed corpus index available",
+      "Component Registry and Trainer services healthy",
+      "SHADOW_TRAINER_DIAGNOSIS_URL points to a separately persisted non-authoritative Trainer endpoint",
+      "RUNTIME_SHADOW_MODE=enabled"
+    ],
+    "deliveryAuthorization": [
+      "provider deepseek approved",
+      "purpose AGENT_EVAL approved",
+      "distribution scope SCHOOL_INTERNAL approved",
+      "every delivered source type approved"
+    ]
+  },
+  "checkpoint": {
+    "selection": "CHECKPOINT",
+    "caseIds": [
+      "A-course-explanation",
+      "B-incomplete-working",
+      "C-complete-registered-diagnosis",
+      "D-multi-stage-capability-gap",
+      "E-correct-registered-diagnosis",
+      "F-adversarial-no-fabrication"
+    ],
+    "attempts": [
+      { "attemptId": "ai-sdk7-checkpoint-01", "replacementFor": null },
+      { "attemptId": "ai-sdk7-checkpoint-02", "replacementFor": null },
+      { "attemptId": "ai-sdk7-checkpoint-03", "replacementFor": null }
+    ]
+  },
+  "baseline": {
+    "selection": "BASELINE",
+    "contract": "agent-eval/baselines/1.2.0-contract.jsonl",
+    "caseIds": [
+      "retrieval-01",
+      "retrieval-02",
+      "retrieval-03",
+      "retrieval-04",
+      "retrieval-05",
+      "diagnosis-invented-context-01",
+      "diagnosis-01",
+      "diagnosis-02",
+      "diagnosis-missing-context-01",
+      "diagnosis-04",
+      "diagnosis-05",
+      "diagnosis-06",
+      "gap-01",
+      "gap-02",
+      "gap-03",
+      "gap-04",
+      "adversarial-01",
+      "adversarial-02"
+    ],
+    "attempts": [
+      { "attemptId": "ai-sdk7-baseline-01", "replacementFor": null },
+      { "attemptId": "ai-sdk7-baseline-02", "replacementFor": null }
+    ]
+  },
+  "replacementPolicy": {
+    "modelQualityFailure": "NO_REPLACEMENT",
+    "policyOrEvidenceIntegrityFailure": "NO_REPLACEMENT",
+    "classifiedInfrastructureFailure": "ONE_LINKED_REPLACEMENT_PER_FAILED_ATTEMPT",
+    "preserveOriginalFailure": true,
+    "preserveReplacementLineage": true,
+    "favorableResampling": false
+  },
+  "hardGates": [
+    "zero unexplained missing cases",
+    "zero new policy, provenance or Evidence-integrity regression",
+    "zero tool-budget or terminal-condition violation",
+    "every behavioral, quality and operational difference classified"
+  ]
+}

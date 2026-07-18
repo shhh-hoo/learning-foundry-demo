@@ -3,7 +3,7 @@
   "experimentId": "learning-foundry-value-benchmark",
   "experimentVersion": "1.0.0",
   "docsAuthority": "learning-foundry-docs@260747722e8040972deceed3290bce237676f225",
-  "implementationCommit": "2ba26aa204f4039b76fe32984d2b0867e20076d2",
+  "implementationCommit": "4561e5e7323c3db848366ae69a309d440f743cfd",
   "runId": "foundry-value-benchmark-1.0.0-live-01",
   "encoding": {
     "charset": "UTF-8",
@@ -1032,18 +1032,18 @@
       },
       {
         "path": "package-lock.json",
-        "bytes": 174495,
-        "sha256": "6601275327663e4b7a5c17ac59f951f3b2837e0b04b7fa1f3fa50f45d294b287"
+        "bytes": 178595,
+        "sha256": "9b5abdd3e61bc20f37926095e2a4ef21779e6f3b7d46d515433c58d6ed6689e4"
       },
       {
         "path": "package.json",
-        "bytes": 3451,
-        "sha256": "acbf0c6183e3d0a0bc3d04e42f324d16d21c4952e5d36a2a4c5320ab5ab546d7"
+        "bytes": 3505,
+        "sha256": "f953ce255eb7ed696dbb95c57c944bd04e0a51b0e49e7a6ca0cd4adf1dee9cc5"
       },
       {
         "path": "scripts/agent-gateway-server.ts",
-        "bytes": 11050,
-        "sha256": "9c632b6f636e75def4e9deda6a5b6f0271300da224a7b1f4963ee7130cb622a5"
+        "bytes": 13269,
+        "sha256": "2685c1db0eed91dd5b64a376d9029ecdf0e06bacc62c50f3b13a2982103e4d1a"
       },
       {
         "path": "scripts/lib/agent-trace-repository.ts",
@@ -1052,8 +1052,8 @@
       },
       {
         "path": "scripts/lib/corpus-repository.ts",
-        "bytes": 10874,
-        "sha256": "1f5e21a6f22f5551276c97ef2f3269b540260a231c9ada06031535b07693216b"
+        "bytes": 11049,
+        "sha256": "b848808b13eb359d960928f05a916df43c1045fbac1083b40d622671953c0cfc"
       },
       {
         "path": "scripts/lib/runtime-execution-recorder.ts",
@@ -1152,8 +1152,8 @@
       },
       {
         "path": "src/agent/tool-executor.ts",
-        "bytes": 16013,
-        "sha256": "13eab8acc7329b5fc95004bd447bdcbf4883ac7c3640b1b81b45cb6e1ab5d371"
+        "bytes": 16220,
+        "sha256": "c28f1f6faebd55ef3fd2bc9b667df41e14ef7df38dc197a4e89fa7f1794ff57e"
       },
       {
         "path": "src/agent/trace-store.ts",
@@ -1222,8 +1222,8 @@
       },
       {
         "path": "src/core/ports/learning-capability-runtime.ts",
-        "bytes": 564,
-        "sha256": "984d9a3efa315b01e6f4383bfa77fdfe01c4ba99f5d0ed5ec72a88bd21142bad"
+        "bytes": 619,
+        "sha256": "e54b63da8b73b3fcd547839d8e86121974e5e308761c6af754f835f22be3abd2"
       },
       {
         "path": "src/corpus/delivery-policy.ts",
@@ -1232,8 +1232,8 @@
       },
       {
         "path": "src/corpus/types.ts",
-        "bytes": 3049,
-        "sha256": "f7fcf282b9bdb2755a956d3cb35bcb4c5eb7dbbdcd9908e0d8a3b3abd439482f"
+        "bytes": 3102,
+        "sha256": "8353adbc9441b9644986eb074a8e057f32a6d2a7c9050d983042b6851d882638"
       },
       {
         "path": "src/governance/content-hash.ts",
@@ -1271,9 +1271,14 @@
         "sha256": "6873695213c6669526f160332a48bf30a9120ccc8acf0e2335f7c08730a5cc26"
       },
       {
+        "path": "src/runtime/ai-sdk-runtime-executor.ts",
+        "bytes": 11140,
+        "sha256": "27b70050907a1a8d2340725fee9e3e0afd86a4e0dde04df229260c955c542edc"
+      },
+      {
         "path": "src/runtime/learning-capability-runtime.ts",
-        "bytes": 4946,
-        "sha256": "5929b2a97822023e884c980f8bc3366d383d1d1c46468ebf12c2dff8b637576f"
+        "bytes": 5034,
+        "sha256": "4f513063b2fccda90ac985d2d04ce90bac51038dacc3a87558718ecafb2427c2"
       },
       {
         "path": "src/runtime/runtime-shadow.ts",
@@ -1321,7 +1326,7 @@
         "sha256": "f21c00f9a7b7665ec7ba6e34bc2a432067b8bafdbc8a916db59666dade515ae1"
       }
     ],
-    "closureSha256": "7e5aff199c3092ccad9ed41f5908a73f9eb79e8528a24c1e8ce1685314aa6684"
+    "closureSha256": "3fb85615a24b4e2d0252e0e7f367e37202299b52ecce8a0667de0f4ce6c36d02"
   },
   "policySnapshots": {
     "agentInstructions": "config/agent/instructions.md@sha256:b074582b43912167c666922a885f3b1e7665da51da9d6d98f8ff8f922f3dbc2b",

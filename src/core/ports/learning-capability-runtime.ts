@@ -5,6 +5,7 @@ export interface LearningCapabilityExecution {
   readonly capabilityVersion?: string;
   readonly input: Record<string, unknown>;
   readonly runPurpose: CapabilityRunPurpose;
+  readonly executionRole?: "AUTHORITATIVE" | "SHADOW";
 }
 
 export interface LearningCapabilityExecutionResult {

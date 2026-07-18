@@ -80,6 +80,7 @@ export class LegacyTrainerCapabilityRuntime implements LearningCapabilityRuntime
         componentId: execution.capabilityId,
         ...(execution.capabilityVersion === undefined ? {} : { componentVersion: execution.capabilityVersion }),
         runPurpose: execution.runPurpose,
+        ...(execution.executionRole ? { executionRole: execution.executionRole } : {}),
       }),
       ...(signal ? { signal } : {}),
     });

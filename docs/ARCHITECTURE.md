@@ -2,7 +2,7 @@
 
 The current architecture is documented in [REAL_AGENT_ARCHITECTURE.md](REAL_AGENT_ARCHITECTURE.md). The browser owns presentation and user-confirmed local product records. DeepSeek credentials and model calls remain in the server-side Agent Gateway. Deterministic learner diagnosis remains owned by Standard Trainer.
 
-Runtime replacement work is layered: [runtime boundaries](RUNTIME_BOUNDARY_ACCEPTANCE.md) retain Legacy authority, the [shadow foundation](RUNTIME_SHADOW_FOUNDATION_ACCEPTANCE.md) isolates a future candidate, and the [case-level parity harness](RUNTIME_PARITY_ACCEPTANCE.md) compares observable evidence using existing AgentEval cases and graders. None of these layers grants candidate authority or changes release policy.
+Runtime replacement work is layered: [runtime boundaries](RUNTIME_BOUNDARY_ACCEPTANCE.md) retain Legacy authority, the [shadow foundation](RUNTIME_SHADOW_FOUNDATION_ACCEPTANCE.md) isolates a candidate, and the [case-level parity harness](RUNTIME_PARITY_ACCEPTANCE.md) compares observable evidence using existing AgentEval cases and graders. The [AI SDK 7 DeepSeek transport candidate](AI_SDK_RUNTIME_CANDIDATE_ACCEPTANCE.md) is installed default-off and has offline evidence only; the handwritten Agent loop remains in place. None of these layers grants candidate authority or changes release policy.
 
 The current ownership model is:
 

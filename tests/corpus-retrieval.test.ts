@@ -74,6 +74,14 @@ describe("governed corpus retrieval", () => {
     expect(trace).not.toMatch(/api.?key|authorization|Bearer|private-sources/iu);
   });
 
+  it("keeps shadow retrieval traces out of the authoritative trace namespace", async () => {
+    const { root, repository } = await fixtureRepository();
+    const result = await repository.search("coefficients mole ratio", { calculationFamilyId: "CORE-001" }, { executionRole: "SHADOW" });
+
+    await expect(readFile(join(root, ".local-data/corpus/shadow-retrieval-traces", `${result.retrievalTraceId}.json`), "utf8")).resolves.toContain('"executionRole": "SHADOW"');
+    await expect(readFile(join(root, ".local-data/corpus/retrieval-traces", `${result.retrievalTraceId}.json`), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
   it("redacts credentials from a retrieval query before trace persistence", async () => {
     const { root, repository } = await fixtureRepository();
     const result = await repository.search("coefficients Authorization: Bearer private-secret-value sk-private-secret-value", { examBoard: "CAIE", syllabusCode: "9701" });
