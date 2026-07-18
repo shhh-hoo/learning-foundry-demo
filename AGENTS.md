@@ -4,7 +4,7 @@
 
 The architecture and product source of truth is:
 
-`learning-foundry-docs@89c7c21dfb09ecd042070e823b2505f3a73f8169`
+`learning-foundry-docs@260747722e8040972deceed3290bce237676f225`
 
 Before architecture, runtime, Eval, Retrieval, Product State, Component,
 Reference Pack or governance work, read the following documents at that
@@ -18,6 +18,7 @@ authority commit:
 6. `docs/16-engineering-history-and-decision-rationale.md`
 7. `docs/09-eval-and-governance.md`
 8. `docs/13-design-debt-and-phasing.md`
+9. `docs/17-build-buy-partner-and-external-components.md`
 
 The current implementation baseline is:
 
@@ -496,9 +497,14 @@ Do not auto-merge:
 - automated Component publication;
 - TeacherReview or LearningOutcome automation.
 
-Every architecture-boundary or candidate-runtime PR must include:
+Every architecture-boundary, candidate-runtime, Product State, Reference
+Pack or external-learning-component PR must cite the applicable Doc 17
+sections and include:
 
-`Docs authority: learning-foundry-docs@89c7c21dfb09ecd042070e823b2505f3a73f8169`
+`Docs authority: learning-foundry-docs@260747722e8040972deceed3290bce237676f225`
+
+It must also state the implementation lane, authority changes (including
+`NONE`), live evidence actually collected, rollback, and known limitations.
 
 A candidate PR must also state:
 

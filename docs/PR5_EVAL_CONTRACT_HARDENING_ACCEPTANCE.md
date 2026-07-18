@@ -1,8 +1,8 @@
-# PR #5 Eval Contract Hardening acceptance
+# PR #5 AgentEval Contract Hardening acceptance
 
 Date: 2026-07-16
 
-Branch: `codex/eval-contract-hardening`
+Branch: historical AgentEval contract-hardening branch
 
 ## Automated checks
 
@@ -13,7 +13,7 @@ npm run build  PASS
 git diff --check PASS
 ```
 
-These checks protect the versioned `1.2.0` behavioral baseline, the formal suite-layer and evaluation-dimension taxonomy, selection-aware reporting, and the separation of supported-input generalization from capability-boundary compliance.
+These checks protect the versioned `1.2.0` behavioral baseline, the formal suite-layer and assessment-dimension taxonomy, selection-aware reporting, and the separation of supported-input generalization from capability-boundary compliance.
 
 ## Live checkpoint
 
