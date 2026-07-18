@@ -20,7 +20,7 @@
     {
       "caseId": "unsupported-capability-inspection-remains-orthogonal",
       "input": "Can your current tools diagnose an arbitrary proof from a diagram I did not attach?",
-      "expectedIntent": "CONCRETE_CALCULATION",
+      "expectedIntent": "CAPABILITY_DISCOVERY",
       "expectedRoute": "SOLVE_WITH_CHECKS",
       "requiredTools": ["list_capabilities"],
       "forbiddenTools": ["run_learner_diagnosis"]
