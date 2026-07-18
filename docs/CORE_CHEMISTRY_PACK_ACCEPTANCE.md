@@ -130,23 +130,23 @@ npm run policy:audit
 git diff --check
 ```
 
-Recorded result at this branch head:
+After PRs #14–#16 were merged, current `main` was integrated without
+rewriting the reviewed Core / Pack commits. Recorded result at integration
+snapshot `1aa8c0a`:
 
 ```text
 npm run core:leakage  2/2 passed; zero Core violations; allowlist 0/0
-npm test              38 files, 249 tests passed after PR 1 integration
+npm test              41 files, 286 tests passed
 npm run check         passed
 npm run build         passed
 npm run export:components  passed; immutable export files unchanged
-npm run runtime:parity:fixture  EXACT_MATCH after PR 1 integration
+npm run policy:audit  passed
+npm run runtime:parity:fixture  EXACT_MATCH
 git diff --check      passed
 ```
 
-`npm run policy:audit` reports no new finding in this PR's production or
-documentation files and exits successfully. The authority-sync base
-already contains twelve reported terminology findings in historical
-acceptance prose, the Wave contract and one existing AgentEval test. This
-PR does not weaken the audit or rewrite unrelated historical records.
+The post-integration checks added no model attempt and did not modify any
+AgentEval case, grader, Component bytes, ID, version or content hash.
 
 No live model run is required: this PR changes ownership and type/runtime
 entrypoint wiring without changing Agent behavior. Fixture evidence is not
