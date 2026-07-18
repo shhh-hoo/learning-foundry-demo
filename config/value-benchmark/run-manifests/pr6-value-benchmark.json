@@ -3,7 +3,7 @@
   "experimentId": "learning-foundry-value-benchmark",
   "experimentVersion": "1.0.0",
   "docsAuthority": "learning-foundry-docs@260747722e8040972deceed3290bce237676f225",
-  "implementationCommit": "5b247340d1250f376782d19fc3527e4810853945",
+  "implementationCommit": "a4723a2ea9b72b0fbdfbd25b3e97dbb69fe726e0",
   "runId": "foundry-value-benchmark-1.0.0-live-01",
   "encoding": {
     "charset": "UTF-8",
@@ -817,194 +817,194 @@
     "caseCompositions": [
       {
         "caseId": "VB-S01-V1",
-        "executionPlanHash": "e834f373ae65056fa4e379924f93b217098aa0244885587175021900b4ee7cc3",
-        "contextSelectionHash": "49707dfc1979bb0e6931a39de4525e6025505919fc373cf1b17586c487941226",
+        "executionPlanHash": "c7a614c5f7ac1b7ab8650370598ab7c0f7a3734bd3755588af253a027faabb9f",
+        "contextSelectionHash": "a2db4503961bf96448cee6c4c028893a467858b8d3e7ac228346df9cbc434d64",
         "selectedProviderMessagesHash": "cd7ee32fc5add2bfc5f277c8057d14402d7f3b0397b176ed0dd49ed9dee1ab21",
-        "policyOnlySystemPromptHash": "777f921bd82ef52706d62c0713ed1922ff112b93ffb020f4c44fc07cc85a028e",
+        "policyOnlySystemPromptHash": "f427b77e629936e3346dbe528672cba456c993a74f042fc72e6324db9fee8a13",
         "authoritativeSystemPromptHash": "100d4ca421af6b62bb975cc082482088d3dd049ccccd18cab13eb4d1a22cf70f"
       },
       {
         "caseId": "VB-S01-V2",
-        "executionPlanHash": "e834f373ae65056fa4e379924f93b217098aa0244885587175021900b4ee7cc3",
-        "contextSelectionHash": "49707dfc1979bb0e6931a39de4525e6025505919fc373cf1b17586c487941226",
+        "executionPlanHash": "c7a614c5f7ac1b7ab8650370598ab7c0f7a3734bd3755588af253a027faabb9f",
+        "contextSelectionHash": "a2db4503961bf96448cee6c4c028893a467858b8d3e7ac228346df9cbc434d64",
         "selectedProviderMessagesHash": "bb94dbc6f86e2b89795a0141e54e2c85c7524cdfb335065c8b9d92663789c3c8",
-        "policyOnlySystemPromptHash": "777f921bd82ef52706d62c0713ed1922ff112b93ffb020f4c44fc07cc85a028e",
+        "policyOnlySystemPromptHash": "f427b77e629936e3346dbe528672cba456c993a74f042fc72e6324db9fee8a13",
         "authoritativeSystemPromptHash": "100d4ca421af6b62bb975cc082482088d3dd049ccccd18cab13eb4d1a22cf70f"
       },
       {
         "caseId": "VB-S01-V3",
-        "executionPlanHash": "e834f373ae65056fa4e379924f93b217098aa0244885587175021900b4ee7cc3",
-        "contextSelectionHash": "49707dfc1979bb0e6931a39de4525e6025505919fc373cf1b17586c487941226",
+        "executionPlanHash": "c7a614c5f7ac1b7ab8650370598ab7c0f7a3734bd3755588af253a027faabb9f",
+        "contextSelectionHash": "a2db4503961bf96448cee6c4c028893a467858b8d3e7ac228346df9cbc434d64",
         "selectedProviderMessagesHash": "3138770d085ed0226b257fe2fa00fa6d4bc43b44fc40e2eef054c7c30adadbf3",
-        "policyOnlySystemPromptHash": "777f921bd82ef52706d62c0713ed1922ff112b93ffb020f4c44fc07cc85a028e",
+        "policyOnlySystemPromptHash": "f427b77e629936e3346dbe528672cba456c993a74f042fc72e6324db9fee8a13",
         "authoritativeSystemPromptHash": "100d4ca421af6b62bb975cc082482088d3dd049ccccd18cab13eb4d1a22cf70f"
       },
       {
         "caseId": "VB-S02-V1",
-        "executionPlanHash": "e834f373ae65056fa4e379924f93b217098aa0244885587175021900b4ee7cc3",
-        "contextSelectionHash": "49707dfc1979bb0e6931a39de4525e6025505919fc373cf1b17586c487941226",
+        "executionPlanHash": "c7a614c5f7ac1b7ab8650370598ab7c0f7a3734bd3755588af253a027faabb9f",
+        "contextSelectionHash": "a2db4503961bf96448cee6c4c028893a467858b8d3e7ac228346df9cbc434d64",
         "selectedProviderMessagesHash": "fe068f183aed36b5c0d0fd868ab15fe7101d93a58fa6f2b142f5d899260d43d5",
-        "policyOnlySystemPromptHash": "777f921bd82ef52706d62c0713ed1922ff112b93ffb020f4c44fc07cc85a028e",
+        "policyOnlySystemPromptHash": "f427b77e629936e3346dbe528672cba456c993a74f042fc72e6324db9fee8a13",
         "authoritativeSystemPromptHash": "100d4ca421af6b62bb975cc082482088d3dd049ccccd18cab13eb4d1a22cf70f"
       },
       {
         "caseId": "VB-S02-V2",
-        "executionPlanHash": "e834f373ae65056fa4e379924f93b217098aa0244885587175021900b4ee7cc3",
-        "contextSelectionHash": "49707dfc1979bb0e6931a39de4525e6025505919fc373cf1b17586c487941226",
+        "executionPlanHash": "c7a614c5f7ac1b7ab8650370598ab7c0f7a3734bd3755588af253a027faabb9f",
+        "contextSelectionHash": "a2db4503961bf96448cee6c4c028893a467858b8d3e7ac228346df9cbc434d64",
         "selectedProviderMessagesHash": "6cca0e4ddb20ec55843cf6119a71af7fe8887e8fc7c1cea5e12b8cb8df065e83",
-        "policyOnlySystemPromptHash": "777f921bd82ef52706d62c0713ed1922ff112b93ffb020f4c44fc07cc85a028e",
+        "policyOnlySystemPromptHash": "f427b77e629936e3346dbe528672cba456c993a74f042fc72e6324db9fee8a13",
         "authoritativeSystemPromptHash": "100d4ca421af6b62bb975cc082482088d3dd049ccccd18cab13eb4d1a22cf70f"
       },
       {
         "caseId": "VB-S02-V3",
-        "executionPlanHash": "e834f373ae65056fa4e379924f93b217098aa0244885587175021900b4ee7cc3",
-        "contextSelectionHash": "49707dfc1979bb0e6931a39de4525e6025505919fc373cf1b17586c487941226",
+        "executionPlanHash": "c7a614c5f7ac1b7ab8650370598ab7c0f7a3734bd3755588af253a027faabb9f",
+        "contextSelectionHash": "a2db4503961bf96448cee6c4c028893a467858b8d3e7ac228346df9cbc434d64",
         "selectedProviderMessagesHash": "9d93d649718c84862d7b25241bca46bf15f1e34297b14d7db3e6da852970b852",
-        "policyOnlySystemPromptHash": "777f921bd82ef52706d62c0713ed1922ff112b93ffb020f4c44fc07cc85a028e",
+        "policyOnlySystemPromptHash": "f427b77e629936e3346dbe528672cba456c993a74f042fc72e6324db9fee8a13",
         "authoritativeSystemPromptHash": "100d4ca421af6b62bb975cc082482088d3dd049ccccd18cab13eb4d1a22cf70f"
       },
       {
         "caseId": "VB-S03-V1",
-        "executionPlanHash": "9adb176b368851c13514a9da910e69fcad456910599731fe6465ddad12f8f058",
-        "contextSelectionHash": "49707dfc1979bb0e6931a39de4525e6025505919fc373cf1b17586c487941226",
+        "executionPlanHash": "1f8e57eca4a5fdc39025b68d18cb4dc33ea5485616e18f1049d8da9ace444d01",
+        "contextSelectionHash": "a2db4503961bf96448cee6c4c028893a467858b8d3e7ac228346df9cbc434d64",
         "selectedProviderMessagesHash": "2ef7755fc5486e79e547ad1cb81208bb7410f9cb4c9edfafa94e19395aec74ee",
-        "policyOnlySystemPromptHash": "6e721609179fc85c980a3291f12189f398a427ee9bd75a853e91208a07bb82e0",
+        "policyOnlySystemPromptHash": "6460c61e4c7d183531e84fc0ab483835281ccb8803f70521860c624905d00faa",
         "authoritativeSystemPromptHash": "686ec4ad54124397c33263a257b2f06898f2cd5a850757338e31f3ba471b2d8a"
       },
       {
         "caseId": "VB-S03-V2",
-        "executionPlanHash": "9adb176b368851c13514a9da910e69fcad456910599731fe6465ddad12f8f058",
-        "contextSelectionHash": "49707dfc1979bb0e6931a39de4525e6025505919fc373cf1b17586c487941226",
+        "executionPlanHash": "1f8e57eca4a5fdc39025b68d18cb4dc33ea5485616e18f1049d8da9ace444d01",
+        "contextSelectionHash": "a2db4503961bf96448cee6c4c028893a467858b8d3e7ac228346df9cbc434d64",
         "selectedProviderMessagesHash": "150cd58babb26aa17d4e7b1facaae415099dc7fdddfa580fddefab3a7805c24f",
-        "policyOnlySystemPromptHash": "6e721609179fc85c980a3291f12189f398a427ee9bd75a853e91208a07bb82e0",
+        "policyOnlySystemPromptHash": "6460c61e4c7d183531e84fc0ab483835281ccb8803f70521860c624905d00faa",
         "authoritativeSystemPromptHash": "686ec4ad54124397c33263a257b2f06898f2cd5a850757338e31f3ba471b2d8a"
       },
       {
         "caseId": "VB-S03-V3",
-        "executionPlanHash": "9adb176b368851c13514a9da910e69fcad456910599731fe6465ddad12f8f058",
-        "contextSelectionHash": "49707dfc1979bb0e6931a39de4525e6025505919fc373cf1b17586c487941226",
+        "executionPlanHash": "1f8e57eca4a5fdc39025b68d18cb4dc33ea5485616e18f1049d8da9ace444d01",
+        "contextSelectionHash": "a2db4503961bf96448cee6c4c028893a467858b8d3e7ac228346df9cbc434d64",
         "selectedProviderMessagesHash": "f10ac9bba265ab6cf023b50ef497c5c11770a889b92a3896c3be78b334854152",
-        "policyOnlySystemPromptHash": "6e721609179fc85c980a3291f12189f398a427ee9bd75a853e91208a07bb82e0",
+        "policyOnlySystemPromptHash": "6460c61e4c7d183531e84fc0ab483835281ccb8803f70521860c624905d00faa",
         "authoritativeSystemPromptHash": "686ec4ad54124397c33263a257b2f06898f2cd5a850757338e31f3ba471b2d8a"
       },
       {
         "caseId": "VB-S04-V1",
-        "executionPlanHash": "546ffafe21e127190ffc4c28ccb8a51007e0faa85367ab54471be15bfd7b1f92",
-        "contextSelectionHash": "566352107708a31c41f43a2caf39123b4570cc4b0d9098d55ebe885feac5f6f2",
+        "executionPlanHash": "1f3ec6600c83b75ed94444db13394ae9b2a06e23aca5b613ab6cfc4abab9183c",
+        "contextSelectionHash": "af3c4d4e244afdc26feb6fd531de98a7cdf43dd07304dd4934343c2e338e3e9a",
         "selectedProviderMessagesHash": "3347fb310371fc670629d23a3cbc4193d4d83f6b1f8e12a4a76c0ee5f2cd9c59",
-        "policyOnlySystemPromptHash": "31bc45bd8aa3d39090f243a065ee2868f762c84471c65f856a3e773fd0142037",
+        "policyOnlySystemPromptHash": "0cde79ba90098b7f68dcaa41fe307dcad10e803e10ddbcea6be033589bdbe1d1",
         "authoritativeSystemPromptHash": "686ec4ad54124397c33263a257b2f06898f2cd5a850757338e31f3ba471b2d8a"
       },
       {
         "caseId": "VB-S04-V2",
-        "executionPlanHash": "97cb63e4f1675dc29415edfd950ca614e3b2a30667d767239d618776f89a498f",
-        "contextSelectionHash": "cc39e42752b5c7406376012e099ec23c1bfd47de568bba9521384ac1d4c3ff32",
+        "executionPlanHash": "6e83c5e51e0a0782b9e57aa87baede84950f3193ab09c9ad38f7aa3933023b83",
+        "contextSelectionHash": "d2022ecdda140bf1b55dc0876c40c6dee9ba8f843a6fef3f9606ce3c21780526",
         "selectedProviderMessagesHash": "3907c178a05060c3056935afcbb76426f3ba02eca8ad355ab8757c580fc2e161",
-        "policyOnlySystemPromptHash": "61a2bf0109aa7a50df701d47e953dc4473076272f96d8fe01ee1d9dac42ee26e",
+        "policyOnlySystemPromptHash": "417efdfd662bdad2fa5c032554fac4682b15ce202284a9dc1d5c2500c5778c93",
         "authoritativeSystemPromptHash": "686ec4ad54124397c33263a257b2f06898f2cd5a850757338e31f3ba471b2d8a"
       },
       {
         "caseId": "VB-S04-V3",
-        "executionPlanHash": "75be9bc6790baf7f20fe0be893290cd81e47190e821a4eb2a5995b5dcaaf800c",
-        "contextSelectionHash": "732bb8f91255a0387a8a67288ae9b1a2286cf53475c7fe4c6634231ef29052b0",
+        "executionPlanHash": "0b26c6862d38b0b25e3497dc2bea8f7b7985f0545f92130ca058ddd83e6c3c1b",
+        "contextSelectionHash": "80093019d4cf0884bd1ac8821e38aa8c48aa7cbfaba2a25893d073678bbc99a6",
         "selectedProviderMessagesHash": "aaadb35c344314d2c06d9174838b70e371cfd0d8a7d2268f9b1ae136e088be6f",
-        "policyOnlySystemPromptHash": "fe846e4d2d350c05a4e46bf24b8dc68f38b7bae2b7418f88e1cc710c5ddb7f69",
+        "policyOnlySystemPromptHash": "cc899934468f4ed28fe6daf8aa6c4740e48804742acd39c33443b4f2f4f5776b",
         "authoritativeSystemPromptHash": "686ec4ad54124397c33263a257b2f06898f2cd5a850757338e31f3ba471b2d8a"
       },
       {
         "caseId": "VB-S05-V1",
-        "executionPlanHash": "64f9ba4dca92d02e3fc5f57478858da1e1913bd2b0f3d5649e9822ae468946ee",
-        "contextSelectionHash": "efba4105988e8f5af72d07a679ad3ce6219bbe1dbb51b93b45da96548b108df5",
+        "executionPlanHash": "0e102e5b719ef7800f52cafb061e5a220680733a6d8d5f6471f43478d89f63fe",
+        "contextSelectionHash": "2a63c7c3544cd6cd136e51bcca129e3f6c7f58e0b2e428a305cd242830ddf6c1",
         "selectedProviderMessagesHash": "d0f6b62cc24a5d34b5a78820351f7325089a53882fba4438a7fc72f9d6f323ad",
-        "policyOnlySystemPromptHash": "249677ddaf97c43dcac991dcde0aecff601243684291dd9b74ce4f44e0d54bb7",
+        "policyOnlySystemPromptHash": "9ba91e6939e0b0ff912599eb6ee84f6e2ab3f46399668e6bd0d2e6d8deb7868a",
         "authoritativeSystemPromptHash": "686ec4ad54124397c33263a257b2f06898f2cd5a850757338e31f3ba471b2d8a"
       },
       {
         "caseId": "VB-S05-V2",
-        "executionPlanHash": "fd466a8880d6301d35fa1d3304032daf6b6d60ee496af65d788376b27c188ed5",
-        "contextSelectionHash": "346cda13fe797508c9b6d0791db8c29d1285ea16a1442a462cbaf4d933e35b0a",
+        "executionPlanHash": "cbcdea0f9c541345a4b60bf5d4b954ff2eacb4078b882415835b99dbc48fbf7b",
+        "contextSelectionHash": "fbfdf2ea326745c46b30ebdff1f3e556b66a55cbd266222e3a5affef0bc2971f",
         "selectedProviderMessagesHash": "2998c4b94dda4623dc838cef68cc3e4f368d46a12d032c87ebc9d6d31af64593",
-        "policyOnlySystemPromptHash": "1da165bd4409dc156130e286a9ac09104f9973bc4a2cb90dda7f051475279e6c",
+        "policyOnlySystemPromptHash": "bde0d777b8247d07fc5f23abd349ec37d94e75596865b325524a1788c38c2651",
         "authoritativeSystemPromptHash": "686ec4ad54124397c33263a257b2f06898f2cd5a850757338e31f3ba471b2d8a"
       },
       {
         "caseId": "VB-S05-V3",
-        "executionPlanHash": "bc8335283c95cc2b7360a021439a6f9048db203b775591c94ea4a1a749295979",
-        "contextSelectionHash": "64ea7a58dac36e51647fd2c0b1f40182567f83e759797c2faf6dc4d83b8ae462",
+        "executionPlanHash": "d1f2952996165c3b3ebaaa57f66efb008c8dfe740faae733303970c6de64070e",
+        "contextSelectionHash": "37324bc6f9901bca66e1be8feccc718a7b71990b56a7f68556e148f46084c8ae",
         "selectedProviderMessagesHash": "5d2370ef119d3288ac9631033f69696deb53d5a04db3352f7597b78381d741d9",
-        "policyOnlySystemPromptHash": "02562bb51dfc2b365cf43b0f470b3843faa6d1b5c73976340e4151b31dfa02f5",
+        "policyOnlySystemPromptHash": "44d65abf32e1f735f56d6791549255dd5b86d8b4bba9d2d78a5121310a2169bf",
         "authoritativeSystemPromptHash": "686ec4ad54124397c33263a257b2f06898f2cd5a850757338e31f3ba471b2d8a"
       },
       {
         "caseId": "VB-S06-V1",
-        "executionPlanHash": "b028b1f0d8d345737af8c674b22d03215dbb5e9801a65f8ebfdb96074f77cf4f",
-        "contextSelectionHash": "49707dfc1979bb0e6931a39de4525e6025505919fc373cf1b17586c487941226",
+        "executionPlanHash": "c43a18385d3818f230102c365942dcff278884c4ef732b03397598bb016f2eaa",
+        "contextSelectionHash": "a2db4503961bf96448cee6c4c028893a467858b8d3e7ac228346df9cbc434d64",
         "selectedProviderMessagesHash": "2260eb1ef693f99a8cfcfcf125553dd3bb7ab8f95cdf20ea81f67375b9cb6155",
-        "policyOnlySystemPromptHash": "b49f66f4eb25eafe043a3af45d2d1362b144200d32613cea61ed01b41a3fb3cf",
+        "policyOnlySystemPromptHash": "e6b698311ddf69aa4bc715e134bc21c487f92b1424f75a86215a1bb18f74a225",
         "authoritativeSystemPromptHash": "fdee7229b456e1333b5bbc7645e1289aa8706bb81f175099f06e0b7bb66819e6"
       },
       {
         "caseId": "VB-S06-V2",
-        "executionPlanHash": "b028b1f0d8d345737af8c674b22d03215dbb5e9801a65f8ebfdb96074f77cf4f",
-        "contextSelectionHash": "49707dfc1979bb0e6931a39de4525e6025505919fc373cf1b17586c487941226",
+        "executionPlanHash": "c43a18385d3818f230102c365942dcff278884c4ef732b03397598bb016f2eaa",
+        "contextSelectionHash": "a2db4503961bf96448cee6c4c028893a467858b8d3e7ac228346df9cbc434d64",
         "selectedProviderMessagesHash": "6a09ce9845dccf418d478df6554921cbf1e35abefec0668237e520c0f7bcbfcb",
-        "policyOnlySystemPromptHash": "b49f66f4eb25eafe043a3af45d2d1362b144200d32613cea61ed01b41a3fb3cf",
+        "policyOnlySystemPromptHash": "e6b698311ddf69aa4bc715e134bc21c487f92b1424f75a86215a1bb18f74a225",
         "authoritativeSystemPromptHash": "fdee7229b456e1333b5bbc7645e1289aa8706bb81f175099f06e0b7bb66819e6"
       },
       {
         "caseId": "VB-S06-V3",
-        "executionPlanHash": "b028b1f0d8d345737af8c674b22d03215dbb5e9801a65f8ebfdb96074f77cf4f",
-        "contextSelectionHash": "49707dfc1979bb0e6931a39de4525e6025505919fc373cf1b17586c487941226",
+        "executionPlanHash": "c43a18385d3818f230102c365942dcff278884c4ef732b03397598bb016f2eaa",
+        "contextSelectionHash": "a2db4503961bf96448cee6c4c028893a467858b8d3e7ac228346df9cbc434d64",
         "selectedProviderMessagesHash": "1e0fdb3166ddf084d9753b1f38d793a344979e75e063c139c764343924a9ad66",
-        "policyOnlySystemPromptHash": "b49f66f4eb25eafe043a3af45d2d1362b144200d32613cea61ed01b41a3fb3cf",
+        "policyOnlySystemPromptHash": "e6b698311ddf69aa4bc715e134bc21c487f92b1424f75a86215a1bb18f74a225",
         "authoritativeSystemPromptHash": "fdee7229b456e1333b5bbc7645e1289aa8706bb81f175099f06e0b7bb66819e6"
       },
       {
         "caseId": "VB-S07-V1",
-        "executionPlanHash": "885da0bc3230f26f0b886f4044b42674d898a1be4d6615a6558f8320c28deacd",
-        "contextSelectionHash": "49707dfc1979bb0e6931a39de4525e6025505919fc373cf1b17586c487941226",
+        "executionPlanHash": "e52dfcbe4b04994ca0742c41795c14b811ea05d9eec538f4cdff60b55f58a55f",
+        "contextSelectionHash": "a2db4503961bf96448cee6c4c028893a467858b8d3e7ac228346df9cbc434d64",
         "selectedProviderMessagesHash": "d006d508cee82ba46934310e576c3cc92608ec416ff55b46921f0290bb26f5d5",
-        "policyOnlySystemPromptHash": "4a9396ac871cee8b24067b0eafd088dabb97ea6abf7e25c96fcf703bd50ed6e1",
+        "policyOnlySystemPromptHash": "10ca133a83941cd478fee7b51f65b69f91012a460d2a3fd546476a45476f7685",
         "authoritativeSystemPromptHash": "52db991355d03a521ff4750949bed95a66423a82748f670e74a8765df35ef30c"
       },
       {
         "caseId": "VB-S07-V2",
-        "executionPlanHash": "9adb176b368851c13514a9da910e69fcad456910599731fe6465ddad12f8f058",
-        "contextSelectionHash": "49707dfc1979bb0e6931a39de4525e6025505919fc373cf1b17586c487941226",
+        "executionPlanHash": "ffc664647e5974b9e104ccfe673ce1e509ce37271ad34070820377006293d626",
+        "contextSelectionHash": "a2db4503961bf96448cee6c4c028893a467858b8d3e7ac228346df9cbc434d64",
         "selectedProviderMessagesHash": "caff0ed7e1ca76b40749f84955327da917559aa76cb46a1faaac37828add9ccf",
-        "policyOnlySystemPromptHash": "6e721609179fc85c980a3291f12189f398a427ee9bd75a853e91208a07bb82e0",
+        "policyOnlySystemPromptHash": "ebb65d8f65bc81e8d6fda2c5eacf4489c1865367fd866e912f97baaa47fa64d4",
         "authoritativeSystemPromptHash": "686ec4ad54124397c33263a257b2f06898f2cd5a850757338e31f3ba471b2d8a"
       },
       {
         "caseId": "VB-S07-V3",
-        "executionPlanHash": "9adb176b368851c13514a9da910e69fcad456910599731fe6465ddad12f8f058",
-        "contextSelectionHash": "49707dfc1979bb0e6931a39de4525e6025505919fc373cf1b17586c487941226",
+        "executionPlanHash": "ffc664647e5974b9e104ccfe673ce1e509ce37271ad34070820377006293d626",
+        "contextSelectionHash": "a2db4503961bf96448cee6c4c028893a467858b8d3e7ac228346df9cbc434d64",
         "selectedProviderMessagesHash": "0df3f6cd3f4d03bf788b08f7be8bacb3cf82a46219019ddd07ba44fa2f069e08",
-        "policyOnlySystemPromptHash": "6e721609179fc85c980a3291f12189f398a427ee9bd75a853e91208a07bb82e0",
+        "policyOnlySystemPromptHash": "ebb65d8f65bc81e8d6fda2c5eacf4489c1865367fd866e912f97baaa47fa64d4",
         "authoritativeSystemPromptHash": "686ec4ad54124397c33263a257b2f06898f2cd5a850757338e31f3ba471b2d8a"
       },
       {
         "caseId": "VB-S08-V1",
-        "executionPlanHash": "af0ea915ae4b0fb3e82bed2926d09dcd9989d63d9fcf5021d0635512672f9112",
-        "contextSelectionHash": "49707dfc1979bb0e6931a39de4525e6025505919fc373cf1b17586c487941226",
+        "executionPlanHash": "7e481c6b90cebb3f1ac99bcc73e480ac5cd950eaa5e429a9faf75dd977e35b20",
+        "contextSelectionHash": "a2db4503961bf96448cee6c4c028893a467858b8d3e7ac228346df9cbc434d64",
         "selectedProviderMessagesHash": "bffdbbd5cd0f7cb3a1ac03ec1ce50c5a56a016b775c67e091f7bf5cc677602a8",
-        "policyOnlySystemPromptHash": "e3a08e035d0799c618bd4370b29fffd14f4a501315642705434a8668a32e63f1",
+        "policyOnlySystemPromptHash": "68b2b8ce4ac4194a9826fff2ade331b75f4c3cc1a0f961f2d4d03d0d14aa9046",
         "authoritativeSystemPromptHash": "8bf868c40f2fb30917d87fbdbaa0e2c1820613178bd4dd43b5bec091325a8f67"
       },
       {
         "caseId": "VB-S08-V2",
-        "executionPlanHash": "af0ea915ae4b0fb3e82bed2926d09dcd9989d63d9fcf5021d0635512672f9112",
-        "contextSelectionHash": "49707dfc1979bb0e6931a39de4525e6025505919fc373cf1b17586c487941226",
+        "executionPlanHash": "7e481c6b90cebb3f1ac99bcc73e480ac5cd950eaa5e429a9faf75dd977e35b20",
+        "contextSelectionHash": "a2db4503961bf96448cee6c4c028893a467858b8d3e7ac228346df9cbc434d64",
         "selectedProviderMessagesHash": "3d6b9441ce1aaeec83a290c7fc66c9db1074459a59fa42d5e5aea1262f7fcef4",
-        "policyOnlySystemPromptHash": "e3a08e035d0799c618bd4370b29fffd14f4a501315642705434a8668a32e63f1",
+        "policyOnlySystemPromptHash": "68b2b8ce4ac4194a9826fff2ade331b75f4c3cc1a0f961f2d4d03d0d14aa9046",
         "authoritativeSystemPromptHash": "8bf868c40f2fb30917d87fbdbaa0e2c1820613178bd4dd43b5bec091325a8f67"
       },
       {
         "caseId": "VB-S08-V3",
-        "executionPlanHash": "9adb176b368851c13514a9da910e69fcad456910599731fe6465ddad12f8f058",
-        "contextSelectionHash": "49707dfc1979bb0e6931a39de4525e6025505919fc373cf1b17586c487941226",
+        "executionPlanHash": "ffc664647e5974b9e104ccfe673ce1e509ce37271ad34070820377006293d626",
+        "contextSelectionHash": "a2db4503961bf96448cee6c4c028893a467858b8d3e7ac228346df9cbc434d64",
         "selectedProviderMessagesHash": "bed0192897ffe7731698555389779c3d5af182667d817aa36de54b3985da8956",
-        "policyOnlySystemPromptHash": "6e721609179fc85c980a3291f12189f398a427ee9bd75a853e91208a07bb82e0",
+        "policyOnlySystemPromptHash": "ebb65d8f65bc81e8d6fda2c5eacf4489c1865367fd866e912f97baaa47fa64d4",
         "authoritativeSystemPromptHash": "686ec4ad54124397c33263a257b2f06898f2cd5a850757338e31f3ba471b2d8a"
       }
     ]
@@ -1092,28 +1092,28 @@
       },
       {
         "path": "src/agent/control-plane/context-compiler.ts",
-        "bytes": 2085,
-        "sha256": "4289a198a0f5e68525e40abdea9d93a848e72272d0e9dcde8dc488642df5af27"
+        "bytes": 2542,
+        "sha256": "874c56e9ea63098be9de14401f8be1509cc5600a868d3d5a48bdafa003f981ba"
       },
       {
         "path": "src/agent/control-plane/diagnosis-workflow.ts",
-        "bytes": 3397,
-        "sha256": "dd16fcc0da9e906e6d7e82d54ae3fe6a3a8adbcf7ff99d7d04e41e742a9fce8e"
+        "bytes": 3659,
+        "sha256": "dbadc24a44c45fdddd03fc1dbd92de0e6cfc6f675777198d67f389294dd90bc7"
       },
       {
         "path": "src/agent/control-plane/evidence-sufficiency.ts",
-        "bytes": 4984,
-        "sha256": "8beb3084a4afb9d72c34c8fb371ce050886a6e64afc0eb00a35783ffef074dd3"
+        "bytes": 5385,
+        "sha256": "96cb851a3fa4929c4a28161b722f010d90d9679cb7cb30f20e682960707b406d"
       },
       {
         "path": "src/agent/control-plane/execution-plan.ts",
-        "bytes": 3094,
-        "sha256": "e3cd83f586817f7ea30330408b0fbedf8c0afafbaac546874f5ead3a27409239"
+        "bytes": 3200,
+        "sha256": "fdd8425dd19d61856bfe7cf2e1785a0e9f7655c2da603fcae0e0da7f5c589c39"
       },
       {
         "path": "src/agent/control-plane/execution-planner.ts",
-        "bytes": 5414,
-        "sha256": "2b69be18f6f88bf46856ab5fc23b1c4b4f67cf768d5ddd7f171e0c7a51de5022"
+        "bytes": 6162,
+        "sha256": "c3bea44b30c4394b1e9a76c47620ebc29cc6d8848f7ba622b1bb27cacab1f4ec"
       },
       {
         "path": "src/agent/control-plane/observability.ts",
@@ -1147,8 +1147,8 @@
       },
       {
         "path": "src/agent/run-agent.ts",
-        "bytes": 23409,
-        "sha256": "27cb7260c5248ba35eb521efb7d23e7b70b4ab428739dcb49751fbbb8fd3bf44"
+        "bytes": 23579,
+        "sha256": "0604820fa232f55e71aa7b4afb9cd5e9e34007307dce122fc3e847a84fe31af1"
       },
       {
         "path": "src/agent/tool-executor.ts",
@@ -1202,8 +1202,8 @@
       },
       {
         "path": "src/core/application/reference-pack-registry.ts",
-        "bytes": 3348,
-        "sha256": "02ef01f83bbc530f1f46dc188a5dbd74e08085e5a475ee719243dd3d620bf0f6"
+        "bytes": 4088,
+        "sha256": "f01aca95da4e2cc8a2668ad86ebc41387d2d6d084d4ac31c2b8f8c1c5a21873d"
       },
       {
         "path": "src/core/domain/capability.ts",
@@ -1217,8 +1217,8 @@
       },
       {
         "path": "src/core/domain/reference-pack.ts",
-        "bytes": 1307,
-        "sha256": "6a53e2a932ae60bdd90b0fc885605df60c0d435aec201bfa446b8fada14a9359"
+        "bytes": 1697,
+        "sha256": "3f680b30afd0d16e089907e776ab45f0f12465acc1eea5870a021008283bd1c9"
       },
       {
         "path": "src/core/ports/learning-capability-runtime.ts",
@@ -1252,8 +1252,8 @@
       },
       {
         "path": "src/reference-packs/chemistry-caie-9701/adapters/legacy-capability-adapter.ts",
-        "bytes": 1026,
-        "sha256": "a2daa6e96cc8ea73871015f6d9b8e5e28e6ba39147f3399da27a11624c6caab2"
+        "bytes": 1855,
+        "sha256": "81f0af806b854947e69e635491f45e2bb1fa847b2d702cf44b185c8346778cbe"
       },
       {
         "path": "src/reference-packs/chemistry-caie-9701/components.ts",
@@ -1267,8 +1267,8 @@
       },
       {
         "path": "src/reference-packs/registry.ts",
-        "bytes": 1484,
-        "sha256": "ca09a6001093ee3f5b3cb2b9a112d47f15cecc87c4b585f3668d55a88a1401b5"
+        "bytes": 1526,
+        "sha256": "6873695213c6669526f160332a48bf30a9120ccc8acf0e2335f7c08730a5cc26"
       },
       {
         "path": "src/runtime/learning-capability-runtime.ts",
@@ -1321,14 +1321,14 @@
         "sha256": "f21c00f9a7b7665ec7ba6e34bc2a432067b8bafdbc8a916db59666dade515ae1"
       }
     ],
-    "closureSha256": "502e7a7d8bf871337d1d7ee6772e41953477cd51ce8100216eec39f53595323d"
+    "closureSha256": "310ce1e43c530a51d1cb4b8634b4e2e24541ea051e9d0df110610dc68ec7afb9"
   },
   "policySnapshots": {
     "agentInstructions": "config/agent/instructions.md@sha256:b074582b43912167c666922a885f3b1e7665da51da9d6d98f8ff8f922f3dbc2b",
     "responsePolicy": "config/agent/response-policy.json@sha256:a890bcde7615042bc73cd128264916a5781678b48d512e7ef9ad1ef932adee9b",
     "toolDefinitions": "config/tools/tool-descriptions.json@sha256:d2398f11bfee4cdc18226c3f50fe46e171179a44580cbd372fa65d1c730500dd",
     "corpusDeliveryPolicy": "config/corpus/delivery-policy.json@sha256:8b3f8d46acf6ea52330d7b9397b5d33d74631f89d28e87e479e03fdfb830f22c",
-    "capabilityRegistry": "src/reference-packs/registry.ts@sha256:ca09a6001093ee3f5b3cb2b9a112d47f15cecc87c4b585f3668d55a88a1401b5",
+    "capabilityRegistry": "src/reference-packs/registry.ts@sha256:6873695213c6669526f160332a48bf30a9120ccc8acf0e2335f7c08730a5cc26",
     "routePolicy": "src/agent/route-policy.ts@sha256:a8d69be3610682396bce677c7e18ad558603b77de772b2a4db171d4bff51f351",
     "pricing": "agent-eval/pricing.json@sha256:d575ad5abcbee3726abdc8c95e5b8c4e20771ca882fe066ee623b446a3b58837",
     "agentEvalCases": "agent-eval/cases.jsonl@sha256:0c421e183ee35a968931c2e4ff6ef291005d9000dcc821b26d0a8e422bc157fb",
