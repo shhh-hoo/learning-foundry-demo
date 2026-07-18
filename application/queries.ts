@@ -32,6 +32,7 @@ import {
 import type { Actor } from "@/domain/model";
 import { authorizeEvidenceUnitInstitution, authorizePersistedEvidence, evidenceAlignsToCourse } from "@/domain/evidence";
 import { requireCourseAccess, requireRole } from "@/domain/invariants";
+import { learnerCapabilityDescriptorsForCourse } from "@/application/capabilities";
 
 export const STALE_RESUMING_TIMEOUT_MS = 5 * 60 * 1_000;
 
@@ -89,15 +90,27 @@ export async function getLearnerWorkspace(actor: Actor) {
     eq(fileAssets.institutionId, actor.institutionId),
     inArray(fileAssets.taskId, taskIds),
   )).orderBy(desc(fileAssets.createdAt)) : [];
-  const capabilityRows = await db.selectDistinct({ capability: capabilities, version: capabilityVersions }).from(capabilities)
+  return { tasks, events, episodes, outcomes, library: libraryRows.map((row) => row.item), schedule: scheduleRows.map((row) => row.item), pendingWorkflows, courses: availableCourses, assets };
+}
+
+export async function getLearnerCapabilitiesForCourse(actor: Actor, courseId: string) {
+  requireRole(actor, ["LEARNER", "ADMIN"]);
+  const rows = await getDb().selectDistinct({
+    courseId: courses.id,
+    capabilityKey: capabilities.key,
+    referencePackKey: capabilities.referencePackKey,
+    versionStatus: capabilityVersions.status,
+  }).from(courses)
+    .innerJoin(subjects, eq(subjects.id, courses.subjectId))
+    .innerJoin(capabilities, eq(capabilities.referencePackKey, subjects.referencePackKey))
     .innerJoin(capabilityVersions, eq(capabilityVersions.id, capabilities.activeVersionId))
-    .innerJoin(subjects, eq(subjects.referencePackKey, capabilities.referencePackKey))
-    .innerJoin(courses, eq(courses.subjectId, subjects.id))
     .where(and(
-      eq(subjects.institutionId, actor.institutionId),
+      eq(courses.id, courseId),
+      eq(courses.institutionId, actor.institutionId),
       inArray(courses.id, actor.courseIds.length ? actor.courseIds : ["00000000-0000-0000-0000-000000000000"]),
+      eq(capabilityVersions.status, "ACTIVE"),
     ));
-  return { tasks, events, episodes, outcomes, library: libraryRows.map((row) => row.item), schedule: scheduleRows.map((row) => row.item), pendingWorkflows, courses: availableCourses, assets, capabilities: capabilityRows.map((row) => ({ ...row.capability, contract: row.version.contract })) };
+  return learnerCapabilityDescriptorsForCourse(rows, courseId);
 }
 
 export async function getAuthorizedEvidenceCatalog(actor: Actor, taskId: string) {

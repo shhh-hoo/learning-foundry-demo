@@ -79,6 +79,12 @@ const capabilityIds = [
   [SEED.chemistrySolutionDilution, SEED.chemistrySolutionDilutionVersion],
   [SEED.chemistryIdealGasMoles, SEED.chemistryIdealGasMolesVersion],
   [SEED.chemistryPh, SEED.chemistryPhVersion],
+  [SEED.chemistryAmountFromMass, SEED.chemistryAmountFromMassVersion],
+  [SEED.chemistryTitrationConcentration, SEED.chemistryTitrationConcentrationVersion],
+  [SEED.chemistryLimitingReagentProduct, SEED.chemistryLimitingReagentProductVersion],
+  [SEED.chemistryPercentageYield, SEED.chemistryPercentageYieldVersion],
+  [SEED.chemistryCellPotential, SEED.chemistryCellPotentialVersion],
+  [SEED.chemistryWeakAcidKa, SEED.chemistryWeakAcidKaVersion],
 ] as const;
 for (const [index, definition] of CHEMISTRY_CAPABILITIES.entries()) {
   const [capabilityId, versionId] = capabilityIds[index];

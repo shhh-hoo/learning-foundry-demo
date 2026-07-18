@@ -89,7 +89,8 @@ test("complete Learning Loop and governed Component Asset Loop", async ({ browse
     await expect(unavailableAnswer.getByTestId("event-evidence-refs")).toContainText("References attached to this event");
 
     const attempt = learner.page.getByTestId("attempt-form");
-    await attempt.getByLabel("Your Attempt").fill(attemptResponse);
+    await attempt.getByLabel("Problem or question").fill("How should I handle the volume units before calculating concentration?");
+    await attempt.getByLabel("Your working and answer").fill(attemptResponse);
     await attempt.getByRole("button", { name: "Capture Attempt" }).click();
     await expect(learner.page.getByText(attemptResponse, { exact: true })).toBeVisible();
     await expect(learner.page.getByText("REVIEW_REQUIRED", { exact: true })).toBeVisible();
@@ -131,9 +132,15 @@ test("complete Learning Loop and governed Component Asset Loop", async ({ browse
 
     for (const capabilityResponse of capabilityResponses) {
       const capabilityAttempt = learner.page.getByTestId("attempt-form");
-      await capabilityAttempt.getByLabel("Deterministic Capability (optional)").selectOption({ label: "Molar concentration" });
-      await capabilityAttempt.getByLabel("Capability input JSON").fill(JSON.stringify({ amount: { value: 1, unit: "mol" }, volume: { value: 2, unit: "L" }, learnerAnswer: 2, tolerance: 0.001 }));
-      await capabilityAttempt.getByLabel("Your Attempt").fill(capabilityResponse);
+      await capabilityAttempt.getByLabel("Calculation activity hint (optional)").selectOption({ label: "Molar concentration" });
+      await capabilityAttempt.getByLabel("Enter calculation values myself").check();
+      await capabilityAttempt.getByLabel("Amount of substance", { exact: true }).fill("1");
+      await capabilityAttempt.getByLabel("Amount of substance unit").selectOption("mol");
+      await capabilityAttempt.getByLabel("Solution volume", { exact: true }).fill("2");
+      await capabilityAttempt.getByLabel("Solution volume unit").selectOption("L");
+      await capabilityAttempt.getByLabel("Your final numerical answer").fill("2");
+      await capabilityAttempt.getByLabel("Problem or question").fill("Calculate the molar concentration of 1 mol in 2 L of solution.");
+      await capabilityAttempt.getByLabel("Your working and answer").fill(capabilityResponse);
       await capabilityAttempt.getByRole("button", { name: "Capture Attempt" }).click();
       await expect(learner.page.getByText(capabilityResponse, { exact: true })).toBeVisible();
     }

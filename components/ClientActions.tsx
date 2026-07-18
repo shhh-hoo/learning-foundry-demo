@@ -78,26 +78,57 @@ export function MessageForm({ taskId, episodeId }: { taskId: string; episodeId: 
   </form>;
 }
 
-export function AttemptForm({ taskId, episodeId, capabilities = [] }: { taskId: string; episodeId: string; capabilities?: Array<{ id: string; name: string; contract?: Record<string, unknown> }> }) {
+type LearnerCapabilityField = {
+  key: string;
+  label: string;
+  kind: "number" | "quantity";
+  help: string;
+  min?: number;
+  step?: number;
+  unitOptions?: string[];
+  defaultUnit?: string;
+};
+
+type LearnerCapability = {
+  publicKey: string;
+  name: string;
+  purpose: string;
+  fields: LearnerCapabilityField[];
+  example: string;
+};
+
+export function AttemptForm({ taskId, episodeId, capabilities = [] }: { taskId: string; episodeId: string; capabilities?: LearnerCapability[] }) {
   const action = useAction();
+  const [selectedKey, setSelectedKey] = useState("");
+  const [manualEntry, setManualEntry] = useState(false);
+  const selected = capabilities.find((capability) => capability.publicKey === selectedKey);
   return <form className="stack" data-testid="attempt-form" onSubmit={async (event) => {
-    event.preventDefault(); const form = new FormData(event.currentTarget);
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
     try {
-      const capabilityId = String(form.get("capabilityId") ?? "");
-      const structuredInput = capabilityId ? JSON.parse(String(form.get("structuredInput"))) : { responseType: "FREE_TEXT" };
+      const fields = Object.fromEntries(manualEntry && selected ? selected.fields.flatMap((field) => field.kind === "quantity"
+        ? [[field.key, String(form.get(`field:${field.key}`) ?? "")], [`${field.key}Unit`, String(form.get(`unit:${field.key}`) ?? "")]]
+        : [[field.key, String(form.get(`field:${field.key}`) ?? "")]]) : []);
       await action.run("/api/attempts", {
-        taskId, episodeId, capabilityId: capabilityId || undefined, prompt: form.get("prompt"), response: form.get("response"), structuredInput, sourceRefs: [], idempotencyKey: randomKey("attempt"),
+        taskId,
+        episodeId,
+        capabilityPublicKey: selected?.publicKey,
+        fields,
+        manualEntry,
+        prompt: form.get("prompt"),
+        response: form.get("response"),
+        idempotencyKey: randomKey("attempt"),
       });
     }
     catch (error) { action.setMessage(error instanceof Error ? error.message : "Unable to capture Attempt"); }
   }}>
-    <label>Deterministic Capability (optional)<select name="capabilityId"><option value="">Teacher inspection only</option>{capabilities.map((capability) => <option key={capability.id} value={capability.id}>{capability.name}</option>)}</select></label>
-    {capabilities.length ? <details><summary>Capability input contracts</summary><pre>{JSON.stringify(capabilities.map(({ id, name, contract }) => ({ id, name, contract })), null, 2)}</pre></details> : null}
-    {capabilities.length ? <label>Capability input JSON<textarea name="structuredInput" defaultValue={JSON.stringify({ learnerAnswer: 0, tolerance: 0.01 }, null, 2)} /></label> : null}
-    <label>Activity prompt<input name="prompt" required defaultValue="Explain your reasoning and identify where supporting Evidence is needed." /></label>
-    <label>Your Attempt<textarea name="response" required placeholder="Write your reasoning..." /></label>
+    <label>Calculation activity hint (optional)<select value={selectedKey} onChange={(event) => { setSelectedKey(event.target.value); setManualEntry(false); }}><option value="">Let Foundry identify the calculation</option>{capabilities.map((capability) => <option key={capability.publicKey} value={capability.publicKey}>{capability.name}</option>)}</select></label>
+    {selected ? <label><input type="checkbox" checked={manualEntry} onChange={(event) => setManualEntry(event.target.checked)}/> Enter calculation values myself</label> : null}
+    {selected && manualEntry ? <fieldset className="stack"><legend>{selected.name}</legend><p>{selected.purpose}</p>{selected.fields.map((field) => <div className="stack compact" key={field.key}><label htmlFor={`field:${field.key}`}>{field.label}</label><span className="inline-form"><input id={`field:${field.key}`} name={`field:${field.key}`} type="number" required min={field.min} step={field.step ?? "any"} aria-describedby={`help:${field.key}`}/>{field.kind === "quantity" ? <select name={`unit:${field.key}`} defaultValue={field.defaultUnit} aria-label={`${field.label} unit`}>{field.unitOptions?.map((value) => <option key={value} value={value}>{value}</option>)}</select> : null}</span><small id={`help:${field.key}`}>{field.help}</small></div>)}<small><strong>Example:</strong> {selected.example}</small></fieldset> : null}
+    <label>Problem or question<textarea name="prompt" required placeholder="Paste or type the chemistry problem you are solving." /></label>
+    <label>Your working and answer<textarea name="response" required placeholder="Show your method in your own words, including units and your final answer." /></label>
     <button disabled={action.pending}>Capture Attempt</button><FormStatus value={action.message}/>
-    <small>Selecting a listed Capability runs its persisted deterministic adapter. Without one, the Attempt remains review-required and no automated Diagnosis is claimed.</small>
+    <small>Foundry may make one bounded input-extraction call, then validates the result against the active course activity before checking the final number. This is not Evidence or a comprehensive Diagnosis, and Teacher Review still follows. Manual entry makes no model call.</small>
   </form>;
 }
 

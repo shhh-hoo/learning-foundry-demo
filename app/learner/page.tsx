@@ -1,7 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { requireWorkspaceActor } from "@/application/identity";
-import { getAuthorizedEvidenceCatalog, getLearnerWorkspace, getTaskDetail } from "@/application/queries";
+import { getAuthorizedEvidenceCatalog, getLearnerCapabilitiesForCourse, getLearnerWorkspace, getTaskDetail } from "@/application/queries";
 import { AttemptForm, CloseTaskButton, CreateTaskForm, ImageAttemptForm, MaterialUploadForm, MessageForm, RetryAttemptForm } from "@/components/ClientActions";
 import { Badge, Card, Empty, SurfaceHeader, Timeline } from "@/components/ui";
 
@@ -14,6 +14,7 @@ export default async function LearnerPage({ searchParams }: { searchParams: Prom
   const activeTask = workspace.tasks.find((task) => task.id === requested) ?? workspace.tasks[0];
   const detail = activeTask ? await getTaskDetail(actor, activeTask.id) : null;
   const evidenceCatalog = activeTask ? await getAuthorizedEvidenceCatalog(actor, activeTask.id) : [];
+  const learnerCapabilities = activeTask ? await getLearnerCapabilitiesForCourse(actor, activeTask.courseId) : [];
   const activeEpisode = detail?.episodes.find((episode) => episode.status === "ACTIVE") ?? detail?.episodes.at(-1);
   return <>
     <SurfaceHeader eyebrow="Learner Workspace" title="Learn from a governed evidence chain" description="Tasks, scoped Context, source Evidence, Attempts, reviewed Retry and Outcomes remain linked in Product State." />
@@ -29,7 +30,7 @@ export default async function LearnerPage({ searchParams }: { searchParams: Prom
           return <article className="evidence-card" key={asset.id}><strong>{asset.originalName}</strong><div className="header-actions"><Badge tone={asset.ingestionStatus === "EXTRACTED" ? "good" : asset.ingestionStatus === "FAILED" ? "bad" : "warn"}>Ingestion · {asset.ingestionStatus}</Badge><Badge tone={source?.rightsAuthorizationStatus === "APPROVED" ? "good" : source?.rightsAuthorizationStatus === "DENIED" ? "bad" : "warn"}>Rights · {source?.rightsAuthorizationStatus ?? "REVIEW_REQUIRED"}</Badge></div><p>{asset.failureMessage ?? "Stored outside Product State; extracted content remains unavailable for delivery until rights approval."}</p></article>;
         })}</Card>
         <Card eyebrow="Authorized delivery" title="Authorized Evidence catalog"><p>These LEARNING-purpose sources are authorized for this Task/course. They are not necessarily used by an answer; answer-level sourceRefs and evidenceRefs appear with each conversation event.</p>{evidenceCatalog.map(({ evidence, source }) => <article className="evidence-card" key={evidence.id}><strong>{evidence.title}</strong><p>{evidence.content}</p>{evidence.structuredContent ? <pre>{JSON.stringify(evidence.structuredContent, null, 2)}</pre> : null}<small>{source.title} · v{source.version} · {evidence.locator} · {source.rights} · embedding {evidence.embeddingStatus}</small></article>)}{evidenceCatalog.length === 0 ? <Empty>No Evidence has explicit authorized LEARNING delivery and course/Reference Pack alignment for this Task.</Empty> : null}</Card>
-        <Card eyebrow="Attempt" title="Capture learner reasoning"><AttemptForm taskId={detail.task.id} episodeId={activeEpisode.id} capabilities={workspace.capabilities}/><h3>Image or handwritten Attempt</h3><ImageAttemptForm taskId={detail.task.id} episodeId={activeEpisode.id}/>{detail.attempts.map((attempt) => {
+        <Card eyebrow="Attempt" title="Capture learner reasoning"><AttemptForm taskId={detail.task.id} episodeId={activeEpisode.id} capabilities={learnerCapabilities}/><h3>Image or handwritten Attempt</h3><ImageAttemptForm taskId={detail.task.id} episodeId={activeEpisode.id}/>{detail.attempts.map((attempt) => {
           const asset = detail.assets.find((item) => item.id === attempt.fileAssetId);
           return <article className="evidence-card" key={attempt.id}><strong>{attempt.prompt}</strong><p>{attempt.response}</p>{asset ? <><a href={`/api/files/${asset.id}`} target="_blank" rel="noreferrer">Open original {asset.originalName}</a>{asset.mediaType.startsWith("image/") ? <Image unoptimized src={`/api/files/${asset.id}`} alt={`Original learner Attempt: ${asset.originalName}`} width={640} height={480} style={{ width: "100%", height: "auto" }}/> : null}<small>Multimodal interpretation · {asset.interpretationStatus}</small></> : null}<Badge tone="warn">{detail.observations.find((item) => item.attemptId === attempt.id)?.status ?? "REVIEW_PENDING"}</Badge></article>;
         })}</Card>

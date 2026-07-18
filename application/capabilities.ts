@@ -2,8 +2,10 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "@/db/client";
 import { capabilities, capabilityVersions, courses, learningTasks, subjects } from "@/db/schema";
 import { DomainInvariantError } from "@/domain/invariants";
-import { executeReferencePackCapability } from "@/reference-packs/capability-runtime";
+import { buildLearnerCapabilityInput, executeReferencePackCapability, getLearnerCapabilityDescriptor } from "@/reference-packs/capability-runtime";
 import { z, ZodError } from "zod";
+import type { Actor } from "@/domain/model";
+import { requireTaskEpisodeScope } from "@/application/task-scope";
 
 const CapabilityEvaluationFixture = z.object({
   input: z.record(z.string(), z.unknown()),
@@ -15,6 +17,55 @@ const CapabilityEvaluationFixture = z.object({
     firstInvalidStep: z.string().nullable(),
   }),
 });
+
+export function learnerCapabilityDescriptorsForCourse(bindings: Array<{
+  courseId: string;
+  capabilityKey: string;
+  referencePackKey: string;
+  versionStatus: string;
+}>, courseId: string) {
+  const descriptors = bindings.flatMap((binding) => {
+    if (binding.courseId !== courseId) return [];
+    const descriptor = getLearnerCapabilityDescriptor(binding.referencePackKey, binding.capabilityKey, binding.versionStatus);
+    return descriptor ? [descriptor] : [];
+  });
+  return [...new Map(descriptors.map((descriptor) => [descriptor.publicKey, descriptor])).values()];
+}
+
+export async function resolveLearnerCapabilityInput(input: {
+  actor: Actor;
+  taskId: string;
+  episodeId: string;
+  publicKey: string;
+  fields: Record<string, string>;
+}) {
+  const scope = await requireTaskEpisodeScope(input.actor, {
+    taskId: input.taskId,
+    episodeId: input.episodeId,
+    learnerOriginated: true,
+  });
+  const [binding] = await getDb().select({ capability: capabilities, version: capabilityVersions, subject: subjects })
+    .from(capabilities)
+    .innerJoin(capabilityVersions, and(
+      eq(capabilityVersions.id, capabilities.activeVersionId),
+      eq(capabilityVersions.capabilityId, capabilities.id),
+    ))
+    .innerJoin(courses, eq(courses.id, scope.task.courseId))
+    .innerJoin(subjects, eq(subjects.id, courses.subjectId))
+    .where(and(
+      eq(capabilities.key, input.publicKey),
+      eq(capabilityVersions.status, "ACTIVE"),
+      eq(capabilities.referencePackKey, subjects.referencePackKey),
+    ))
+    .limit(1);
+  if (!binding) throw new DomainInvariantError("The selected calculation activity is unavailable for this course", "CAPABILITY_UNAVAILABLE");
+  try {
+    const structuredInput = buildLearnerCapabilityInput(binding.subject.referencePackKey, input.publicKey, input.fields);
+    return { capabilityId: binding.capability.id, structuredInput };
+  } catch {
+    throw new DomainInvariantError("The calculation details are incomplete or invalid for the selected activity", "CAPABILITY_INPUT_INVALID");
+  }
+}
 
 export async function executePersistedCapability(input: { taskId: string; capabilityId: string; structuredInput: Record<string, unknown> }) {
   const [binding] = await getDb().select({

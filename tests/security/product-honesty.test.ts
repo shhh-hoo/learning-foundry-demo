@@ -71,4 +71,34 @@ describe("A2a product-honesty surfaces", () => {
     expect(engineering).toContain("not product, pedagogy or learning-effectiveness Eval");
     expect(runner).toContain('dataset: "framework-core-contract-checks"');
   });
+
+  it("keeps learner Capability internals out of the browser path", async () => {
+    const actions = await readFile(new URL("../../components/ClientActions.tsx", import.meta.url), "utf8");
+    const queries = await readFile(new URL("../../application/queries.ts", import.meta.url), "utf8");
+    const learner = await readFile(new URL("../../app/learner/page.tsx", import.meta.url), "utf8");
+    expect(actions).toContain("Calculation activity hint (optional)");
+    expect(actions).toContain("Let Foundry identify the calculation");
+    expect(actions).toContain("Enter calculation values myself");
+    expect(actions).toContain("Problem or question");
+    expect(actions).toContain("Your working and answer");
+    expect(actions).not.toContain("Capability input JSON");
+    expect(actions).not.toContain("Capability input contracts");
+    expect(actions).not.toContain('name="capabilityId"');
+    expect(queries).toContain("getLearnerCapabilitiesForCourse");
+    expect(queries).toContain("eq(courses.id, courseId)");
+    expect(learner).toContain("getLearnerCapabilitiesForCourse(actor, activeTask.courseId)");
+    expect(learner).toContain("capabilities={learnerCapabilities}");
+    expect(queries).not.toContain("capabilities: capabilityRows.map((row) => ({ ...row.capability");
+  });
+
+  it("prepares natural Attempts inside LangGraph before canonical capture", async () => {
+    const diagnosis = await readFile(new URL("../../workflows/diagnosis.ts", import.meta.url), "utf8");
+    const interpreter = await readFile(new URL("../../application/attempt-interpreter.ts", import.meta.url), "utf8");
+    expect(diagnosis).toContain('.addNode("prepare_attempt"');
+    expect(diagnosis).toContain('.addEdge(START, "prepare_attempt")');
+    expect(diagnosis).toContain('.addEdge("prepare_attempt", "capture_attempt")');
+    expect(interpreter).toContain("maxRetries: 0");
+    expect(interpreter).toContain('callType: "ATTEMPT_INTERPRETATION"');
+    expect(interpreter).not.toContain("rawProviderOutput");
+  });
 });
