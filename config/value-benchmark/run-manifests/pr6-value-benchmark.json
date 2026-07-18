@@ -3,7 +3,7 @@
   "experimentId": "learning-foundry-value-benchmark",
   "experimentVersion": "1.0.0",
   "docsAuthority": "learning-foundry-docs@260747722e8040972deceed3290bce237676f225",
-  "implementationCommit": "a4723a2ea9b72b0fbdfbd25b3e97dbb69fe726e0",
+  "implementationCommit": "2ba26aa204f4039b76fe32984d2b0867e20076d2",
   "runId": "foundry-value-benchmark-1.0.0-live-01",
   "encoding": {
     "charset": "UTF-8",
@@ -1102,8 +1102,8 @@
       },
       {
         "path": "src/agent/control-plane/evidence-sufficiency.ts",
-        "bytes": 5385,
-        "sha256": "96cb851a3fa4929c4a28161b722f010d90d9679cb7cb30f20e682960707b406d"
+        "bytes": 5491,
+        "sha256": "4632e741d53211a49859289e0743f1a4aead94eb15e759a7b6f6764b8c5a531c"
       },
       {
         "path": "src/agent/control-plane/execution-plan.ts",
@@ -1321,7 +1321,7 @@
         "sha256": "f21c00f9a7b7665ec7ba6e34bc2a432067b8bafdbc8a916db59666dade515ae1"
       }
     ],
-    "closureSha256": "310ce1e43c530a51d1cb4b8634b4e2e24541ea051e9d0df110610dc68ec7afb9"
+    "closureSha256": "7e5aff199c3092ccad9ed41f5908a73f9eb79e8528a24c1e8ce1685314aa6684"
   },
   "policySnapshots": {
     "agentInstructions": "config/agent/instructions.md@sha256:b074582b43912167c666922a885f3b1e7665da51da9d6d98f8ff8f922f3dbc2b",
