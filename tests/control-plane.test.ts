@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { ContextCompiler } from "../src/agent/control-plane/context-compiler";
+import { ContextCompiler, TaskLocalContextFilterV1 } from "../src/agent/control-plane/context-compiler";
 import { ExecutionPlanner } from "../src/agent/control-plane/execution-planner";
 import { EvidenceSufficiencyAssessor } from "../src/agent/control-plane/evidence-sufficiency";
 import { ToolExecutionGovernor } from "../src/agent/control-plane/tool-execution-governor";
-import { DiagnosisWorkflow } from "../src/agent/control-plane/diagnosis-workflow";
+import { DiagnosisSequenceGovernor } from "../src/agent/control-plane/diagnosis-workflow";
 import type { AgentRunRequest } from "../src/agent/types";
 
 const request = (messages: AgentRunRequest["messages"]): AgentRunRequest => ({
@@ -25,6 +25,8 @@ describe("Foundry Control Plane", () => {
 
     expect(context).toEqual({
       schemaVersion: "1.0.0",
+      contextPolicyId: "TASK_LOCAL_CONTEXT_FILTER",
+      semanticRelevance: "NOT_IMPLEMENTED",
       candidateMessageIndexes: [0, 1, 2],
       selectedMessageIndexes: [0, 1, 2],
       excludedContextItems: [],
@@ -42,6 +44,35 @@ describe("Foundry Control Plane", () => {
     expect(JSON.stringify(plan)).not.toContain("Earlier task-local question");
     expect(Object.isFrozen(plan)).toBe(true);
     expect(Object.isFrozen(plan.toolPolicy.maximumCallsPerTool)).toBe(true);
+  });
+
+  it("states the Task-local bootstrap boundary for long history, Topic switch and missing canonical metadata", () => {
+    const longHistory = request(Array.from({ length: 24 }, (_, index) => ({
+      role: index % 2 === 0 ? "user" as const : "assistant" as const,
+      content: `turn-${index}`,
+    })));
+    const topicSwitch = request([
+      { role: "user", content: "Help me compare two historical accounts." },
+      { role: "assistant", content: "Which accounts?" },
+      { role: "user", content: "Now help me outline a geometry proof." },
+    ]);
+    const shortFollowUp = request([
+      { role: "user", content: "Explain the first approach." },
+      { role: "assistant", content: "Here is the first approach." },
+      { role: "user", content: "Why does its second step follow?" },
+    ]);
+
+    const compiler = new TaskLocalContextFilterV1();
+    expect(compiler.compile(longHistory)).toMatchObject({
+      selectedMessageIndexes: Array.from({ length: 24 }, (_, index) => index),
+      semanticRelevance: "NOT_IMPLEMENTED",
+    });
+    expect(compiler.compile(topicSwitch)).toMatchObject({
+      selectedMessageIndexes: [0, 1, 2],
+      excludedContextItems: [],
+      semanticRelevance: "NOT_IMPLEMENTED",
+    });
+    expect(compiler.compile(shortFollowUp).selectedMessageIndexes).toEqual([0, 1, 2]);
   });
 
   it("excludes stale, superseded and other-Task Context before model execution", () => {
@@ -82,6 +113,52 @@ describe("Foundry Control Plane", () => {
     expect(sufficient).toMatchObject({ outcome: "SUFFICIENT_EVIDENCE", anotherCallJustified: false, lineageComplete: true });
   });
 
+  it("fails Evidence sufficiency closed on unknown relevance, incomplete lineage and contamination", () => {
+    const assessor = new EvidenceSufficiencyAssessor({ createId: (index) => `assessment-${index}` });
+    const missingScore = assessor.assess({
+      toolId: "search_learning_resources",
+      toolCallIndex: 0,
+      status: "SUCCEEDED",
+      result: { results: [{ sourceId: "official", sourceType: "OFFICIAL_SYLLABUS", page: 1 }] },
+    });
+    const nonpositiveScore = assessor.assess({
+      toolId: "search_learning_resources",
+      toolCallIndex: 1,
+      status: "SUCCEEDED",
+      result: { results: [{ sourceId: "official", sourceType: "OFFICIAL_SYLLABUS", score: 0, page: 1 }] },
+    });
+    const incompleteLineage = assessor.assess({
+      toolId: "search_learning_resources",
+      toolCallIndex: 2,
+      status: "SUCCEEDED",
+      result: { results: [{ sourceId: "official", sourceType: "OFFICIAL_SYLLABUS", score: 4 }] },
+    });
+    const contaminated = assessor.assess({
+      toolId: "search_learning_resources",
+      toolCallIndex: 3,
+      status: "SUCCEEDED",
+      result: {
+        results: [{ sourceId: "official", sourceType: "OFFICIAL_SYLLABUS", score: 4, page: 2 }],
+        contaminationRisk: "DETECTED",
+      },
+    });
+    const wrongSubtopic = assessor.assess({
+      toolId: "search_learning_resources",
+      toolCallIndex: 4,
+      status: "SUCCEEDED",
+      result: {
+        results: [{ sourceId: "official", sourceType: "OFFICIAL_SYLLABUS", score: 4, page: 2 }],
+        missingAspects: ["requested subtopic", "second requested aspect"],
+      },
+    });
+
+    expect(missingScore).toMatchObject({ outcome: "LOW_RELEVANCE", topicalFit: "UNKNOWN", anotherCallJustified: true });
+    expect(nonpositiveScore).toMatchObject({ outcome: "LOW_RELEVANCE", topicalFit: "LOW", anotherCallJustified: true });
+    expect(incompleteLineage).toMatchObject({ outcome: "PARTIAL_COVERAGE", lineageComplete: false, anotherCallJustified: true });
+    expect(contaminated).toMatchObject({ outcome: "PARTIAL_COVERAGE", contaminationRisk: "DETECTED", anotherCallJustified: true });
+    expect(wrongSubtopic).toMatchObject({ outcome: "PARTIAL_COVERAGE", missingAspects: ["requested subtopic", "second requested aspect"] });
+  });
+
   it("enforces Plan-owned budgets, duplicate protection and justified second retrieval", () => {
     const input = request([{ role: "user", content: "Why is this relationship valid?" }]);
     const plan = new ExecutionPlanner().plan(input, new ContextCompiler().compile(input));
@@ -107,7 +184,7 @@ describe("Foundry Control Plane", () => {
   });
 
   it("owns the Diagnosis order and blocks every later step after a governed failure", () => {
-    const workflow = new DiagnosisWorkflow();
+    const workflow = new DiagnosisSequenceGovernor();
     const list = { name: "list_capabilities", arguments: {}, resultRef: "list", status: "SUCCEEDED" as const };
     const get = { name: "get_capability", arguments: {}, resultRef: "capability", status: "SUCCEEDED" as const };
 
@@ -135,5 +212,47 @@ describe("Foundry Control Plane", () => {
       route: "SOLVE_WITH_CHECKS",
       toolPolicy: { permitted: ["propose_schedule_followup"], required: ["propose_schedule_followup"] },
     });
+  });
+
+  it.each([
+    ["Thanks — can you help me organize my thoughts?", "GENERAL_ASSISTANCE"],
+    ["What is the weather outside?", "GENERAL_ASSISTANCE"],
+    ["Calculate 17.5 / 2.5.", "CONCRETE_CALCULATION"],
+    ["Solve 2x + 3 = 7.", "CONCRETE_CALCULATION"],
+  ] as const)("denies every tool unless the Plan explicitly grants one: %s", (content, expectedIntent) => {
+    const input = request([{ role: "user", content }]);
+    const plan = new ExecutionPlanner().plan(input, new ContextCompiler().compile(input));
+
+    expect(plan.intent).toBe(expectedIntent);
+    expect(plan.execution.mode).toBe("DIRECT_MODEL");
+    expect(plan.toolPolicy.permitted).toEqual([]);
+    expect(plan.toolPolicy.required).toEqual([]);
+    expect(plan.toolPolicy.forbidden).toEqual([
+      "search_learning_resources",
+      "list_capabilities",
+      "get_capability",
+      "run_learner_diagnosis",
+      "record_capability_gap",
+      "propose_library_artifact",
+      "propose_schedule_followup",
+    ]);
+    expect(plan.toolPolicy.maximumCallsPerTool).toMatchObject({
+      search_learning_resources: 0,
+      list_capabilities: 0,
+      get_capability: 0,
+      run_learner_diagnosis: 0,
+      propose_library_artifact: 0,
+      propose_schedule_followup: 0,
+    });
+  });
+
+  it("grants only the requested Product Action tool", () => {
+    const input = request([{ role: "user", content: "Please save this explanation to my library." }]);
+    const plan = new ExecutionPlanner().plan(input, new ContextCompiler().compile(input));
+
+    expect(plan.toolPolicy.permitted).toEqual(["propose_library_artifact"]);
+    expect(plan.toolPolicy.required).toEqual(["propose_library_artifact"]);
+    expect(plan.toolPolicy.maximumCallsPerTool.propose_library_artifact).toBe(1);
+    expect(plan.toolPolicy.maximumCallsPerTool.propose_schedule_followup).toBe(0);
   });
 });

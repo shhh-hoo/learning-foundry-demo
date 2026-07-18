@@ -2,8 +2,15 @@ import type { AgentRunRequest } from "../types";
 import type { ContextExclusionReason, ContextSelectionDecision } from "./execution-plan";
 import { immutablePlan } from "./execution-plan";
 
-/** Foundry-owned Context selection. It records indexes, never message content. */
-export class ContextCompiler {
+/**
+ * Bootstrap Context policy: lifecycle/task filtering only.
+ *
+ * It deliberately does not claim semantic relevance, Topic-shift detection or
+ * token-budget selection. Those require canonical Context Items and a later
+ * governed policy. The compatibility export below retains the contract name
+ * while traces identify this narrower policy honestly.
+ */
+export class TaskLocalContextFilterV1 {
   compile(request: AgentRunRequest): ContextSelectionDecision {
     const candidateMessageIndexes = request.messages.map((_, index) => index);
     let latestUserIndex = -1;
@@ -25,6 +32,8 @@ export class ContextCompiler {
     }));
     return immutablePlan({
       schemaVersion: "1.0.0" as const,
+      contextPolicyId: "TASK_LOCAL_CONTEXT_FILTER" as const,
+      semanticRelevance: "NOT_IMPLEMENTED" as const,
       candidateMessageIndexes,
       selectedMessageIndexes,
       excludedContextItems,
@@ -35,3 +44,5 @@ export class ContextCompiler {
     });
   }
 }
+
+export { TaskLocalContextFilterV1 as ContextCompiler };

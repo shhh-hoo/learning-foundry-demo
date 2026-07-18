@@ -29,7 +29,7 @@ describe("real agent orchestration contract", () => {
       expect(requiredToolName).toBeUndefined();
       return { message: { role: "assistant", content: JSON.stringify({ status: "ANSWERED", learnerMessage: "Coefficients give relative mole amounts because a fixed particle ratio remains unchanged when every count is scaled by the same Avogadro constant.", sourceRefs: ["CAIE-SOURCE-1"], evidenceRefs: ["search-result-1"] }) }, usage: { promptTokens: 15, completionTokens: 8, totalTokens: 23 } };
     } };
-    const tools: AgentToolExecutor = { execute: async () => ({ resultRef: "search-result-1", sourceRefs: ["TN-001", "CAIE-SOURCE-1"], evidenceRefs: ["search-result-1"], data: { retrievalTraceId: "search-result-1", results: [{ sourceId: "TN-001", sourceType: "TEACHER_NOTE" }, { sourceId: "CAIE-SOURCE-1", sourceType: "OFFICIAL_SYLLABUS" }] } }) };
+    const tools: AgentToolExecutor = { execute: async () => ({ resultRef: "search-result-1", sourceRefs: ["TN-001", "CAIE-SOURCE-1"], evidenceRefs: ["search-result-1"], data: { retrievalTraceId: "search-result-1", results: [{ sourceId: "TN-001", sourceType: "TEACHER_NOTE", score: 5, section: "explanation" }, { sourceId: "CAIE-SOURCE-1", sourceType: "OFFICIAL_SYLLABUS", score: 4, page: 1 }] } }) };
     const trace = await runAgent({ ...base, toolDefinitions: [{ type: "function", function: { name: "search_learning_resources" } }], modelClient, tools, createId: () => "agent-trace-test", now: () => new Date("2026-07-16T10:00:00.000Z") });
 
     expect(trace.toolCalls).toEqual([{ name: "search_learning_resources", arguments: { query: "coefficients" }, resultRef: "search-result-1", status: "SUCCEEDED" }]);
@@ -54,6 +54,65 @@ describe("real agent orchestration contract", () => {
     expect(trace.finalResponse.status).toBe("NEEDS_MORE_EVIDENCE");
     expect(trace.evidenceAssessments).toContainEqual(expect.objectContaining({ outcome: "NO_RESULTS", anotherCallJustified: false }));
     expect(trace.stopReason).toContain("retrieval returned no Evidence");
+  });
+
+  it("sends no tool definitions for ordinary assistance and direct calculation", async () => {
+    for (const content of ["Help me organize my study notes.", "Calculate 17.5 / 2.5."]) {
+      const directRequest = { ...request, messages: [{ role: "user" as const, content }] };
+      const modelClient: AgentModelClient = { call: async ({ tools, requiredToolName }) => {
+        expect(tools).toEqual([]);
+        expect(requiredToolName).toBeUndefined();
+        return { message: { role: "assistant", content: JSON.stringify({ status: "ANSWERED", learnerMessage: "Direct response.", sourceRefs: [], evidenceRefs: [] }) } };
+      } };
+      const trace = await runAgent({
+        ...base,
+        request: directRequest,
+        toolDefinitions: [
+          { type: "function", function: { name: "search_learning_resources" } },
+          { type: "function", function: { name: "list_capabilities" } },
+          { type: "function", function: { name: "run_learner_diagnosis" } },
+          { type: "function", function: { name: "propose_library_artifact" } },
+          { type: "function", function: { name: "propose_schedule_followup" } },
+        ],
+        modelClient,
+        tools: { execute: async () => { throw new Error("No tool may execute for DIRECT_MODEL."); } },
+      });
+
+      expect(trace.executionPlan.toolPolicy.permitted).toEqual([]);
+      expect(trace.toolCalls).toEqual([]);
+    }
+  });
+
+  it("enforces the DIRECT_MODEL no-tools invariant even for an inconsistent injected Plan", async () => {
+    const directRequest = { ...request, messages: [{ role: "user" as const, content: "Calculate 17.5 / 2.5." }] };
+    const normalPlan = (await import("../src/agent/route-policy")).resolveAgentExecutionPlan(directRequest);
+    const inconsistentPlan = {
+      ...normalPlan,
+      toolPolicy: {
+        ...normalPlan.toolPolicy,
+        permitted: ["search_learning_resources" as const, "list_capabilities" as const],
+        forbidden: normalPlan.toolPolicy.forbidden.filter((tool) => tool !== "search_learning_resources" && tool !== "list_capabilities"),
+        maximumCallsPerTool: { ...normalPlan.toolPolicy.maximumCallsPerTool, search_learning_resources: 2, list_capabilities: 1 },
+      },
+    };
+    const modelClient: AgentModelClient = { call: async ({ tools }) => {
+      expect(tools).toEqual([]);
+      return { message: { role: "assistant", content: JSON.stringify({ status: "ANSWERED", learnerMessage: "7", sourceRefs: [], evidenceRefs: [] }) } };
+    } };
+
+    const trace = await runAgent({
+      ...base,
+      request: directRequest,
+      executionPlan: inconsistentPlan,
+      toolDefinitions: [
+        { type: "function", function: { name: "search_learning_resources" } },
+        { type: "function", function: { name: "list_capabilities" } },
+      ],
+      modelClient,
+      tools: { execute: async () => { throw new Error("DIRECT_MODEL must not execute tools."); } },
+    });
+
+    expect(trace.toolCalls).toEqual([]);
   });
 
   it("permits exactly one materially different search tied to a missing aspect", async () => {
@@ -87,8 +146,8 @@ describe("real agent orchestration contract", () => {
       sourceRefs: ["TN-001-COEFFICIENTS-TO-MOLE-RATIOS", "CAIE-9701-SYLLABUS-2025-2027-V1"],
       evidenceRefs: ["search-source"],
       data: { results: [
-        { sourceId: "TN-001-COEFFICIENTS-TO-MOLE-RATIOS", sourceType: "TEACHER_NOTE" },
-        { sourceId: "CAIE-9701-SYLLABUS-2025-2027-V1", sourceType: "OFFICIAL_SYLLABUS" },
+        { sourceId: "TN-001-COEFFICIENTS-TO-MOLE-RATIOS", sourceType: "TEACHER_NOTE", score: 5, section: "explanation" },
+        { sourceId: "CAIE-9701-SYLLABUS-2025-2027-V1", sourceType: "OFFICIAL_SYLLABUS", score: 4, page: 1 },
       ] },
     }) };
 
@@ -151,7 +210,7 @@ describe("real agent orchestration contract", () => {
       }
       return { message: { role: "assistant", content: JSON.stringify({ status: "ANSWERED", learnerMessage: "Coefficients give relative mole amounts because scaling each particle count by the same fixed amount preserves the ratio.", sourceRefs: ["CAIE-SOURCE-1"], evidenceRefs: ["search-result"] }) } };
     } };
-    const trace = await runAgent({ ...base, toolDefinitions: [{ type: "function", function: { name: "search_learning_resources" } }], modelClient, tools: { execute: async () => ({ resultRef: "search-result", sourceRefs: ["CAIE-SOURCE-1"], evidenceRefs: ["search-result"], data: { retrievalTraceId: "search-result", results: [{ sourceId: "CAIE-SOURCE-1", sourceType: "TEACHER_NOTE" }] } }) } });
+    const trace = await runAgent({ ...base, toolDefinitions: [{ type: "function", function: { name: "search_learning_resources" } }], modelClient, tools: { execute: async () => ({ resultRef: "search-result", sourceRefs: ["CAIE-SOURCE-1"], evidenceRefs: ["search-result"], data: { retrievalTraceId: "search-result", results: [{ sourceId: "CAIE-SOURCE-1", sourceType: "TEACHER_NOTE", score: 5, section: "explanation" }] } }) } });
     expect(trace.finalResponse.sourceRefs).toEqual(["CAIE-SOURCE-1"]);
     expect(trace.toolCalls).toEqual([expect.objectContaining({ name: "search_learning_resources", status: "SUCCEEDED" })]);
   });
