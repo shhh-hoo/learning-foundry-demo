@@ -35,14 +35,24 @@ export interface ReferencePackManifest {
   readonly ownership: readonly ReferencePackAssetOwnership[];
 }
 
+/**
+ * Minimum identity-bearing binding that Core needs in order to register a
+ * Pack implementation without learning its domain shape. Pack-owned adapters
+ * perform the fuller runtime validation before a binding is used.
+ */
+export interface ReferencePackImplementationBinding {
+  readonly id: string;
+  readonly version: string;
+}
+
 export interface ReferencePackRegistration {
   readonly manifest: ReferencePackManifest;
   readonly capabilities: readonly {
     readonly profile: CapabilityProfile;
-    readonly implementation: unknown;
+    readonly implementation: ReferencePackImplementationBinding;
   }[];
   readonly components: readonly {
     readonly profile: ComponentProfile;
-    readonly implementation: unknown;
+    readonly implementation: ReferencePackImplementationBinding;
   }[];
 }

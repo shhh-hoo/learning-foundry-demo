@@ -19,8 +19,14 @@ const TOOL_STEPS = [
   { tool: "run_learner_diagnosis", completesThrough: 5 },
 ] as const;
 
-/** Known-order governed work. The model supplies language/arguments, never step order. */
-export class DiagnosisWorkflow {
+/**
+ * Governs tool availability and order for Diagnosis.
+ *
+ * The model still supplies each tool call and its arguments. This is not a
+ * deterministic application executor; tool adapters retain provenance,
+ * Attempt and persisted-result validation at their execution boundary.
+ */
+export class DiagnosisSequenceGovernor {
   readonly identity = { id: "LEARNER_DIAGNOSIS", version: "1.0.0" } as const;
 
   nextTool(records: readonly AgentToolCallRecord[]): "list_capabilities" | "get_capability" | "run_learner_diagnosis" | null {
@@ -66,3 +72,5 @@ export class DiagnosisWorkflow {
       && ("invalidJson" in record.arguments || "rejectedByRoute" in record.arguments));
   }
 }
+
+export { DiagnosisSequenceGovernor as DiagnosisWorkflow };
