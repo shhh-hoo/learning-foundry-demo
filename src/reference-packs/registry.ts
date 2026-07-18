@@ -5,7 +5,10 @@ import {
   chemistryCaie9701CapabilityRegistryVersion,
   chemistryCaie9701ReferencePack,
 } from "./chemistry-caie-9701";
-import type { LegacyAgentCapabilityRecord } from "./chemistry-caie-9701/adapters/legacy-capability-adapter";
+import {
+  parseLegacyAgentCapabilityRecord,
+  type LegacyAgentCapabilityRecord,
+} from "./chemistry-caie-9701/adapters/legacy-capability-adapter";
 
 const packId = chemistryCaie9701ReferencePack.manifest.id;
 
@@ -28,6 +31,6 @@ export const registeredAgentCapabilities: {
 } = {
   version: chemistryCaie9701CapabilityRegistryVersion,
   capabilities: referencePackRegistry.listCapabilities(packId).map(({ implementation }) =>
-    implementation as LegacyAgentCapabilityRecord,
+    parseLegacyAgentCapabilityRecord(implementation),
   ),
 };

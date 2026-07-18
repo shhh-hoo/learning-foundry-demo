@@ -80,4 +80,20 @@ describe("Reference Pack registration", () => {
     expect(() => createReferencePackRegistry([chemistryCaie9701ReferencePack, componentConflict]))
       .toThrow("DUPLICATE_COMPONENT_REGISTRATION");
   });
+
+  it("fails closed when a Pack binding identity disagrees with its Core profile", () => {
+    const [capability] = chemistryCaie9701ReferencePack.capabilities;
+    const [component] = chemistryCaie9701ReferencePack.components;
+    expect(capability).toBeDefined();
+    expect(component).toBeDefined();
+
+    expect(() => createReferencePackRegistry([{
+      ...chemistryCaie9701ReferencePack,
+      capabilities: [{ ...capability!, implementation: { ...capability!.implementation, version: "9.9.9" } }],
+    }])).toThrow("REFERENCE_PACK_CAPABILITY_IDENTITY_MISMATCH");
+    expect(() => createReferencePackRegistry([{
+      ...chemistryCaie9701ReferencePack,
+      components: [{ ...component!, implementation: { ...component!.implementation, id: "different-component" } }],
+    }])).toThrow("REFERENCE_PACK_COMPONENT_IDENTITY_MISMATCH");
+  });
 });
