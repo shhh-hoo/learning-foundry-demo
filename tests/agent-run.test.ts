@@ -78,7 +78,7 @@ describe("real agent orchestration contract", () => {
         tools: { execute: async () => { throw new Error("No tool may execute for DIRECT_MODEL."); } },
       });
 
-      expect(trace.executionPlan.toolPolicy.permitted).toEqual([]);
+      expect(trace.executionPlan?.toolPolicy.permitted).toEqual([]);
       expect(trace.toolCalls).toEqual([]);
     }
   });
