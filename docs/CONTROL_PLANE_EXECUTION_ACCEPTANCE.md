@@ -89,6 +89,12 @@ npm run runtime:parity:fixture
 git diff --check
 ```
 
+After PRs #14 and #15 were merged, current `main` was integrated without
+rewriting the repair commits. At integration snapshot `aca6ea4`, the combined
+tree passed 38 test files / 276 tests, type checking, production build, policy
+audit, runtime parity fixture (`EXACT_MATCH`) and `git diff --check`. No live
+model attempt was added during integration.
+
 Live manifest:
 `agent-eval/run-manifests/control-plane-pr1.json`.
 
@@ -201,7 +207,7 @@ attempt completed after one search.
 
 **Final code merge verdict: READY FOR MERGE REVIEW.** This is a code-review
 verdict, not a runtime-authority, AgentEval release-gate or Legacy-deletion
-decision. This task stops before merge.
+decision. A repository merge does not grant any of those authorities.
 
 ## Privacy and delivery impact
 
