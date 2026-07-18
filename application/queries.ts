@@ -3,17 +3,21 @@ import { getCheckpointSql, getDb, getSql } from "@/db/client";
 import {
   componentVersions,
   components,
+  capabilityVersions,
   conversationEvents,
   contextCompilations,
+  capabilities,
   courses,
   diagnosticObservations,
   evidenceUnits,
   evalRuns,
+  fileAssets,
   learnerAttempts,
   learningEpisodes,
   learningOutcomes,
   learningTasks,
   libraryItems,
+  modelRuns,
   publicationDecisions,
   retryAttempts,
   retrievalRuns,
@@ -79,7 +83,19 @@ export async function getLearnerWorkspace(actor: Actor) {
     eq(courses.institutionId, actor.institutionId),
     inArray(courses.id, actor.courseIds.length ? actor.courseIds : ["00000000-0000-0000-0000-000000000000"]),
   ));
-  return { tasks, events, episodes, outcomes, library: libraryRows.map((row) => row.item), schedule: scheduleRows.map((row) => row.item), pendingWorkflows, courses: availableCourses };
+  const assets = taskIds.length ? await db.select().from(fileAssets).where(and(
+    eq(fileAssets.institutionId, actor.institutionId),
+    inArray(fileAssets.taskId, taskIds),
+  )).orderBy(desc(fileAssets.createdAt)) : [];
+  const capabilityRows = await db.selectDistinct({ capability: capabilities, version: capabilityVersions }).from(capabilities)
+    .innerJoin(capabilityVersions, eq(capabilityVersions.id, capabilities.activeVersionId))
+    .innerJoin(subjects, eq(subjects.referencePackKey, capabilities.referencePackKey))
+    .innerJoin(courses, eq(courses.subjectId, subjects.id))
+    .where(and(
+      eq(subjects.institutionId, actor.institutionId),
+      inArray(courses.id, actor.courseIds.length ? actor.courseIds : ["00000000-0000-0000-0000-000000000000"]),
+    ));
+  return { tasks, events, episodes, outcomes, library: libraryRows.map((row) => row.item), schedule: scheduleRows.map((row) => row.item), pendingWorkflows, courses: availableCourses, assets, capabilities: capabilityRows.map((row) => ({ ...row.capability, contract: row.version.contract })) };
 }
 
 export async function getAuthorizedEvidenceCatalog(actor: Actor, taskId: string) {
@@ -102,7 +118,7 @@ export async function getAuthorizedEvidenceCatalog(actor: Actor, taskId: string)
     try {
       authorizePersistedEvidence(actor, row.source, "LEARNING");
       authorizeEvidenceUnitInstitution(actor, row.evidence.institutionId);
-      return evidenceAlignsToCourse(row.evidence.metadata, scope.course.id, scope.subject.referencePackKey);
+      return row.source.courseId === scope.course.id || evidenceAlignsToCourse(row.evidence.metadata, scope.course.id, scope.subject.referencePackKey);
     } catch {
       return false;
     }
@@ -123,7 +139,9 @@ export async function getTaskDetail(actor: Actor, taskId: string) {
   const retries = attempts.length ? await db.select().from(retryAttempts).where(inArray(retryAttempts.originalAttemptId, attempts.map((item) => item.id))) : [];
   const outcomes = await db.select().from(learningOutcomes).where(eq(learningOutcomes.taskId, taskId));
   const contexts = await db.select().from(contextCompilations).where(eq(contextCompilations.taskId, taskId)).orderBy(desc(contextCompilations.createdAt)).limit(10);
-  return { task, episodes, events, attempts, observations, reviews, retries, outcomes, contexts };
+  const assets = await db.select().from(fileAssets).where(and(eq(fileAssets.taskId, taskId), eq(fileAssets.institutionId, actor.institutionId))).orderBy(desc(fileAssets.createdAt));
+  const sources = assets.some((asset) => asset.sourceId) ? await db.select().from(sourceRecords).where(inArray(sourceRecords.id, assets.flatMap((asset) => asset.sourceId ? [asset.sourceId] : []))) : [];
+  return { task, episodes, events, attempts, observations, reviews, retries, outcomes, contexts, assets, sources };
 }
 
 export async function getTeacherWorkspace(actor: Actor) {
@@ -136,7 +154,9 @@ export async function getTeacherWorkspace(actor: Actor) {
   const authorizedTaskIds = authorizedTasks.map((task) => task.id);
   const queue = await sql<Array<Record<string, unknown>>>`
     SELECT o.id AS observation_id, o.status, o.failure_code, o.summary, o.first_invalid_step,
-           a.id AS attempt_id, a.prompt, a.response, a.source_refs, a.capability_id, o.capability_version_id, o.observation_source, o.structured_result,
+           a.id AS attempt_id, a.prompt, a.response, a.source_refs, a.capability_id, a.file_asset_id, o.capability_version_id, o.observation_source, o.structured_result,
+           f.original_name AS file_name, f.media_type AS file_media_type, f.ingestion_status AS file_ingestion_status,
+           f.interpretation_status AS file_interpretation_status, f.extraction_text AS file_extraction_text, f.interpretation AS file_interpretation,
            t.id AS task_id, t.title AS task_title,
            (SELECT e.id FROM foundry_product.learning_episodes e WHERE e.task_id = t.id ORDER BY e.sequence DESC LIMIT 1) AS episode_id,
            u.name AS learner_name,
@@ -149,6 +169,7 @@ export async function getTeacherWorkspace(actor: Actor) {
     JOIN foundry_product.learner_attempts a ON a.id = o.attempt_id
     JOIN foundry_product.learning_tasks t ON t.id = a.task_id
     JOIN foundry_product.users u ON u.id = a.learner_id
+    LEFT JOIN foundry_product.file_assets f ON f.id = a.file_asset_id
     WHERE t.institution_id = ${actor.institutionId}
       AND t.course_id = ANY(${actor.courseIds}::uuid[])
     ORDER BY (SELECT count(*) FROM foundry_product.teacher_reviews r WHERE r.observation_id = o.id), o.created_at DESC
@@ -180,7 +201,16 @@ export async function getTeacherWorkspace(actor: Actor) {
     eq(workflowRuns.status, "INTERRUPTED"),
     inArray(workflowRuns.taskId, authorizedTaskIds),
   )).orderBy(desc(workflowRuns.startedAt)) : [];
-  return { queue, patterns, retries, pendingWorkflows };
+  const sourceReviews = await getDb().select({ source: sourceRecords, asset: fileAssets, task: learningTasks })
+    .from(sourceRecords)
+    .innerJoin(fileAssets, eq(fileAssets.sourceId, sourceRecords.id))
+    .innerJoin(learningTasks, eq(learningTasks.id, fileAssets.taskId))
+    .where(and(
+      eq(sourceRecords.institutionId, actor.institutionId),
+      eq(fileAssets.purpose, "LEARNING_MATERIAL"),
+      inArray(fileAssets.courseId, actor.courseIds.length ? actor.courseIds : ["00000000-0000-0000-0000-000000000000"]),
+    )).orderBy(desc(fileAssets.createdAt));
+  return { queue, patterns, retries, pendingWorkflows, sourceReviews };
 }
 
 export async function getFoundryWorkspace(actor: Actor) {
@@ -249,6 +279,7 @@ export async function getEngineeringWorkspace(actor: Actor) {
   const runs = await db.select().from(workflowRuns).where(and(eq(workflowRuns.institutionId, actor.institutionId), taskIds.length ? inArray(workflowRuns.taskId, taskIds) : eq(workflowRuns.taskId, "00000000-0000-0000-0000-000000000000"))).orderBy(desc(workflowRuns.startedAt)).limit(50);
   const evaluations = await db.select().from(evalRuns).where(eq(evalRuns.institutionId, actor.institutionId)).orderBy(desc(evalRuns.createdAt)).limit(20);
   const retrieval = taskIds.length ? await db.select().from(retrievalRuns).where(and(eq(retrievalRuns.institutionId, actor.institutionId), inArray(retrievalRuns.taskId, taskIds))).orderBy(desc(retrievalRuns.createdAt)).limit(50) : [];
+  const models = await db.select().from(modelRuns).where(eq(modelRuns.institutionId, actor.institutionId)).orderBy(desc(modelRuns.createdAt)).limit(50);
   const staleResumingRuns = await getStaleResumingRuns(actor);
   let checkpointCounts: Array<Record<string, unknown>> = [];
   try {
@@ -264,15 +295,16 @@ export async function getEngineeringWorkspace(actor: Actor) {
     runs,
     evaluations,
     retrieval,
+    models,
     staleResumingRuns,
     checkpointCounts,
     serviceStatus: {
-      model: process.env.DEEPSEEK_API_KEY ? "CONFIGURED_NOT_VERIFIED" : "UNAVAILABLE",
-      matureHybridRetrieval: "UNAVAILABLE",
-      reranker: "UNAVAILABLE",
-      multimodalRetrieval: "UNAVAILABLE",
+      model: process.env.DEEPSEEK_API_KEY || process.env.OPENAI_API_KEY ? "CONFIGURED_NOT_VERIFIED" : "UNAVAILABLE",
+      embeddingRetrieval: process.env.OPENAI_API_KEY ? "CONFIGURED_NOT_VERIFIED" : "UNAVAILABLE",
+      reranker: process.env.COHERE_API_KEY ? "CONFIGURED_NOT_VERIFIED" : "UNAVAILABLE",
+      multimodalInterpretation: process.env.OPENAI_API_KEY ? "CONFIGURED_NOT_VERIFIED" : "UNAVAILABLE",
       externalTelemetry: process.env.LANGSMITH_TRACING === "true" ? "CONFIGURED_NOT_VERIFIED" : "UNAVAILABLE",
-      standardTrainer: "UNAVAILABLE",
+      deterministicChemistryCapabilities: "AVAILABLE",
       productEval: "UNAVAILABLE",
       pedagogyEval: "UNAVAILABLE",
       learningEffectivenessEval: "UNAVAILABLE",

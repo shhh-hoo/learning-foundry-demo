@@ -19,6 +19,22 @@ function useAction() {
   return { run, pending, message, setMessage };
 }
 
+function useMultipartAction() {
+  const router = useRouter();
+  const [pending, startTransition] = useTransition();
+  const [message, setMessage] = useState("");
+  const run = async (url: string, body: FormData) => {
+    setMessage("");
+    const response = await fetch(url, { method: "POST", body });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error ?? "Request failed");
+    setMessage("Saved");
+    startTransition(() => router.refresh());
+    return data;
+  };
+  return { run, pending, message, setMessage };
+}
+
 function randomKey(prefix: string) { return `${prefix}:${crypto.randomUUID()}`; }
 
 export function CreateTaskForm({ courseId }: { courseId: string }) {
@@ -62,19 +78,80 @@ export function MessageForm({ taskId, episodeId }: { taskId: string; episodeId: 
   </form>;
 }
 
-export function AttemptForm({ taskId, episodeId }: { taskId: string; episodeId: string }) {
+export function AttemptForm({ taskId, episodeId, capabilities = [] }: { taskId: string; episodeId: string; capabilities?: Array<{ id: string; name: string; contract?: Record<string, unknown> }> }) {
   const action = useAction();
   return <form className="stack" data-testid="attempt-form" onSubmit={async (event) => {
     event.preventDefault(); const form = new FormData(event.currentTarget);
-    try { await action.run("/api/attempts", {
-      taskId, episodeId, prompt: form.get("prompt"), response: form.get("response"), structuredInput: { responseType: "FREE_TEXT" }, sourceRefs: [], idempotencyKey: randomKey("attempt"),
-    }); }
+    try {
+      const capabilityId = String(form.get("capabilityId") ?? "");
+      const structuredInput = capabilityId ? JSON.parse(String(form.get("structuredInput"))) : { responseType: "FREE_TEXT" };
+      await action.run("/api/attempts", {
+        taskId, episodeId, capabilityId: capabilityId || undefined, prompt: form.get("prompt"), response: form.get("response"), structuredInput, sourceRefs: [], idempotencyKey: randomKey("attempt"),
+      });
+    }
     catch (error) { action.setMessage(error instanceof Error ? error.message : "Unable to capture Attempt"); }
   }}>
+    <label>Deterministic Capability (optional)<select name="capabilityId"><option value="">Teacher inspection only</option>{capabilities.map((capability) => <option key={capability.id} value={capability.id}>{capability.name}</option>)}</select></label>
+    {capabilities.length ? <details><summary>Capability input contracts</summary><pre>{JSON.stringify(capabilities.map(({ id, name, contract }) => ({ id, name, contract })), null, 2)}</pre></details> : null}
+    {capabilities.length ? <label>Capability input JSON<textarea name="structuredInput" defaultValue={JSON.stringify({ learnerAnswer: 0, tolerance: 0.01 }, null, 2)} /></label> : null}
     <label>Activity prompt<input name="prompt" required defaultValue="Explain your reasoning and identify where supporting Evidence is needed." /></label>
     <label>Your Attempt<textarea name="response" required placeholder="Write your reasoning..." /></label>
     <button disabled={action.pending}>Capture Attempt</button><FormStatus value={action.message}/>
-    <small>Standard Trainer is unavailable. This records a real Attempt and a review-required status; it does not claim an automated Diagnosis.</small>
+    <small>Selecting a listed Capability runs its persisted deterministic adapter. Without one, the Attempt remains review-required and no automated Diagnosis is claimed.</small>
+  </form>;
+}
+
+export function MaterialUploadForm({ taskId, episodeId }: { taskId: string; episodeId: string }) {
+  const action = useMultipartAction();
+  return <form className="stack" data-testid="material-upload-form" onSubmit={async (event) => {
+    event.preventDefault();
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    form.set("taskId", taskId);
+    form.set("episodeId", episodeId);
+    form.set("idempotencyKey", randomKey("material-upload"));
+    try { await action.run("/api/files/material", form); formElement.reset(); }
+    catch (error) { action.setMessage(error instanceof Error ? error.message : "Unable to upload learning material"); }
+  }}>
+    <label>PDF or image<input name="file" type="file" accept="application/pdf,image/png,image/jpeg,image/webp" required /></label>
+    <label>Source title<input name="title" required minLength={3} /></label>
+    <label>Rights/license statement<textarea name="rights" required minLength={3} placeholder="State why the institution may use this material." /></label>
+    <button disabled={action.pending}>Upload for ingestion and rights review</button><FormStatus value={action.message}/>
+    <small>Upload does not authorize delivery. A course-scoped teacher must approve the explicit rights decision before extracted content can become Evidence.</small>
+  </form>;
+}
+
+export function ImageAttemptForm({ taskId, episodeId }: { taskId: string; episodeId: string }) {
+  const action = useMultipartAction();
+  return <form className="stack" data-testid="image-attempt-form" onSubmit={async (event) => {
+    event.preventDefault();
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    form.set("taskId", taskId);
+    form.set("episodeId", episodeId);
+    form.set("idempotencyKey", randomKey("image-attempt"));
+    try { await action.run("/api/files/attempt", form); formElement.reset(); }
+    catch (error) { action.setMessage(error instanceof Error ? error.message : "Unable to upload image Attempt"); }
+  }}>
+    <label>Attempt image<input name="file" type="file" accept="image/png,image/jpeg,image/webp" required /></label>
+    <label>Activity prompt<input name="prompt" required defaultValue="Inspect the reasoning shown in this image." /></label>
+    <label>Learner note (optional)<textarea name="learnerNote" placeholder="Add context that is not visible in the image." /></label>
+    <button disabled={action.pending}>Capture image Attempt</button><FormStatus value={action.message}/>
+    <small>The original upload is preserved. Multimodal transcription and interpretation run only when the configured provider executes; otherwise the Teacher receives an explicit unavailable state.</small>
+  </form>;
+}
+
+export function SourceRightsForm({ sourceId, currentRights }: { sourceId: string; currentRights: string }) {
+  const action = useAction();
+  const [decision, setDecision] = useState<"APPROVED" | "DENIED">("APPROVED");
+  return <form className="inline-form" data-testid="source-rights-form" onSubmit={async (event) => {
+    event.preventDefault(); const form = new FormData(event.currentTarget);
+    try { await action.run(`/api/sources/${sourceId}/rights`, { decision, rights: form.get("rights"), idempotencyKey: randomKey("source-rights") }); }
+    catch (error) { action.setMessage(error instanceof Error ? error.message : "Unable to record rights decision"); }
+  }}>
+    <select value={decision} onChange={(event) => setDecision(event.target.value as "APPROVED" | "DENIED")}><option>APPROVED</option><option>DENIED</option></select>
+    <input name="rights" required defaultValue={currentRights} aria-label="Final rights statement" />
+    <button disabled={action.pending}>Record human rights decision</button><FormStatus value={action.message}/>
   </form>;
 }
 

@@ -1,8 +1,10 @@
 import { fileURLToPath } from "node:url";
+import { mkdir, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import postgres from "postgres";
 
 export const E2E_DATABASE_NAME = "learning_foundry_e2e";
+export const E2E_STORAGE_ROOT = resolve(".local-data/e2e-uploads");
 
 export function assertE2eDatabaseTarget(rawUrl: string | undefined, requireResetPermission = true): string {
   if (!rawUrl) throw new Error("E2E_DATABASE_URL is required");
@@ -29,6 +31,9 @@ async function setupE2eDatabase(): Promise<void> {
   if (!showcasePassword || showcasePassword.length < 12) throw new Error("E2E_SHOWCASE_PASSWORD must contain at least 12 characters");
   if (process.env.NODE_ENV === "production") throw new Error("Refusing E2E reset in production mode");
 
+  await rm(E2E_STORAGE_ROOT, { recursive: true, force: true });
+  await mkdir(E2E_STORAGE_ROOT, { recursive: true });
+
   const reset = postgres(databaseUrl, { max: 1, prepare: false });
   try {
     await reset`DROP SCHEMA IF EXISTS langgraph_checkpoint CASCADE`;
@@ -44,6 +49,9 @@ async function setupE2eDatabase(): Promise<void> {
   process.env.SYNTHETIC_SHOWCASE_MODE = "true";
   process.env.SHOWCASE_PASSWORD = showcasePassword;
   process.env.DEEPSEEK_API_KEY = "";
+  process.env.OPENAI_API_KEY = "";
+  process.env.COHERE_API_KEY = "";
+  process.env.FILE_STORAGE_LOCAL_ROOT = E2E_STORAGE_ROOT;
   process.env.LANGSMITH_TRACING = "false";
 
   const [{ migrate }, { getDb, closeDb }] = await Promise.all([

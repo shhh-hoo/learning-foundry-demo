@@ -22,7 +22,7 @@ export const ExplanationState = new StateSchema({
 });
 
 export function mapExplanationResult(result: Awaited<ReturnType<typeof explainWithEvidence>>) {
-  return { response: result.text, model: result.model, synthesisStatus: result.status };
+  return { response: result.text, model: result.model, synthesisStatus: result.status, citations: result.citations };
 }
 
 export function explanationEventInput(state: {
@@ -53,6 +53,8 @@ export function buildExplanationGraph(checkpointer?: BaseCheckpointSaver) {
       return { hits: result.hits, citations: result.citations, missingSignal: result.missingSignal };
     })
     .addNode("synthesize", async (state) => mapExplanationResult(await explainWithEvidence({
+      actor: state.actor,
+      taskId: state.taskId,
       question: state.question,
       hits: state.hits as never,
       citations: state.citations as never,

@@ -8,7 +8,10 @@ describe("Legacy replacement boundary", () => {
 
   it("contains no character-code vectors or fake Standard Trainer adapter", async () => {
     const retrieval = await readFile(new URL("../../application/retrieval.ts", import.meta.url), "utf8");
+    const providers = await readFile(new URL("../../application/intelligence-providers.ts", import.meta.url), "utf8");
     await expect(access(new URL("../../tools/standard-trainer.ts", import.meta.url))).rejects.toBeTruthy();
-    expect(retrieval).not.toMatch(/charCodeAt|embedding|vectorScore/);
+    expect(retrieval).not.toMatch(/charCodeAt|queryVector\s*=\s*\[/);
+    expect(providers).toContain("new OpenAIEmbeddings");
+    expect(retrieval).toContain("RECIPROCAL_RANK_FUSION");
   });
 });

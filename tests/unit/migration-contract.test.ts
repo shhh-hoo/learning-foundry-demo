@@ -5,7 +5,8 @@ describe("fresh migration contract", () => {
   it("allows Drizzle to pre-create its migration schema", async () => {
     const migration = await readFile(new URL("../../db/migrations/0000_full_framework.sql", import.meta.url), "utf8");
     expect(migration).toContain('CREATE SCHEMA IF NOT EXISTS "foundry_product";');
-    expect(migration).not.toMatch(/CREATE EXTENSION IF NOT EXISTS "vector"|\bembedding\b/);
+    expect(migration).not.toContain('CREATE EXTENSION IF NOT EXISTS "vector"');
+    expect(migration).toContain('"embedding" real[]');
   });
 
   it("creates the operational schema idempotently", async () => {
@@ -36,5 +37,16 @@ describe("fresh migration contract", () => {
     const migration = await readFile(new URL("../../db/migrations/0000_full_framework.sql", import.meta.url), "utf8");
     expect(migration).toContain('CREATE UNIQUE INDEX "reviews_observation_uq" ON "foundry_product"."teacher_reviews" USING btree ("observation_id")');
     expect(migration).not.toContain('CREATE INDEX "reviews_observation_idx"');
+  });
+
+  it("persists file ownership, extraction, embeddings, model calls and their lineage guards", async () => {
+    const migration = await readFile(new URL("../../db/migrations/0000_full_framework.sql", import.meta.url), "utf8");
+    expect(migration).toContain('CREATE TABLE "foundry_product"."file_assets"');
+    expect(migration).toContain('CREATE TABLE "foundry_operational"."model_runs"');
+    expect(migration).toContain('CREATE TRIGGER "source_scope_guard"');
+    expect(migration).toContain('CREATE TRIGGER "file_asset_lineage_guard"');
+    expect(migration).toContain("attempt file lineage mismatch");
+    expect(migration).toContain('"tokenizer" text NOT NULL');
+    expect(migration).toContain('"selected_token_count" integer NOT NULL');
   });
 });

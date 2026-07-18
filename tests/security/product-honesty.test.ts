@@ -26,13 +26,13 @@ describe("A2a product-honesty surfaces", () => {
     expect(queries).not.toContain("coalesce(o.failure_code, 'NO_FAILURE')");
   });
 
-  it("discloses lifecycle-only Context and answer-level Evidence refs", async () => {
+  it("discloses enforced Context budgets and answer-level Evidence refs", async () => {
     const learner = await readFile(new URL("../../app/learner/page.tsx", import.meta.url), "utf8");
     const timeline = await readFile(new URL("../../components/ui.tsx", import.meta.url), "utf8");
-    expect(learner).toContain("lifecycle selection only");
-    expect(learner).toContain("Token budgeting · NOT_ENFORCED");
-    expect(learner).toContain("Modality budgeting · UNAVAILABLE");
-    expect(learner).not.toContain("token budget {detail.contexts[0].tokenBudget}");
+    expect(learner).toContain("lifecycle and budget enforcement");
+    expect(learner).toContain("Token budget · ENFORCED");
+    expect(learner).toContain("Modality budget · ENFORCED");
+    expect(learner).toContain("model tokens selected");
     expect(learner).toContain("Authorized Evidence catalog");
     expect(learner).toContain("not necessarily used by an answer");
     expect(timeline).toContain("sourceRefs: item.sourceRefs");

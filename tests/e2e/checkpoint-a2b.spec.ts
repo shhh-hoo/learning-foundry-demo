@@ -1,4 +1,5 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import { minimalPng, simplePdf } from "@/tests/helpers/files";
 
 const institutionSlug = "checkpoint-showcase";
 const password = process.env.E2E_SHOWCASE_PASSWORD ?? "";
@@ -38,7 +39,7 @@ test.describe.configure({ mode: "serial" });
 for (const account of Object.keys(accounts) as Account[]) {
   test(`${account} authenticates and sees only the authorized surface`, async ({ page }) => {
     await signIn(page, account);
-    await expect(page.getByText("Synthetic showcase data").or(page.getByText("Honest service status"))).toBeVisible();
+    await expect(page.getByText(/Synthetic|Honest service status/).first()).toBeVisible();
   });
 }
 
@@ -159,6 +160,80 @@ test("available Learning Loop, Foundry Draft/preflight, and Engineering honesty"
     await expect(engineer.page.getByText("productEval")).toBeVisible();
     await expect(engineer.page.getByText("learningEffectivenessEval")).toBeVisible();
     await expect(engineer.page.getByText("UNAVAILABLE", { exact: true }).first()).toBeVisible();
+  } finally {
+    await Promise.all(opened.map((context) => context.close()));
+  }
+});
+
+test("real PDF Evidence intake and image Attempt reach governed Learner and Teacher surfaces", async ({ browser }, testInfo) => {
+  test.skip(testInfo.project.name === "mobile", "The mobile project covers authenticated surfaces; the file-backed governed loop runs once on desktop.");
+  test.setTimeout(180_000);
+  const suffix = `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+  const taskTitle = `E2E real evidence ${suffix}`;
+  const materialTitle = `E2E uploaded kinetics note ${suffix}`;
+  const uniqueEvidence = `activation energy catalyst pathway ${suffix}`;
+  const imagePrompt = `Inspect handwritten equilibrium work ${suffix}`;
+  const opened: BrowserContext[] = [];
+
+  try {
+    const learner = await openRole(browser, "learner");
+    opened.push(learner.context);
+    const createTask = learner.page.getByTestId("create-task-form");
+    await createTask.getByLabel("Task title").fill(taskTitle);
+    await createTask.getByLabel("Learning goal").fill("Use an uploaded governed source and preserve an image Attempt for Teacher review.");
+    await createTask.getByRole("button", { name: "Create Learning Task" }).click();
+    await expect(learner.page.getByRole("heading", { level: 2, name: taskTitle, exact: true })).toBeVisible();
+
+    const material = learner.page.getByTestId("material-upload-form");
+    await material.getByLabel("PDF or image").setInputFiles({ name: "kinetics-note.pdf", mimeType: "application/pdf", buffer: Buffer.from(simplePdf(uniqueEvidence)) });
+    await material.getByLabel("Source title").fill(materialTitle);
+    await material.getByLabel("Rights/license statement").fill("Synthetic E2E material supplied for institution course use and explicit teacher review.");
+    await material.getByRole("button", { name: "Upload for ingestion and rights review" }).click();
+    await expect(learner.page.getByText("Ingestion · EXTRACTED", { exact: true })).toBeVisible();
+    await expect(learner.page.getByText(/Setting up fake worker failed/)).toHaveCount(0);
+    await expect(learner.page.getByText("Rights · REVIEW_REQUIRED", { exact: true })).toBeVisible();
+    await expect(learner.page.getByText(uniqueEvidence, { exact: false })).toHaveCount(0);
+
+    const teacher = await openRole(browser, "teacher");
+    opened.push(teacher.context);
+    let sourceCard = teacher.page.locator("article.evidence-card").filter({ hasText: materialTitle });
+    await expect(sourceCard).toBeVisible();
+    await expect(sourceCard.getByRole("link", { name: "Inspect original upload" })).toBeVisible();
+    const rights = sourceCard.getByTestId("source-rights-form");
+    await rights.getByLabel("Final rights statement").fill("Authenticated teacher approved this synthetic E2E source for institution course delivery.");
+    await rights.getByRole("button", { name: "Record human rights decision" }).click();
+    sourceCard = teacher.page.locator("article.evidence-card").filter({ hasText: materialTitle });
+    await expect(sourceCard.getByText("Rights · APPROVED", { exact: true })).toBeVisible();
+
+    await learner.page.reload();
+    await learner.page.getByRole("link", { name: new RegExp(taskTitle) }).click();
+    await expect(learner.page.getByRole("heading", { level: 2, name: "Authorized Evidence catalog" })).toBeVisible();
+    await expect(learner.page.getByText(uniqueEvidence, { exact: false })).toBeVisible();
+    const message = learner.page.getByTestId("message-form");
+    await message.getByLabel("Ask with active Task context").fill(uniqueEvidence);
+    await message.getByRole("button", { name: "Run explain" }).click();
+    const unavailableAnswer = learner.page.getByTestId("conversation-event").filter({ hasText: "Model synthesis is unavailable" }).last();
+    await expect(unavailableAnswer).toBeVisible();
+    await expect(unavailableAnswer.getByTestId("event-evidence-refs")).toContainText("References attached to this event");
+
+    const imageAttempt = learner.page.getByTestId("image-attempt-form");
+    await imageAttempt.getByLabel("Attempt image").setInputFiles({ name: "equilibrium.png", mimeType: "image/png", buffer: Buffer.from(minimalPng) });
+    await imageAttempt.getByLabel("Activity prompt").fill(imagePrompt);
+    await imageAttempt.getByLabel("Learner note (optional)").fill("The original handwritten work is the canonical Attempt artifact.");
+    await imageAttempt.getByRole("button", { name: "Capture image Attempt" }).click();
+    await expect(learner.page.getByText(imagePrompt, { exact: true })).toBeVisible();
+    await expect(learner.page.getByText("Multimodal interpretation · PROVIDER_UNAVAILABLE", { exact: true })).toBeVisible();
+
+    await teacher.page.reload();
+    const attemptCard = taskCard(teacher.page, taskTitle).filter({ hasText: imagePrompt });
+    await expect(attemptCard.getByRole("link", { name: /Open equilibrium.png/ })).toBeVisible();
+    await expect(attemptCard.getByAltText("Original learner Attempt: equilibrium.png")).toBeVisible();
+    await expect(attemptCard.getByText("PROVIDER_UNAVAILABLE", { exact: true })).toBeVisible();
+    await expect(attemptCard.getByText("The original upload and derived interpretation are separate.", { exact: false })).toBeVisible();
+    const review = attemptCard.getByTestId("teacher-review-form");
+    await review.getByPlaceholder("Teaching support").fill("Inspect the original image directly because multimodal interpretation is unavailable.");
+    await review.getByRole("button", { name: "Review & resume" }).click();
+    await expect(taskCard(teacher.page, taskTitle).filter({ hasText: imagePrompt }).getByTestId("retry-form")).toBeVisible();
   } finally {
     await Promise.all(opened.map((context) => context.close()));
   }

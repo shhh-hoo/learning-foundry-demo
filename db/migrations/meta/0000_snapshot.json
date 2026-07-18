@@ -1,5 +1,5 @@
 {
-  "id": "e930a40f-67d4-47b3-be54-3378d457be39",
+  "id": "787f4f5b-a7a6-4c29-85ac-5c85e97f23b5",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -466,6 +466,24 @@
         },
         "modality_budget": {
           "name": "modality_budget",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tokenizer": {
+          "name": "tokenizer",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "selected_token_count": {
+          "name": "selected_token_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "modality_usage": {
+          "name": "modality_usage",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": true
@@ -1176,6 +1194,37 @@
           "primaryKey": false,
           "notNull": true
         },
+        "embedding": {
+          "name": "embedding",
+          "type": "real[]",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "embedding_model": {
+          "name": "embedding_model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "embedding_dimensions": {
+          "name": "embedding_dimensions",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "embedding_status": {
+          "name": "embedding_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'NOT_REQUESTED'"
+        },
+        "embedding_failure": {
+          "name": "embedding_failure",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -1262,6 +1311,314 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "foundry_product.file_assets": {
+      "name": "file_assets",
+      "schema": "foundry_product",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "institution_id": {
+          "name": "institution_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "course_id": {
+          "name": "course_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "task_id": {
+          "name": "task_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "owner_user_id": {
+          "name": "owner_user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_id": {
+          "name": "source_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "purpose": {
+          "name": "purpose",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "storage_key": {
+          "name": "storage_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "original_name": {
+          "name": "original_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "media_type": {
+          "name": "media_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "byte_size": {
+          "name": "byte_size",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "content_hash": {
+          "name": "content_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ingestion_status": {
+          "name": "ingestion_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'STORED'"
+        },
+        "extraction_text": {
+          "name": "extraction_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "extraction_metadata": {
+          "name": "extraction_metadata",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "interpretation": {
+          "name": "interpretation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "interpretation_status": {
+          "name": "interpretation_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'NOT_APPLICABLE'"
+        },
+        "provider_model": {
+          "name": "provider_model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "failure_code": {
+          "name": "failure_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "failure_message": {
+          "name": "failure_message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "file_assets_scope_idx": {
+          "name": "file_assets_scope_idx",
+          "columns": [
+            {
+              "expression": "institution_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "course_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "file_assets_scope_hash_idx": {
+          "name": "file_assets_scope_hash_idx",
+          "columns": [
+            {
+              "expression": "institution_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "owner_user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "purpose",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "content_hash",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "file_assets_institution_id_institutions_id_fk": {
+          "name": "file_assets_institution_id_institutions_id_fk",
+          "tableFrom": "file_assets",
+          "tableTo": "institutions",
+          "schemaTo": "foundry_product",
+          "columnsFrom": [
+            "institution_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "file_assets_course_id_courses_id_fk": {
+          "name": "file_assets_course_id_courses_id_fk",
+          "tableFrom": "file_assets",
+          "tableTo": "courses",
+          "schemaTo": "foundry_product",
+          "columnsFrom": [
+            "course_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "file_assets_task_id_learning_tasks_id_fk": {
+          "name": "file_assets_task_id_learning_tasks_id_fk",
+          "tableFrom": "file_assets",
+          "tableTo": "learning_tasks",
+          "schemaTo": "foundry_product",
+          "columnsFrom": [
+            "task_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "file_assets_owner_user_id_users_id_fk": {
+          "name": "file_assets_owner_user_id_users_id_fk",
+          "tableFrom": "file_assets",
+          "tableTo": "users",
+          "schemaTo": "foundry_product",
+          "columnsFrom": [
+            "owner_user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "file_assets_source_id_source_records_id_fk": {
+          "name": "file_assets_source_id_source_records_id_fk",
+          "tableFrom": "file_assets",
+          "tableTo": "source_records",
+          "schemaTo": "foundry_product",
+          "columnsFrom": [
+            "source_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "file_assets_storage_key_unique": {
+          "name": "file_assets_storage_key_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "storage_key"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "file_asset_purpose_ck": {
+          "name": "file_asset_purpose_ck",
+          "value": "\"foundry_product\".\"file_assets\".\"purpose\" IN ('LEARNING_MATERIAL','LEARNER_ATTEMPT')"
+        },
+        "file_asset_ingestion_status_ck": {
+          "name": "file_asset_ingestion_status_ck",
+          "value": "\"foundry_product\".\"file_assets\".\"ingestion_status\" IN ('STORED','EXTRACTED','PROVIDER_UNAVAILABLE','FAILED')"
+        },
+        "file_asset_interpretation_status_ck": {
+          "name": "file_asset_interpretation_status_ck",
+          "value": "\"foundry_product\".\"file_assets\".\"interpretation_status\" IN ('NOT_APPLICABLE','AVAILABLE','PROVIDER_UNAVAILABLE','FAILED')"
+        },
+        "file_asset_size_ck": {
+          "name": "file_asset_size_ck",
+          "value": "\"foundry_product\".\"file_assets\".\"byte_size\" > 0"
+        }
+      },
       "isRLSEnabled": false
     },
     "foundry_product.governance_events": {
@@ -1622,6 +1979,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "file_asset_id": {
+          "name": "file_asset_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "prompt": {
           "name": "prompt",
           "type": "text",
@@ -1728,6 +2091,20 @@
           "schemaTo": "foundry_product",
           "columnsFrom": [
             "capability_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "learner_attempts_file_asset_id_file_assets_id_fk": {
+          "name": "learner_attempts_file_asset_id_file_assets_id_fk",
+          "tableFrom": "learner_attempts",
+          "tableTo": "file_assets",
+          "schemaTo": "foundry_product",
+          "columnsFrom": [
+            "file_asset_id"
           ],
           "columnsTo": [
             "id"
@@ -2230,6 +2607,177 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "foundry_operational.model_runs": {
+      "name": "model_runs",
+      "schema": "foundry_operational",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "institution_id": {
+          "name": "institution_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "task_id": {
+          "name": "task_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "file_asset_id": {
+          "name": "file_asset_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "call_type": {
+          "name": "call_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provider": {
+          "name": "provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "model": {
+          "name": "model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "input_tokens": {
+          "name": "input_tokens",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "output_tokens": {
+          "name": "output_tokens",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "total_tokens": {
+          "name": "total_tokens",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "latency_ms": {
+          "name": "latency_ms",
+          "type": "real",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "evidence_unit_ids": {
+          "name": "evidence_unit_ids",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'[]'::jsonb"
+        },
+        "failure_code": {
+          "name": "failure_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "model_runs_scope_idx": {
+          "name": "model_runs_scope_idx",
+          "columns": [
+            {
+              "expression": "institution_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "model_runs_institution_id_institutions_id_fk": {
+          "name": "model_runs_institution_id_institutions_id_fk",
+          "tableFrom": "model_runs",
+          "tableTo": "institutions",
+          "schemaTo": "foundry_product",
+          "columnsFrom": [
+            "institution_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "model_runs_task_id_learning_tasks_id_fk": {
+          "name": "model_runs_task_id_learning_tasks_id_fk",
+          "tableFrom": "model_runs",
+          "tableTo": "learning_tasks",
+          "schemaTo": "foundry_product",
+          "columnsFrom": [
+            "task_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "model_runs_file_asset_id_file_assets_id_fk": {
+          "name": "model_runs_file_asset_id_file_assets_id_fk",
+          "tableFrom": "model_runs",
+          "tableTo": "file_assets",
+          "schemaTo": "foundry_product",
+          "columnsFrom": [
+            "file_asset_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "foundry_product.publication_decisions": {
       "name": "publication_decisions",
       "schema": "foundry_product",
@@ -2473,6 +3021,36 @@
           "type": "jsonb",
           "primaryKey": false,
           "notNull": true
+        },
+        "retrieval_mode": {
+          "name": "retrieval_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "embedding_status": {
+          "name": "embedding_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "embedding_model": {
+          "name": "embedding_model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reranker_status": {
+          "name": "reranker_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reranker_model": {
+          "name": "reranker_model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "missing_signal": {
           "name": "missing_signal",
@@ -2830,6 +3408,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "course_id": {
+          "name": "course_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
         "source_key": {
           "name": "source_key",
           "type": "text",
@@ -2936,6 +3520,20 @@
           "schemaTo": "foundry_product",
           "columnsFrom": [
             "institution_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "source_records_course_id_courses_id_fk": {
+          "name": "source_records_course_id_courses_id_fk",
+          "tableFrom": "source_records",
+          "tableTo": "courses",
+          "schemaTo": "foundry_product",
+          "columnsFrom": [
+            "course_id"
           ],
           "columnsTo": [
             "id"

@@ -8,6 +8,7 @@ import {
   courses,
   diagnosticObservations,
   evidenceUnits,
+  fileAssets,
   governanceEvents,
   idempotencyKeys,
   learnerAttempts,
@@ -207,6 +208,7 @@ export async function captureAttempt(actor: Actor, input: {
   taskId: string;
   episodeId: string;
   capabilityId?: string;
+  fileAssetId?: string;
   prompt: string;
   response: string;
   structuredInput: Record<string, unknown>;
@@ -215,6 +217,17 @@ export async function captureAttempt(actor: Actor, input: {
 }) {
   requireRole(actor, ["LEARNER", "ADMIN"]);
   const { task } = await requireTaskEpisodeScope(actor, { taskId: input.taskId, episodeId: input.episodeId, learnerOriginated: true });
+  if (input.fileAssetId) {
+    const [asset] = await getDb().select().from(fileAssets).where(and(
+      eq(fileAssets.id, input.fileAssetId),
+      eq(fileAssets.taskId, task.id),
+      eq(fileAssets.institutionId, task.institutionId),
+      eq(fileAssets.courseId, task.courseId),
+      eq(fileAssets.ownerUserId, task.learnerId),
+      eq(fileAssets.purpose, "LEARNER_ATTEMPT"),
+    )).limit(1);
+    if (!asset) throw new DomainInvariantError("Attempt file does not belong to this Task, course, institution, and learner", "ATTEMPT_FILE_LINEAGE");
+  }
   const attemptId = randomUUID();
   const commandType = "CAPTURE_ATTEMPT";
   const { idempotencyKey, ...request } = input;

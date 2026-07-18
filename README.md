@@ -10,9 +10,22 @@ This branch contains the Next.js App Router, LangGraph JS and PostgreSQL replace
 - Authenticated actor provenance—not a caller-supplied string—authorizes TeacherReview, LearningOutcome and PublicationDecision commands.
 - `RETRY` is the only activity type exposed in Checkpoint A.
 
-PostgreSQL full-text search is an honest lexical candidate retriever. Mature hybrid retrieval, a real reranker, multimodal retrieval, external telemetry and Standard Trainer are unavailable until real integrations are evaluated and configured.
+The real-intelligence work package adds governed PDF/image intake, PDF.js page extraction, persisted provider embeddings with exact cosine retrieval, PostgreSQL full-text search, reciprocal-rank fusion, configured Cohere reranking, grounded model synthesis, and configured OpenAI image/handwriting interpretation. Each adapter reports `EXECUTED`, `UNAVAILABLE`, or `FAILED`; missing keys never synthesize success. This exact-vector implementation does not claim a production-scale ANN index. Four deterministic Chemistry calculation adapters live under the Chemistry Reference Pack rather than Core.
+
+Uploaded bytes are stored through the server-only `FileStorage` port and never in Product State rows. Local verification uses `.local-data/uploads` (or `FILE_STORAGE_LOCAL_ROOT`); production startup fails without an explicit storage root until a managed storage adapter is selected. Extracted text, content hashes, ownership, rights decisions, locators, and ingestion status remain governed Product State.
+
+Optional live integrations:
+
+- `OPENAI_API_KEY`: embeddings and image/handwriting interpretation; also synthesis when `FOUNDRY_SYNTHESIS_PROVIDER=OPENAI`.
+- `COHERE_API_KEY`: Cohere reranking (`COHERE_RERANK_MODEL`, default `rerank-v3.5`).
+- `DEEPSEEK_API_KEY`: grounded synthesis when `FOUNDRY_SYNTHESIS_PROVIDER=DEEPSEEK` or when it is the first configured synthesis provider.
+- `FILE_STORAGE_LOCAL_ROOT`: explicit local object root; required in production until managed object storage is configured.
+
+External telemetry, product/pedagogy/learning-effectiveness Eval, managed object storage, production ANN/vector infrastructure, and a production authentication provider remain unavailable or not configured. No public preview is authorized.
 
 Managed database roles and RLS (or an equivalent database-enforced tenant policy) are **NOT_CONFIGURED**. Application authorization remains mandatory, but is not a claim of database-level tenant enforcement. Automated recovery for a crashed `RESUMING` workflow is **NOT_IMPLEMENTED**; stale claims are reported to Engineering and remain fail-closed. Both gaps block any public preview.
+
+Dependency audit status: Next.js 16.2.10 currently installs nested PostCSS 8.4.31, which remains affected by moderate advisory `GHSA-qx2v-qp2m-jg93`. A package override was tested and removed because Next continued to resolve its pinned nested version and npm correctly marked the forced tree invalid. The other current moderate findings are in the `drizzle-kit` / `@esbuild-kit` / `esbuild` development-tooling chain; npm's proposed remediation is an incompatible downgrade and is not applied. There are currently no high or critical audit findings. The runtime PostCSS advisory remains an explicit preview blocker pending a compatible upstream resolution.
 
 ## Local verification
 

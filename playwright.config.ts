@@ -1,5 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 import { assertE2eDatabaseTarget } from "./scripts/setup-e2e";
+import { E2E_STORAGE_ROOT } from "./scripts/setup-e2e";
 
 const e2eDatabaseUrl = assertE2eDatabaseTarget(process.env.E2E_DATABASE_URL, false);
 const showcasePassword = process.env.E2E_SHOWCASE_PASSWORD;
@@ -33,6 +34,9 @@ export default defineConfig({
           SYNTHETIC_SHOWCASE_MODE: "true",
           SHOWCASE_PASSWORD: showcasePassword,
           DEEPSEEK_API_KEY: "",
+          OPENAI_API_KEY: "",
+          COHERE_API_KEY: "",
+          FILE_STORAGE_LOCAL_ROOT: E2E_STORAGE_ROOT,
           LANGSMITH_TRACING: "false",
         },
       },

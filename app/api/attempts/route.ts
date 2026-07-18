@@ -7,6 +7,7 @@ const Attempt = z.object({
   taskId: z.string().uuid(),
   episodeId: z.string().uuid(),
   capabilityId: z.string().uuid().optional(),
+  fileAssetId: z.string().uuid().optional(),
   prompt: z.string().min(1),
   response: z.string().min(1),
   structuredInput: z.record(z.string(), z.unknown()),

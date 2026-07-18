@@ -75,9 +75,12 @@ export type CompiledContext = {
   excludedItems: Array<ContextItem & { reason: string }>;
   tokenBudget: number;
   modalityBudget: Record<string, number>;
-  selectionPolicy: "LIFECYCLE_FILTERING_ONLY";
-  tokenBudgetStatus: "NOT_ENFORCED";
-  modalityBudgetStatus: "UNAVAILABLE";
+  selectedTokenCount: number;
+  modalityUsage: Record<string, number>;
+  tokenizer: "o200k_base";
+  selectionPolicy: "LIFECYCLE_AND_BUDGET_ENFORCED";
+  tokenBudgetStatus: "ENFORCED";
+  modalityBudgetStatus: "ENFORCED";
   compilerVersion: string;
 };
 
@@ -87,6 +90,8 @@ export type ContextItem = {
   episodeId?: string;
   kind: "EVENT" | "EVIDENCE" | "ATTEMPT" | "OBSERVATION" | "REVIEW" | "OUTCOME";
   content: string;
+  modality?: "TEXT" | "TABLE" | "FIGURE" | "IMAGE";
+  tokenCount?: number;
   stale?: boolean;
   superseded?: boolean;
   carryoverRelation?: z.infer<typeof ContextRelation>;

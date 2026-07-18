@@ -3,6 +3,8 @@ import { hash } from "bcryptjs";
 import { closeDb, getDb } from "@/db/client";
 import { SEED } from "@/db/ids";
 import {
+  capabilities,
+  capabilityVersions,
   conversationEvents,
   courseEnrollments,
   courses,
@@ -17,6 +19,7 @@ import {
   subjects,
   users,
 } from "@/db/schema";
+import { CHEMISTRY_CAPABILITIES } from "@/reference-packs/chemistry/capabilities";
 import { startWorkflow } from "@/application/workflow-service";
 import { closeWorkflowCheckpointer } from "@/workflows/checkpointer";
 
@@ -71,8 +74,37 @@ for (const [userId, , , role] of people) {
   await db.insert(courseEnrollments).values({ institutionId: SEED.institution, courseId: SEED.course, userId, role }).onConflictDoNothing();
 }
 
+const capabilityIds = [
+  [SEED.chemistryMolarConcentration, SEED.chemistryMolarConcentrationVersion],
+  [SEED.chemistrySolutionDilution, SEED.chemistrySolutionDilutionVersion],
+  [SEED.chemistryIdealGasMoles, SEED.chemistryIdealGasMolesVersion],
+  [SEED.chemistryPh, SEED.chemistryPhVersion],
+] as const;
+for (const [index, definition] of CHEMISTRY_CAPABILITIES.entries()) {
+  const [capabilityId, versionId] = capabilityIds[index];
+  await db.insert(capabilities).values({
+    id: capabilityId,
+    key: definition.key,
+    name: definition.name,
+    referencePackKey: "chemistry-caie-9701",
+    kind: "DETERMINISTIC_ADAPTER",
+    activeVersionId: versionId,
+  }).onConflictDoUpdate({ target: capabilities.id, set: { name: definition.name, activeVersionId: versionId } });
+  await db.insert(capabilityVersions).values({
+    id: versionId,
+    capabilityId,
+    version: "1.0.0",
+    contract: definition.contract,
+    implementationKey: definition.implementationKey,
+    status: "ACTIVE",
+    contentHash: digest(JSON.stringify(definition)),
+  }).onConflictDoNothing();
+}
+
 await db.insert(sourceRecords).values({
   id: SEED.publicSource,
+  institutionId: SEED.institution,
+  courseId: SEED.course,
   sourceKey: "reviewed-teacher-note-synthetic",
   title: "Reviewed synthetic teacher note",
   sourceType: "TEACHER_NOTE",
@@ -89,6 +121,7 @@ await db.insert(evidenceUnits).values([
   {
     id: SEED.textEvidence,
     sourceId: SEED.publicSource,
+    institutionId: SEED.institution,
     modality: "TEXT",
     locator: "synthetic-note#reasoning-route",
     title: "Check a calculation route",
@@ -97,10 +130,13 @@ await db.insert(evidenceUnits).values([
     searchDocument: "calculation route units quantity transformation numerical result",
     metadata: { syntheticShowcase: true, reviewed: true, courseIds: [SEED.course], referencePackKey: "chemistry-caie-9701" },
     contentHash: digest("check-calculation-route"),
+    embeddingStatus: "PROVIDER_UNAVAILABLE",
+    embeddingFailure: "Synthetic showcase seed does not call an external embedding provider.",
   },
   {
     id: SEED.structuredEvidence,
     sourceId: SEED.publicSource,
+    institutionId: SEED.institution,
     modality: "TABLE",
     locator: "synthetic-note#review-table",
     title: "Reasoning review table",
@@ -109,6 +145,8 @@ await db.insert(evidenceUnits).values([
     searchDocument: "structured review path input transformation result units scale",
     metadata: { syntheticShowcase: true, reviewed: true, courseIds: [SEED.course], referencePackKey: "chemistry-caie-9701" },
     contentHash: digest("reasoning-review-table"),
+    embeddingStatus: "PROVIDER_UNAVAILABLE",
+    embeddingFailure: "Synthetic showcase seed does not call an external embedding provider.",
   },
 ]).onConflictDoNothing();
 

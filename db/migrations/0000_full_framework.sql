@@ -58,6 +58,9 @@ CREATE TABLE "foundry_product"."context_compilations" (
 	"compiler_version" text NOT NULL,
 	"token_budget" integer NOT NULL,
 	"modality_budget" jsonb NOT NULL,
+	"tokenizer" text NOT NULL,
+	"selected_token_count" integer NOT NULL,
+	"modality_usage" jsonb NOT NULL,
 	"selected_items" jsonb NOT NULL,
 	"excluded_items" jsonb NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
@@ -136,7 +139,42 @@ CREATE TABLE "foundry_product"."evidence_units" (
 	"search_document" text NOT NULL,
 	"metadata" jsonb DEFAULT '{}'::jsonb NOT NULL,
 	"content_hash" text NOT NULL,
+	"embedding" real[],
+	"embedding_model" text,
+	"embedding_dimensions" integer,
+	"embedding_status" text DEFAULT 'NOT_REQUESTED' NOT NULL,
+	"embedding_failure" text,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
+CREATE TABLE "foundry_product"."file_assets" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"institution_id" uuid NOT NULL,
+	"course_id" uuid NOT NULL,
+	"task_id" uuid,
+	"owner_user_id" uuid NOT NULL,
+	"source_id" uuid,
+	"purpose" text NOT NULL,
+	"storage_key" text NOT NULL,
+	"original_name" text NOT NULL,
+	"media_type" text NOT NULL,
+	"byte_size" integer NOT NULL,
+	"content_hash" text NOT NULL,
+	"ingestion_status" text DEFAULT 'STORED' NOT NULL,
+	"extraction_text" text,
+	"extraction_metadata" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"interpretation" text,
+	"interpretation_status" text DEFAULT 'NOT_APPLICABLE' NOT NULL,
+	"provider_model" text,
+	"failure_code" text,
+	"failure_message" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "file_assets_storage_key_unique" UNIQUE("storage_key"),
+	CONSTRAINT "file_asset_purpose_ck" CHECK ("foundry_product"."file_assets"."purpose" IN ('LEARNING_MATERIAL','LEARNER_ATTEMPT')),
+	CONSTRAINT "file_asset_ingestion_status_ck" CHECK ("foundry_product"."file_assets"."ingestion_status" IN ('STORED','EXTRACTED','PROVIDER_UNAVAILABLE','FAILED')),
+	CONSTRAINT "file_asset_interpretation_status_ck" CHECK ("foundry_product"."file_assets"."interpretation_status" IN ('NOT_APPLICABLE','AVAILABLE','PROVIDER_UNAVAILABLE','FAILED')),
+	CONSTRAINT "file_asset_size_ck" CHECK ("foundry_product"."file_assets"."byte_size" > 0)
 );
 --> statement-breakpoint
 CREATE TABLE "foundry_product"."governance_events" (
@@ -183,6 +221,7 @@ CREATE TABLE "foundry_product"."learner_attempts" (
 	"episode_id" uuid NOT NULL,
 	"learner_id" uuid NOT NULL,
 	"capability_id" uuid,
+	"file_asset_id" uuid,
 	"prompt" text NOT NULL,
 	"response" text NOT NULL,
 	"structured_input" jsonb NOT NULL,
@@ -239,6 +278,24 @@ CREATE TABLE "foundry_product"."library_items" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "foundry_operational"."model_runs" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"institution_id" uuid NOT NULL,
+	"task_id" uuid,
+	"file_asset_id" uuid,
+	"call_type" text NOT NULL,
+	"provider" text NOT NULL,
+	"model" text NOT NULL,
+	"status" text NOT NULL,
+	"input_tokens" integer,
+	"output_tokens" integer,
+	"total_tokens" integer,
+	"latency_ms" real NOT NULL,
+	"evidence_unit_ids" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"failure_code" text,
+	"created_at" timestamp with time zone DEFAULT now() NOT NULL
+);
+--> statement-breakpoint
 CREATE TABLE "foundry_product"."publication_decisions" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"component_version_id" uuid NOT NULL,
@@ -271,6 +328,11 @@ CREATE TABLE "foundry_operational"."retrieval_runs" (
 	"purpose" text NOT NULL,
 	"selected_evidence_ids" jsonb NOT NULL,
 	"ranking_evidence" jsonb NOT NULL,
+	"retrieval_mode" text NOT NULL,
+	"embedding_status" text NOT NULL,
+	"embedding_model" text,
+	"reranker_status" text NOT NULL,
+	"reranker_model" text,
 	"missing_signal" boolean DEFAULT false NOT NULL,
 	"conflicting_signal" boolean DEFAULT false NOT NULL,
 	"latency_ms" real NOT NULL,
@@ -308,6 +370,7 @@ CREATE TABLE "foundry_product"."schedule_items" (
 CREATE TABLE "foundry_product"."source_records" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"institution_id" uuid,
+	"course_id" uuid,
 	"source_key" text NOT NULL,
 	"title" text NOT NULL,
 	"source_type" text NOT NULL,
@@ -408,6 +471,11 @@ ALTER TABLE "foundry_product"."diagnostic_observations" ADD CONSTRAINT "diagnost
 ALTER TABLE "foundry_operational"."eval_runs" ADD CONSTRAINT "eval_runs_institution_id_institutions_id_fk" FOREIGN KEY ("institution_id") REFERENCES "foundry_product"."institutions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "foundry_product"."evidence_units" ADD CONSTRAINT "evidence_units_source_id_source_records_id_fk" FOREIGN KEY ("source_id") REFERENCES "foundry_product"."source_records"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "foundry_product"."evidence_units" ADD CONSTRAINT "evidence_units_institution_id_institutions_id_fk" FOREIGN KEY ("institution_id") REFERENCES "foundry_product"."institutions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "foundry_product"."file_assets" ADD CONSTRAINT "file_assets_institution_id_institutions_id_fk" FOREIGN KEY ("institution_id") REFERENCES "foundry_product"."institutions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "foundry_product"."file_assets" ADD CONSTRAINT "file_assets_course_id_courses_id_fk" FOREIGN KEY ("course_id") REFERENCES "foundry_product"."courses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "foundry_product"."file_assets" ADD CONSTRAINT "file_assets_task_id_learning_tasks_id_fk" FOREIGN KEY ("task_id") REFERENCES "foundry_product"."learning_tasks"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "foundry_product"."file_assets" ADD CONSTRAINT "file_assets_owner_user_id_users_id_fk" FOREIGN KEY ("owner_user_id") REFERENCES "foundry_product"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "foundry_product"."file_assets" ADD CONSTRAINT "file_assets_source_id_source_records_id_fk" FOREIGN KEY ("source_id") REFERENCES "foundry_product"."source_records"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "foundry_product"."governance_events" ADD CONSTRAINT "governance_events_institution_id_institutions_id_fk" FOREIGN KEY ("institution_id") REFERENCES "foundry_product"."institutions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "foundry_product"."governance_events" ADD CONSTRAINT "governance_events_actor_user_id_users_id_fk" FOREIGN KEY ("actor_user_id") REFERENCES "foundry_product"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "foundry_product"."idempotency_keys" ADD CONSTRAINT "idempotency_keys_institution_id_institutions_id_fk" FOREIGN KEY ("institution_id") REFERENCES "foundry_product"."institutions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -417,6 +485,7 @@ ALTER TABLE "foundry_product"."learner_attempts" ADD CONSTRAINT "learner_attempt
 ALTER TABLE "foundry_product"."learner_attempts" ADD CONSTRAINT "learner_attempts_episode_id_learning_episodes_id_fk" FOREIGN KEY ("episode_id") REFERENCES "foundry_product"."learning_episodes"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "foundry_product"."learner_attempts" ADD CONSTRAINT "learner_attempts_learner_id_users_id_fk" FOREIGN KEY ("learner_id") REFERENCES "foundry_product"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "foundry_product"."learner_attempts" ADD CONSTRAINT "learner_attempts_capability_id_capabilities_id_fk" FOREIGN KEY ("capability_id") REFERENCES "foundry_product"."capabilities"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "foundry_product"."learner_attempts" ADD CONSTRAINT "learner_attempts_file_asset_id_file_assets_id_fk" FOREIGN KEY ("file_asset_id") REFERENCES "foundry_product"."file_assets"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "foundry_product"."learning_episodes" ADD CONSTRAINT "learning_episodes_task_id_learning_tasks_id_fk" FOREIGN KEY ("task_id") REFERENCES "foundry_product"."learning_tasks"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "foundry_product"."learning_outcomes" ADD CONSTRAINT "learning_outcomes_task_id_learning_tasks_id_fk" FOREIGN KEY ("task_id") REFERENCES "foundry_product"."learning_tasks"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "foundry_product"."learning_outcomes" ADD CONSTRAINT "learning_outcomes_retry_id_retry_attempts_id_fk" FOREIGN KEY ("retry_id") REFERENCES "foundry_product"."retry_attempts"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -428,6 +497,9 @@ ALTER TABLE "foundry_product"."learning_tasks" ADD CONSTRAINT "learning_tasks_le
 ALTER TABLE "foundry_product"."library_items" ADD CONSTRAINT "library_items_learner_id_users_id_fk" FOREIGN KEY ("learner_id") REFERENCES "foundry_product"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "foundry_product"."library_items" ADD CONSTRAINT "library_items_course_id_courses_id_fk" FOREIGN KEY ("course_id") REFERENCES "foundry_product"."courses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "foundry_product"."library_items" ADD CONSTRAINT "library_items_evidence_unit_id_evidence_units_id_fk" FOREIGN KEY ("evidence_unit_id") REFERENCES "foundry_product"."evidence_units"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "foundry_operational"."model_runs" ADD CONSTRAINT "model_runs_institution_id_institutions_id_fk" FOREIGN KEY ("institution_id") REFERENCES "foundry_product"."institutions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "foundry_operational"."model_runs" ADD CONSTRAINT "model_runs_task_id_learning_tasks_id_fk" FOREIGN KEY ("task_id") REFERENCES "foundry_product"."learning_tasks"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "foundry_operational"."model_runs" ADD CONSTRAINT "model_runs_file_asset_id_file_assets_id_fk" FOREIGN KEY ("file_asset_id") REFERENCES "foundry_product"."file_assets"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "foundry_product"."publication_decisions" ADD CONSTRAINT "publication_decisions_component_version_id_component_versions_id_fk" FOREIGN KEY ("component_version_id") REFERENCES "foundry_product"."component_versions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "foundry_product"."publication_decisions" ADD CONSTRAINT "publication_decisions_expert_id_users_id_fk" FOREIGN KEY ("expert_id") REFERENCES "foundry_product"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "foundry_product"."retention_reviews" ADD CONSTRAINT "retention_reviews_retry_id_retry_attempts_id_fk" FOREIGN KEY ("retry_id") REFERENCES "foundry_product"."retry_attempts"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
@@ -443,6 +515,7 @@ ALTER TABLE "foundry_product"."retry_attempts" ADD CONSTRAINT "retry_attempts_re
 ALTER TABLE "foundry_product"."schedule_items" ADD CONSTRAINT "schedule_items_learner_id_users_id_fk" FOREIGN KEY ("learner_id") REFERENCES "foundry_product"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "foundry_product"."schedule_items" ADD CONSTRAINT "schedule_items_task_id_learning_tasks_id_fk" FOREIGN KEY ("task_id") REFERENCES "foundry_product"."learning_tasks"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "foundry_product"."source_records" ADD CONSTRAINT "source_records_institution_id_institutions_id_fk" FOREIGN KEY ("institution_id") REFERENCES "foundry_product"."institutions"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "foundry_product"."source_records" ADD CONSTRAINT "source_records_course_id_courses_id_fk" FOREIGN KEY ("course_id") REFERENCES "foundry_product"."courses"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "foundry_product"."subjects" ADD CONSTRAINT "subjects_institution_id_institutions_id_fk" FOREIGN KEY ("institution_id") REFERENCES "foundry_product"."institutions"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "foundry_product"."teacher_reviews" ADD CONSTRAINT "teacher_reviews_observation_id_diagnostic_observations_id_fk" FOREIGN KEY ("observation_id") REFERENCES "foundry_product"."diagnostic_observations"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "foundry_product"."teacher_reviews" ADD CONSTRAINT "teacher_reviews_teacher_id_users_id_fk" FOREIGN KEY ("teacher_id") REFERENCES "foundry_product"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
@@ -460,10 +533,13 @@ CREATE UNIQUE INDEX "courses_institution_code_uq" ON "foundry_product"."courses"
 CREATE INDEX "observations_attempt_idx" ON "foundry_product"."diagnostic_observations" USING btree ("attempt_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "evidence_source_locator_hash_uq" ON "foundry_product"."evidence_units" USING btree ("source_id","locator","content_hash");--> statement-breakpoint
 CREATE INDEX "evidence_source_idx" ON "foundry_product"."evidence_units" USING btree ("source_id");--> statement-breakpoint
+CREATE INDEX "file_assets_scope_idx" ON "foundry_product"."file_assets" USING btree ("institution_id","course_id","created_at");--> statement-breakpoint
+CREATE INDEX "file_assets_scope_hash_idx" ON "foundry_product"."file_assets" USING btree ("institution_id","owner_user_id","purpose","content_hash");--> statement-breakpoint
 CREATE INDEX "governance_entity_idx" ON "foundry_product"."governance_events" USING btree ("entity_type","entity_id","created_at");--> statement-breakpoint
 CREATE INDEX "attempts_task_idx" ON "foundry_product"."learner_attempts" USING btree ("task_id","created_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "episodes_task_sequence_uq" ON "foundry_product"."learning_episodes" USING btree ("task_id","sequence");--> statement-breakpoint
 CREATE INDEX "learning_tasks_learner_idx" ON "foundry_product"."learning_tasks" USING btree ("learner_id","status");--> statement-breakpoint
+CREATE INDEX "model_runs_scope_idx" ON "foundry_operational"."model_runs" USING btree ("institution_id","created_at");--> statement-breakpoint
 CREATE UNIQUE INDEX "source_records_key_version_uq" ON "foundry_product"."source_records" USING btree ("source_key","version");--> statement-breakpoint
 CREATE UNIQUE INDEX "subjects_institution_key_uq" ON "foundry_product"."subjects" USING btree ("institution_id","key");--> statement-breakpoint
 CREATE UNIQUE INDEX "reviews_observation_uq" ON "foundry_product"."teacher_reviews" USING btree ("observation_id");--> statement-breakpoint
@@ -489,6 +565,39 @@ END $$;
 --> statement-breakpoint
 CREATE TRIGGER "learning_task_institution_guard" BEFORE INSERT OR UPDATE ON "foundry_product"."learning_tasks" FOR EACH ROW EXECUTE FUNCTION "foundry_product"."assert_learning_task_institution"();
 --> statement-breakpoint
+CREATE FUNCTION "foundry_product"."assert_source_scope"() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW."course_id" IS NOT NULL AND (
+    NEW."institution_id" IS NULL OR NOT EXISTS (
+      SELECT 1 FROM "foundry_product"."courses" course
+      WHERE course."id" = NEW."course_id" AND course."institution_id" = NEW."institution_id"
+    )
+  ) THEN RAISE EXCEPTION 'source course and institution mismatch'; END IF;
+  RETURN NEW;
+END $$;
+--> statement-breakpoint
+CREATE TRIGGER "source_scope_guard" BEFORE INSERT OR UPDATE ON "foundry_product"."source_records" FOR EACH ROW EXECUTE FUNCTION "foundry_product"."assert_source_scope"();
+--> statement-breakpoint
+CREATE FUNCTION "foundry_product"."assert_file_asset_lineage"() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM "foundry_product"."courses" course
+    WHERE course."id" = NEW."course_id" AND course."institution_id" = NEW."institution_id"
+  ) THEN RAISE EXCEPTION 'file asset course and institution mismatch'; END IF;
+  IF NEW."task_id" IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM "foundry_product"."learning_tasks" task
+    WHERE task."id" = NEW."task_id" AND task."course_id" = NEW."course_id" AND task."institution_id" = NEW."institution_id"
+      AND (NEW."purpose" <> 'LEARNER_ATTEMPT' OR task."learner_id" = NEW."owner_user_id")
+  ) THEN RAISE EXCEPTION 'file asset task, course, institution or learner mismatch'; END IF;
+  IF NEW."source_id" IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM "foundry_product"."source_records" source
+    WHERE source."id" = NEW."source_id" AND source."institution_id" = NEW."institution_id" AND source."course_id" = NEW."course_id"
+  ) THEN RAISE EXCEPTION 'file asset source scope mismatch'; END IF;
+  RETURN NEW;
+END $$;
+--> statement-breakpoint
+CREATE TRIGGER "file_asset_lineage_guard" BEFORE INSERT OR UPDATE ON "foundry_product"."file_assets" FOR EACH ROW EXECUTE FUNCTION "foundry_product"."assert_file_asset_lineage"();
+--> statement-breakpoint
 CREATE FUNCTION "foundry_product"."assert_attempt_lineage"() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   IF NOT EXISTS (
@@ -496,6 +605,10 @@ BEGIN
     JOIN "foundry_product"."learning_episodes" episode ON episode."task_id" = task."id"
     WHERE task."id" = NEW."task_id" AND episode."id" = NEW."episode_id" AND task."learner_id" = NEW."learner_id"
   ) THEN RAISE EXCEPTION 'attempt task, episode or learner lineage mismatch'; END IF;
+  IF NEW."file_asset_id" IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM "foundry_product"."file_assets" asset
+    WHERE asset."id" = NEW."file_asset_id" AND asset."task_id" = NEW."task_id" AND asset."owner_user_id" = NEW."learner_id" AND asset."purpose" = 'LEARNER_ATTEMPT'
+  ) THEN RAISE EXCEPTION 'attempt file lineage mismatch'; END IF;
   RETURN NEW;
 END $$;
 --> statement-breakpoint
