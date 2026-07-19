@@ -11,10 +11,11 @@ This is a dated work-package record at the starting head identified above. Its
 “complete Learning Loop” and “Component Asset Loop” browser-suite wording is
 historical test-scope language, not acceptance of any current requirement.
 Current implementation evidence is controlled by Doc 12's retained audit of
-exact head `b6f023fe995e44e714bf5da2c2096128e1def9fe` and its 42-to-113
-transition mapping. This record grants no human-governance validation,
-live-provider validation authority, preview approval, Product Owner acceptance,
-merge authority or cutover authority.
+exact head `b6f023fe995e44e714bf5da2c2096128e1def9fe`. Its observations and
+then-current requirement interpretation remain historical; no old `COMP-*`
+evidence maps mechanically to current `CAP-*` completion. This record grants no
+human-governance validation, live-provider validation authority, preview
+approval, Product Owner acceptance, merge authority or cutover authority.
 
 ## Product outcome
 
@@ -81,7 +82,7 @@ Across all cohorts, 11 provider calls were retained: 6 failed acceptance before 
 - Unit, workflow, and security suite passed: 24 files, 95 tests.
 - PostgreSQL integration suite passed twice after the complete repair: 31/31 on each run.
 - Additive migration and Component-version upgrade rehearsal passed.
-- Final full browser acceptance passed: 12 passed, 2 intentional mobile skips, 0 failed, 0 flaky. It covered the complete Learning Loop, Component Asset Loop, real PDF/image intake, and desktop/mobile role isolation.
+- Final historical browser suite passed: 12 passed, 2 intentional mobile skips, 0 failed, 0 flaky. Its then-named “complete Learning Loop” and “Component Asset Loop” scopes are exact-head test facts, not current CAP or Showcase acceptance.
 
 ## Limits
 

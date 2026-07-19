@@ -8,11 +8,12 @@ The audited checkpoint is historical implementation evidence, not an accepted
 rewrite, completed product or cutover claim.
 
 Current documentation authority:
-`learning-foundry-docs@c77132314e385308c9a49fd0b5af5ed720d420a3`.
-The companion RW-00 documentation Draft retains the exact-head audit under
-`evidence/implementation/pr-22/`, including the 42-to-113 transition map. That
-Draft and this implementation-guidance change remain separately reviewable and
-revertible. Neither grants Legacy deletion, canonical Product State migration,
+`learning-foundry-docs@05413353c5b4d231878747d307cb8dd3c232eeb1`.
+The retained PR #22 audit remains exact-head evidence only. Its observations
+and old requirement interpretation are historical; the superseded 113-row
+ledger and `COMP-*` evidence do not map mechanically to current `CAP-*`
+requirements. This implementation-guidance change is separately reviewable and
+revertible. It grants no Legacy deletion, canonical Product State migration,
 preview approval, merge, release, production or cutover authority.
 
 ## State and authority
@@ -27,17 +28,16 @@ The real-intelligence work package adds governed PDF/image intake, PDF.js page e
 
 Uploaded bytes are stored through the server-only `FileStorage` port and never in Product State rows. Local verification uses `.local-data/uploads` (or `FILE_STORAGE_LOCAL_ROOT`); production startup fails without an explicit storage root until a managed storage adapter is selected. Extracted text, content hashes, ownership, rights decisions, locators, and ingestion status remain governed Product State.
 
-The audited checkpoint contains a partial Component lifecycle: a structured
-editor, reviewed-signal eligibility, versioned system checks, deterministic
-Capability fixture execution, an authenticated expert publication interrupt,
-immutable approve/reject decisions, successor versions, rollback and
-version-pinned support delivery. It does not implement the complete Component
-Platform contract. Blank creation, Component import, learner preview, reviewer
-collaboration, Registry/selection, Outcome linkage and maintenance controls are
-among the retained audit gaps. Rights/citation checks are recorded as
-`NOT_REQUIRED`, never `PASSED`, when a narrow deterministic scaffold declares no
-Evidence. This is historical product-visible evidence, not human validation,
-product completion or public-preview authorization.
+The audited checkpoint contains partial capability-supply primitives: exact
+versions, versioned system checks, deterministic Capability fixture execution,
+an authenticated expert decision interrupt, immutable decisions, successor
+versions, rollback and version-pinned support delivery. It also contains
+Component-oriented editor and review structures created under superseded CMS
+authority. Those structures are salvage candidates, not current requirements.
+No old `COMP-*` result establishes `CAP-*` completion. Rights/citation checks
+recorded as `NOT_REQUIRED` remain historical facts, never inferred passes. This
+is exact-head evidence, not human validation, product completion or
+public-preview authorization.
 
 Optional live integrations:
 

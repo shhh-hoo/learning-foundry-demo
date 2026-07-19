@@ -6,12 +6,17 @@ Status: **INTERNAL DRAFT IMPLEMENTATION CHECKPOINT — NOT PRODUCTION-READY TENA
 
 ## Change identity and authority
 
+Current review authority: `learning-foundry-docs@05413353c5b4d231878747d307cb8dd3c232eeb1`.
+The evidence below was gathered under the superseded authority recorded in this
+section. Its exact implementation and security observations remain historical
+facts; they have not been rebound to current `CAP-*` or Showcase completion.
+
 - Implementation repository: `learning-foundry-demo`
 - Branch: `codex/rw-02-production-auth-tenant-enforcement`
 - Exact stacked base: `78fe22ffe167f59cbb0b872478263d36044319d8`
 - Base subject: `Implement replay and recovery safety`
 - Reviewed RW-02 implementation checkpoint: `ff4d43210155a7fb7ce517544d64e1a61958dc98`. The follow-up commit that binds this ledger to that SHA changes evidence prose only; it does not change runtime, migration or test behavior.
-- Documentation authority followed: `learning-foundry-docs@c77132314e385308c9a49fd0b5af5ed720d420a3`
+- Evidence authority followed when this checkpoint was produced: `learning-foundry-docs@c77132314e385308c9a49fd0b5af5ed720d420a3` (superseded)
 - RW-00 and RW-01 evidence remain historical inputs. This change does not rewrite or re-audit them.
 
 Relevant authority requirements:

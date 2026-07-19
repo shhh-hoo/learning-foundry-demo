@@ -6,12 +6,18 @@ Status: **PM ACCEPTED FOR DRAFT REVIEW — NOT PRODUCT OWNER ACCEPTED — NOT ME
 
 ## Change identity and authority
 
+Current review authority: `learning-foundry-docs@05413353c5b4d231878747d307cb8dd3c232eeb1`.
+The evidence below was gathered under the superseded authorities recorded in
+this section. Its exact schema, migration and isolation observations remain
+historical facts; they have not been rebound to current `CAP-*` or Showcase
+completion.
+
 - Implementation repository: `learning-foundry-demo`
 - Branch: `codex/rw-03-canonical-identity-context-evidence`
 - Exact stacked base: `a85c64a07361dc9a90b82f681edd27e5931c7452` (RW-02 Draft PR #25 checkpoint)
 - Exact implementation checkpoint: `df678ed7de439744b6b6f19c73900d499bc90048`
-- Docs authority: `learning-foundry-docs@89c7c21dfb09ecd042070e823b2505f3a73f8169`
-- Current 113-row Doc 12 implementation-evidence authority: `learning-foundry-docs@c77132314e385308c9a49fd0b5af5ed720d420a3`. This later RW-00 ledger binding supplies the exact row IDs/status used below; it does not replace the merged architecture and product guardrail.
+- Architecture authority followed when this checkpoint was produced: `learning-foundry-docs@89c7c21dfb09ecd042070e823b2505f3a73f8169` (superseded)
+- Evidence ledger authority followed when this checkpoint was produced: `learning-foundry-docs@c77132314e385308c9a49fd0b5af5ed720d420a3` (superseded). The historical ledger supplies the exact row IDs/status used below; it does not establish current CAP status.
 - RW-02 remains an internal, non-production security checkpoint. RW-03 consumes its tenant boundary and does not upgrade its security claim.
 - This file records implementation evidence only. The PM independently inspected the complete diff and migration and issued ACCEPT for Draft review; that verdict does not grant Product Owner, merge, preview, deployment, production or cutover acceptance.
 
