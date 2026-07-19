@@ -1,338 +1,452 @@
 # Learning Foundry Rewrite — Repository Instructions
 
-## 1. Authoritative documentation
+## 1. Authoritative product documentation
 
-The product and architecture source of truth is:
+The current product and architecture source of truth is:
 
-`learning-foundry-docs@fb5446b7934366a416d03ee28449faa5468c37bd`
+```text
+shhh-hoo/learning-foundry-docs@05413353c5b4d231878747d307cb8dd3c232eeb1
+```
 
 Read in this order before implementation or review:
 
-1. `docs/00-current-mvp-contract.md`
-2. `docs/01-product-definition.md`
-3. `docs/02-product-surfaces-and-user-journeys.md`
-4. `docs/08-asset-and-component-lifecycle.md`
-5. `docs/20-full-framework-rewrite-and-cutover.md`
-6. `docs/03-system-architecture.md`
-7. `docs/04-context-architecture.md`
-8. `docs/05-evidence-and-retrieval.md`
-9. `docs/06-storage-and-data-lifecycle.md`
-10. `docs/07-learner-model-goals-and-pedagogy.md`
-11. `docs/09-eval-and-governance.md`
-12. `docs/17-build-buy-partner-and-external-components.md`
-13. `docs/15-human-development-handoff.md`
-14. `docs/12-docs-demo-traceability.md`
-15. `docs/22-document-audit-cleanup-register.md`
+1. `docs/00-current-mvp-contract.md` — current Showcase Release contract;
+2. `docs/01-product-definition.md` — product definition and North Star;
+3. `docs/02-product-surfaces-and-user-journeys.md` — four product surfaces;
+4. `docs/03-system-architecture.md` — orchestration architecture;
+5. `docs/08-asset-and-component-lifecycle.md` — LearningCapability and ComponentAsset contract;
+6. `docs/21-learning-loop-and-outcome-contract.md` — Learning Loop and Outcome;
+7. `docs/04-context-architecture.md` — Context Compiler and isolation;
+8. `docs/05-evidence-and-retrieval.md` — Evidence intake and retrieval;
+9. `docs/06-storage-and-data-lifecycle.md` — semantic objects and authority classes;
+10. `docs/07-learner-model-goals-and-pedagogy.md` — learner adaptation and capability eligibility;
+11. `docs/09-eval-and-governance.md` — Eval and security;
+12. `docs/17-build-buy-partner-and-external-components.md` — mature infrastructure and external-resource boundary;
+13. `docs/20-full-framework-rewrite-and-cutover.md` — rewrite and cutover boundary;
+14. `docs/15-human-development-handoff.md` — engineering operating protocol;
+15. `docs/12-docs-demo-traceability.md` — evidence reset and current requirement inventory.
 
 Authority order:
 
 ```text
-Current MVP Contract
-> Learning Component Platform Contract
-> Complete Rewrite and Cutover Contract
-> accepted ADR
-> active normative domain document
-> operational status / traceability / handoff
-> historical or superseded document
+Current Showcase Release Contract
+> Product Definition
+> Product Surfaces and User Journeys
+> Learning Capability and Component Asset Contract
+> Learning Loop and Outcome Contract
+> Context / Evidence / Data / Eval owner documents
+> accepted ADRs
+> operational evidence and implementation status
+> historical documents and Git history
 > implementation prose
 > task prompt
 > fixture or seed
 ```
 
-Historical Docs 13, 14, 16, 18 and 19 do not control current implementation.
+The CMS-like `COMP-*` contract, the former 113-row ledger, docs PR #14 mapping and any instruction derived from them are superseded.
 
 ## 2. Operating model
 
 ```text
-Shijia Hu
-= Product Owner
-
-ChatGPT / Work
-= Engineering Project Manager and docs maintainer
-
-Codex
-= implementation team
+Shijia Hu = Product Owner
+ChatGPT / Work = Engineering PM and docs maintainer
+Codex / developers = implementation team
 ```
 
-The Product Owner has already defined the product. Do not ask the Product Owner to restate requirements, forward diffs or logs, manage branches, interpret tests or coordinate ordinary engineering work.
+The Product Owner has already defined the product. Do not ask the Product Owner to restate requirements, relay logs, manage branches or interpret ordinary engineering evidence.
 
-The Engineering PM owns work decomposition, sequencing, diff review, testing, rework, integration and product-status reporting.
+Engineering work is decomposed into bounded, reviewable child PRs. The Product Owner receives product-visible progress and material decisions, not unmanaged implementation transcripts.
 
-Codex implements bounded work packages issued by the Engineering PM.
+## 3. Product definition
 
-## 3. Complete product versus internal decomposition
-
-The target remains one complete replacement product on:
-
-`rewrite/full-framework`
-
-The Legacy reference remains:
-
-`archive/legacy-wave1-6734b2f`
-
-Important distinction:
+Learning Foundry is an **AI Learning Orchestration Platform**.
 
 ```text
-internal engineering decomposition
-= required
-
-partial Product Owner delivery presented as completion
-= prohibited
+Context
++ Diagnosis
++ Capability Registry
++ Matching / Generation
++ Runtime Orchestration
++ Teacher Governance
++ Learning Feedback
 ```
 
-Do not independently interpret this repository instruction as “build everything before review.” Each assignment must be bounded, reviewed and integrated by the Engineering PM.
+North Star:
 
-A technically narrow work package is valid only when it maps to a complete-product requirement and does not redefine product scope.
-
-Do not claim product completion from scaffolding, one graph, one Workspace, a schema, a seed flow, test count or a partial E2E path.
-
-Do not change `main`, production deployment or canonical user data without explicit Product Owner authorization.
-
-## 4. Product core
-
-Learning Foundry is an expert-governed AI learning product and Learning Component Platform.
-
-It must connect:
+> Do not make learners search, compare and configure learning resources. Deliver the right learning tool to the right learner at the right time.
 
 ```text
-Learning Loop
-Task and authorized Context
-→ Evidence Retrieval
-→ Component Retrieval / Capability Resolution
-→ Activity and Learner Attempt
-→ Diagnostic Observation
-→ Teacher Review
+Chat = entry and guidance
+ComponentAsset = executable learning experience
+Asset Stage = learner runtime surface
+Capability Registry = machine-callable capability directory
+Learning orchestration = product core
+```
+
+## 4. Component Asset meaning
+
+A `ComponentAsset` is an executable, interactive or otherwise orchestratable learning tool or experience.
+
+Examples:
+
+- calculation trainer;
+- particle animation;
+- equation-balancing interaction;
+- quiz or recall activity;
+- simulation;
+- visual explorer;
+- rubric evaluator;
+- diagnostic tool;
+- generator;
+- reviewed Web learning application;
+- composite learning flow.
+
+The following are not Component Assets by default:
+
+- article;
+- PDF;
+- syllabus page;
+- video;
+- worksheet;
+- static link.
+
+These remain `SourceAsset`, `EvidenceUnit` or `ExternalLearningResource` unless wrapped in a genuine learning activity contract with objective, input, interaction, state, output and learning events.
+
+## 5. Three product loops
+
+### Learning Delivery Loop
+
+```text
+learner goal or teacher assignment
+→ compile authorized Context
+→ determine current learning need
+→ retrieve an eligible capability or resource
+→ parameterize / compose / adapt / generate when necessary
+→ deliver in Asset Stage
+→ capture operations, Attempts and completion state
+```
+
+### Diagnosis and Teacher Governance Loop
+
+```text
+LearnerAttempt
+→ DiagnosticObservationProposal
+→ confidence / risk / policy gate
+→ bounded automatic continuation or TeacherReview
+→ teacher correction, requirement, exclusion, override or feedback
 → Retry / Transfer / Retention
-→ Learning Outcome
-
-Learning Component Supply Loop
-Manual create / Upload / Import / Conversation Evidence
-→ SourceAsset and ComponentDraft
-→ Authoring, Contract Checks and Eval
-→ comments, requested changes and human approval
-→ immutable ComponentVersion publication
-→ Registry and Component Retrieval
-→ exact-version RuntimeDelivery
-→ Outcome Evidence
-→ maintenance / revision / deprecation / rollback
+→ reviewed LearningOutcome
 ```
 
-Never collapse these distinct concepts:
+### Capability Supply and Optimization Loop
 
 ```text
-SourceAsset
-≠ EvidenceUnit
-≠ ExternalLearningResource
-≠ LearningComponent
-
-Evidence Retrieval
-≠ Component Retrieval
-≠ Capability Resolution
-
-LangGraph checkpoint state
-≠ canonical Product State
+no-match / repeated failure / improvement request
+→ inspect Registry
+→ use existing asset
+→ parameterize
+→ compose
+→ adapt
+→ generate only when necessary
+→ runtime, event, safety, rights and accessibility checks
+→ teacher or expert confirmation
+→ make exact version available
+→ real delivery
+→ asset / routing / learning-strategy optimization
 ```
 
-## 5. Required product surfaces
+The third loop serves learning orchestration. It is not a standalone CMS or editorial product.
+
+## 6. Product surfaces
 
 ### Learner Workspace
 
-- authenticate and access authorized courses;
-- create, continue, switch and close Learning Tasks;
-- hold Task-scoped continuous conversations;
-- submit text, images, diagrams, charts, questions and learner work;
-- receive context-aware, Evidence-grounded support with citations;
-- execute published Components and governed Capabilities;
-- submit Learner Attempts;
-- receive explainable Diagnostic Observations and feedback;
-- use Library and Schedule;
-- complete Retry, Transfer and Retention activities;
-- inspect learning history and Outcomes.
+- conversational and teacher-assigned Task entry;
+- current goal, due state and next step;
+- Chat / Guidance;
+- Active Asset Stage;
+- Evidence and citations where required;
+- text, structured, image and interactive Attempts;
+- pause, reset, resume and retry;
+- waiting/review states;
+- progress, prior Attempts and Outcomes.
 
 ### Teacher Workspace
 
-- inspect Task, original Evidence, Attempt and Observation;
-- accept, correct, supplement, reject or escalate Diagnosis;
-- edit learner support;
-- interrupt and resume workflows through authorized human action;
+Primary areas:
+
+```text
+Assign
++ Monitor and Intervene
++ Learning Evidence
++ Improve
+```
+
+Teachers can:
+
+- assign learners, goals, deadline and completion policy;
+- define allowed, required and excluded capabilities;
+- inspect capability candidates, selection rationale and exact runtime version;
+- inspect events, Attempts, Evidence and Diagnosis Proposals;
+- confirm, correct, partially accept, reject or escalate;
+- override the next activity;
+- change language, modality, support intensity or sequence;
 - create linked Retry, Transfer and Retention activities;
-- review new results before Outcome;
-- inspect learner/class patterns;
-- submit effective support or maintenance signals to Foundry.
+- request an asset adaptation or routing-policy improvement.
 
-### Foundry Studio
+### Capability Workshop
 
-- manually create a Component Draft;
-- upload/import a real asset while preserving original SourceAsset and processing lineage;
-- create a Draft from governed Conversation/Attempt/Review/Outcome Evidence;
-- edit contract, content, attachments, Evidence, eligibility, dependencies and runtime behavior;
-- preview the learner experience;
-- run Contract Checks and versioned Eval;
-- assign reviewers;
-- create field/block review comments;
-- request changes, revise and resubmit;
-- approve/reject an exact candidate through authorized human action;
-- publish an immutable ComponentVersion;
-- search and inspect the Registry;
-- retrieve eligible Components with inclusion/exclusion reasons;
-- deliver the exact selected version in a Learning Episode;
-- link delivery to Attempt, Review, Retry and Outcome Evidence;
-- create successor revisions;
-- deprecate, retire, emergency-disable and roll back without rewriting history.
+A secondary, need-driven surface for:
+
+- parameterization and composition;
+- connecting a reviewed external capability;
+- natural-language asset adaptation;
+- generation of a new Web learning asset;
+- runtime preview;
+- concise callable-contract correction;
+- checks and teacher/expert confirmation;
+- version availability, disable, successor and rollback;
+- evidence-driven asset/routing/strategy improvement.
+
+Capability Workshop is not a generic CMS.
 
 ### Engineering / Evaluation
 
-- inspect LangGraph execution, interrupts, checkpoints and resume;
-- inspect Product State separately from runtime state;
-- inspect Context inclusion/exclusion;
-- inspect Evidence and Component retrieval candidates and decisions;
-- inspect model, tool, Capability and exact ComponentVersion execution;
-- inspect token, latency, cost, retry and failures;
-- run product, retrieval, Diagnosis, pedagogy, Component and security Eval;
-- inspect authorization and tenant isolation;
-- retain failure evidence and explicit non-claims.
+- workflow, checkpoint, replay, cancellation and recovery inspection;
+- Product State inspection;
+- Context and Evidence traces;
+- Capability Registry candidates, exclusions and selection;
+- ActivityPlan, exact asset runtime and learning events;
+- provider, latency, cost and failure evidence;
+- authorization and tenant isolation;
+- product, retrieval, orchestration, pedagogy and security Eval.
 
-## 6. Technology and ownership
+Engineering cannot create TeacherReview or LearningOutcome on behalf of an authorized human.
 
-Use the approved direction unless an assigned work package proves a concrete blocker:
+## 7. Current requirement namespaces
+
+All implementation work maps to current IDs:
+
+```text
+REL-*
+LEARN-* / TEACH-* / OUTCOME-*
+CTX-*
+EVID-*
+CAP-*
+DATA-*
+EVAL-* / SEC-*
+OPS-*
+```
+
+`COMP-*` is superseded. Work whose only purpose is satisfying the former `COMP-01`–`COMP-20` must be removed or repurposed.
+
+## 8. Capability resolution and runtime
+
+Resolution priority:
+
+```text
+1. verified eligible existing capability
+2. parameterized existing capability
+3. composition of eligible capabilities
+4. reviewed adaptation of an internal or external capability
+5. generated ComponentAsset proposal
+6. explicit no-match and teacher escalation
+```
+
+The resolver records:
+
+- candidate versions;
+- eligibility checks;
+- exclusions and reasons;
+- teacher requirements and prohibitions;
+- selected exact version;
+- parameterization or composition;
+- fallback or no-match decision.
+
+A first-match SQL query is not Capability Resolution.
+
+Asset Stage validates authorization, eligibility, exact version, dependencies and input contract before launch. It records state transitions, learner operations, support exposure, learning events, Attempt boundary, completion, abandonment and failure.
+
+Runtime completion is not a Diagnosis or LearningOutcome.
+
+## 9. Canonical Product State
+
+Persist formal records for at least:
+
+- `User`, `Institution`, `InstitutionMembership`, `Course`, `Subject`, `Enrollment`;
+- `LearningTask`, `LearningEpisode`, `ConversationEvent`;
+- `SourceAsset`, `SourceAssetVersion`, rights and delivery decisions;
+- `EvidenceUnit` and derivatives;
+- `LearnerAttempt`;
+- `DiagnosticObservationProposal`;
+- append-only `TeacherReview` and successor/conflict history;
+- Retry, Transfer and Retention activity lineage;
+- `LearningOutcome` and invalidation/supersession;
+- `LearningCapability`, `CapabilityVersion`;
+- `ComponentAsset`, immutable `ComponentAssetVersion`;
+- capability candidate, exclusion and selection records;
+- `TeacherAssignment`, capability requirement and exclusion;
+- `ActivityPlan`, `RuntimeDelivery`, `LearningEvent`;
+- capability gap, adaptation/generation and evaluation proposals;
+- authorized confirmation, availability, disable and rollback decisions;
+- asset, routing and learning-strategy optimization proposals.
+
+Canonical writes require server-side authorization, transactions and idempotency. Workflow replay or resume must not duplicate Product State.
+
+## 10. Evidence and capability boundaries
+
+```text
+Evidence Retrieval
+= find trustworthy information or material
+
+Capability Resolution
+= decide which callable learning behavior should run
+
+Component Asset Runtime
+= execute that behavior and return learning events
+```
+
+These may share infrastructure but never share meaning.
+
+External resources require a reviewed adapter to participate in orchestration. A link, iframe or provider completion event is not native Component Asset execution and cannot directly create Diagnosis, TeacherReview or LearningOutcome.
+
+## 11. Technology and Build / Adopt / Partner
+
+Current direction:
 
 - Next.js and React;
 - LangGraph JS;
 - PostgreSQL canonical Product State;
-- separate LangGraph checkpoint namespace;
+- separate checkpoint namespace/role;
 - Drizzle migrations;
 - Zod boundaries;
-- mature authentication behind Foundry authorization;
-- mature lexical/vector hybrid retrieval with fusion/reranking;
-- at least one genuine multimodal Evidence path;
-- Object Storage for original files;
+- mature managed authentication;
+- database-enforced tenant isolation;
+- mature hybrid retrieval with multilingual and multimodal support;
+- managed Object Storage;
+- approved provider adapters;
 - OpenTelemetry-compatible observability;
 - mature Eval infrastructure where useful.
 
-LangGraph owns workflow mechanics. Foundry application/domain code owns learning semantics, authorization, Evidence authority, human governance, Component policy and canonical writes.
+Do not hand-build commodity authentication, organization membership foundations, object storage, vector plumbing, workflow execution or observability without a documented Build / Adopt / Partner reason.
 
-Do not recreate commodity orchestration, provider translation, vector plumbing, auth, object storage or observability without a documented Build / Adopt / Partner reason.
+Foundry owns product semantics; providers and frameworks do not.
 
-## 7. Canonical Product State
+## 12. Explicit prohibited scope
 
-Persist formal records for at least:
+Do not build or expand:
 
-- User and InstitutionMembership;
-- Course and Subject;
-- LearnerProfile and relevant assessment/context records;
-- LearningTask and LearningEpisode;
-- ConversationEvent;
-- SourceAsset and derived processing records;
-- EvidenceUnit and source/version/rights records;
-- LearnerAttempt;
-- DiagnosticObservation;
-- TeacherReview and correction history;
-- RetryAttempt, TransferActivity and RetentionReview;
-- LearningOutcome;
-- Capability and CapabilityVersion;
-- Component and ComponentDraft;
-- Component attachment/dependency records;
-- Component evaluation and review assignment/comment/decision records;
-- ComponentVersion and PublicationDecision;
-- Registry state;
-- Component selection/exclusion and RuntimeDelivery;
-- maintenance, deprecation, disable and rollback decisions.
+- article or page authoring;
+- generic block editor;
+- giant manual Component metadata forms;
+- CMS-style field/block editorial comments;
+- independent content publication backend;
+- editorial calendar or arbitrary content-type system;
+- content catalogue or marketplace as the product center;
+- manual metadata entry that can be inferred and proposed;
+- infrastructure unrelated to a current orchestration requirement;
+- compatibility work whose only purpose is preserving the superseded CMS contract.
 
-TeacherReview, LearningOutcome and PublicationDecision require authorized human commands. Model or workflow output may propose but cannot create them.
+Retain versioning, checks, confirmation, availability, disable and rollback only where they protect callable learning behavior, source rights, runtime safety or institutional authority.
 
-Canonical writes require authorization, transactions and idempotency. Workflow replay must not duplicate product records.
+## 13. Current implementation handling
 
-## 8. Context, Evidence and selection
+PR #22 is the umbrella Draft targeting `main`. Child PRs target `rewrite/full-framework` and must remain independently reviewable and revertible.
 
-The Context Compiler must record active Task/Episode, candidates, selections, exclusions, reasons, carryover relations, stale/superseded handling and token/modality budgets.
+Preserve valid existing work in:
 
-Concrete prior-Task entities and values are excluded unless a valid explicit relation permits carryover.
+- Next.js/LangGraph/PostgreSQL foundations;
+- workflow replay, interrupt, recovery and cancellation;
+- Context and Evidence;
+- source intake and multimodal lineage;
+- Diagnosis Proposal and TeacherReview;
+- Capability Registry and selection evidence;
+- exact runtime versioning and events;
+- Retry, Transfer, Retention and Outcome;
+- tenant/security enforcement;
+- version disable and rollback;
+- Engineering inspection and Eval.
 
-Evidence intake must preserve original source identity, content hash, version, locator, rights, ownership, institution scope and processing lineage.
+Remove or repurpose code whose only purpose is:
 
-Evidence Retrieval must support lexical and vector candidate generation, fusion/reranking, multilingual behavior and a genuine visual/multimodal path.
+- generic Component CMS authoring;
+- field/block editorial workflow;
+- content publication administration;
+- former `COMP-*` completeness.
 
-Component Retrieval must consider learner eligibility, Task, curriculum, language, modality, permissions, publication scope, required Capabilities and exact active version. Record candidates, exclusions, rationale and selected version.
+Do not delete reusable runtime, safety, lineage or governance behavior merely because it was originally implemented under the wrong label.
 
-External resource launch is not native Component execution and cannot directly create Diagnosis, TeacherReview, LearningOutcome or PublicationDecision.
+## 14. Work-package contract
 
-## 9. Legacy deletion boundary
+Every assignment states:
 
-Do not preserve or reintroduce as target requirements:
-
-- handwritten `runAgent` and old gateway;
-- custom Legacy provider/tool loop;
-- runtime shadow and parity;
-- authoritative/candidate dual-run machinery;
-- candidate-authority migration;
-- file-backed formal Product State;
-- Legacy trace/recorder schema compatibility;
-- fixed-port multi-service orchestration;
-- old AgentEval runner infrastructure;
-- tests protecting only Legacy round counts, tool order or terminal reasons;
-- old Demo Shell as the product UI.
-
-Migrate only reviewed product requirements, domain assets, deterministic capabilities, valid Eval/failure cases and rights/privacy/authorization invariants.
-
-## 10. Work-package contract
-
-Every Codex assignment must state:
-
-- mapped product requirement and user-visible result;
-- exact branch and responsibility boundary;
-- files/services expected to change;
-- Product State and authorization effects;
-- prohibited Legacy paths and shortcuts;
-- required tests and browser/user-path evidence;
+- current requirement IDs;
+- user-visible result;
+- exact base SHA and branch;
+- files or responsibility boundary;
+- Product State impact;
+- authorization and tenant boundary;
+- runtime/provider/failure behavior;
+- prohibited CMS and Legacy scope;
+- required tests and real browser/user-path evidence;
 - explicit non-goals;
 - evidence required for Engineering PM review.
 
-Codex must report exact changes, failures, shortcuts, seeds/fixtures and limitations. Do not use optimistic completion language.
+Do not send an uncontrolled “build everything before review” instruction.
 
-## 11. Review and acceptance
+## 15. Review rejection conditions
 
-The Engineering PM rejects work when:
+Reject work when:
 
-- no product requirement is mapped;
-- UI is disconnected from canonical Product State;
-- a user action is replaced by seed, fixture, direct database write or hidden script;
-- Component Retrieval is confused with Evidence Retrieval;
-- exact-version lineage is absent;
-- authorization exists only in UI;
-- human governance state is created by model/workflow output;
+- no current requirement is mapped;
+- a user action is replaced by a seed, fixture, direct database write or hidden script;
+- authorization exists only in UI code;
+- Evidence Retrieval, Capability Resolution and Asset Runtime are conflated;
+- capability selection is an unexplained first-match lookup;
+- generated/adapted assets become available without checks and authorized confirmation;
+- runtime events or completion fabricate Diagnosis or Outcome;
+- exact-version, event or review lineage is absent;
+- workflow replay duplicates canonical records;
+- provider unavailability is presented as success;
 - browser/runtime evidence does not support the claim;
-- Legacy infrastructure is reintroduced;
-- the Product Owner would need to inspect code to know whether the product works.
+- CMS-only or Legacy-only infrastructure is introduced;
+- completion language exceeds evidence.
 
-Implementation status must use row-level proof from Doc 12. Never report a single “complete Asset Loop” result.
+## 16. Required validation
 
-## 12. Required validation before product completion
+For relevant work packages, run and retain:
 
-- install from lockfile;
+- lockfile installation;
 - lint and type check;
 - unit/application tests;
 - PostgreSQL migration and integration tests;
-- LangGraph graph, interrupt/resume and replay tests;
-- authorization and tenant-isolation tests;
-- Context contamination tests;
-- Evidence hybrid/multimodal retrieval and citation tests;
-- Component create/upload/author/review/publish/retrieve/deliver/maintain tests;
-- Standard Trainer and other Capability integration tests;
+- checkpoint, interrupt/resume, replay, idempotency and cancellation tests;
+- authentication and cross-tenant denial tests;
+- Context isolation and contamination tests;
+- Evidence hybrid/multilingual/multimodal and citation tests;
+- Capability Registry candidate/exclusion/no-match tests;
+- Asset Stage input/state/event/failure tests;
+- teacher assignment, requirement, exclusion and override tests;
 - complete Learning Loop browser E2E;
-- complete Component Platform browser E2E;
-- all four product surfaces;
-- product/pedagogy/security Eval;
-- production-like online preview verification;
-- asset/data migration rehearsal;
-- rollback rehearsal;
-- zero Legacy production-import scan.
+- one real gap-driven adapt/generate/check/confirm/register/deliver E2E;
+- asset/routing/strategy optimization evidence;
+- security and adversarial tests;
+- production-like preview verification where applicable;
+- zero Legacy/CMS-only target import scan.
 
-The old 286-test result is historical evidence only.
+No old test count or prior audit verdict is current acceptance.
 
-## 13. Reporting
+## 17. Reporting and acceptance
 
-Internal work-package reports go to the Engineering PM and include exact commit/diff/test/user-path evidence.
+Implementation reports include exact commit, diff, commands, database evidence, browser path, failures, shortcuts and non-claims.
 
-Reports to the Product Owner focus on what learners, teachers, experts and operators can do, which complete online flows pass, and which genuine product decision remains.
+Reports to the Product Owner focus on:
 
-Do not report the complete product as ready until all required rows are independently accepted. The final positive verdict is `CUTOVER_READY`; otherwise use `REWORK` with explicit missing product paths.
+- what learners can do;
+- what teachers can assign, inspect or change;
+- which capabilities are matched, adapted, generated and run;
+- which complete online journeys pass;
+- which user-visible defects remain;
+- which genuine product decision is required.
+
+Current Doc 12 requirements are reset to `NOT_REVIEWED`. Do not claim Showcase, preview, Pilot, production or cutover acceptance without the required evidence and explicit Product Owner decision.
