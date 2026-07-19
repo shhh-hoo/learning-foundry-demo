@@ -5,6 +5,17 @@ Date: 2026-07-18
 Branch: `rewrite/full-framework`
 Starting head: `5fe63c96373413daff89fd0358c154f7c985fdce`
 
+## Historical status
+
+This is a dated work-package record at the starting head identified above. Its
+“complete Learning Loop” and “Component Asset Loop” browser-suite wording is
+historical test-scope language, not acceptance of any current requirement.
+Current implementation evidence is controlled by Doc 12's retained audit of
+exact head `b6f023fe995e44e714bf5da2c2096128e1def9fe` and its 42-to-113
+transition mapping. This record grants no human-governance validation,
+live-provider validation authority, preview approval, Product Owner acceptance,
+merge authority or cutover authority.
+
 ## Product outcome
 
 The Learner Workspace now accepts a normal-language problem plus the learner's working. Learners do not need to enter internal Capability IDs, schemas, contracts, or JSON. They may optionally select a learner-facing activity hint or explicitly open manual calculation fields.

@@ -1,6 +1,19 @@
 # Learning Foundry · full-framework rewrite
 
-This branch contains the Next.js App Router, LangGraph JS and PostgreSQL replacement baseline. It is an internal engineering checkpoint, not a completed product or cutover claim.
+Exact commit `b6f023fe995e44e714bf5da2c2096128e1def9fe` is the immutable
+audited Next.js App Router, LangGraph JS and PostgreSQL implementation
+checkpoint. This descendant branch leaves that checkpoint's product behavior
+unchanged and contains only separately reviewable governance-guidance changes.
+The audited checkpoint is historical implementation evidence, not an accepted
+rewrite, completed product or cutover claim.
+
+Current documentation authority:
+`learning-foundry-docs@c77132314e385308c9a49fd0b5af5ed720d420a3`.
+The companion RW-00 documentation Draft retains the exact-head audit under
+`evidence/implementation/pr-22/`, including the 42-to-113 transition map. That
+Draft and this implementation-guidance change remain separately reviewable and
+revertible. Neither grants Legacy deletion, canonical Product State migration,
+preview approval, merge, release, production or cutover authority.
 
 ## State and authority
 
@@ -14,7 +27,17 @@ The real-intelligence work package adds governed PDF/image intake, PDF.js page e
 
 Uploaded bytes are stored through the server-only `FileStorage` port and never in Product State rows. Local verification uses `.local-data/uploads` (or `FILE_STORAGE_LOCAL_ROOT`); production startup fails without an explicit storage root until a managed storage adapter is selected. Extracted text, content hashes, ownership, rights decisions, locators, and ingestion status remain governed Product State.
 
-The internal Asset Loop now supports a structured Component editor, repeated reviewed-signal eligibility, versioned system checks, real deterministic Capability fixture execution with expected outputs, an authenticated expert LangGraph publication interrupt, immutable approve/reject decisions, successor versions, governed rollback, and version-pinned support delivery into Teacher and Learner workspaces. Rights/citation checks are recorded as `NOT_REQUIRED`, never `PASSED`, when a narrow deterministic scaffold declares no Evidence. Automated domain, pedagogy and safety scoring remains unavailable; a complete authenticated expert rubric is separately required. This is an internal product-visible package, not product completion or public-preview authorization.
+The audited checkpoint contains a partial Component lifecycle: a structured
+editor, reviewed-signal eligibility, versioned system checks, deterministic
+Capability fixture execution, an authenticated expert publication interrupt,
+immutable approve/reject decisions, successor versions, rollback and
+version-pinned support delivery. It does not implement the complete Component
+Platform contract. Blank creation, Component import, learner preview, reviewer
+collaboration, Registry/selection, Outcome linkage and maintenance controls are
+among the retained audit gaps. Rights/citation checks are recorded as
+`NOT_REQUIRED`, never `PASSED`, when a narrow deterministic scaffold declares no
+Evidence. This is historical product-visible evidence, not human validation,
+product completion or public-preview authorization.
 
 Optional live integrations:
 
@@ -51,7 +74,12 @@ npm run test:integration
 npm run test:integration:rerun
 ```
 
-An accepted-baseline upgrade rehearsal uses a separately named guarded local database. It constructs the exact old `{observationId}`-only Component shape before applying the Asset Loop migration, then verifies current authenticated Review backfill and audit quarantine of only non-bindable pre-Eval shells:
+The historical-checkpoint upgrade rehearsal uses a separately named guarded
+local database. It constructs the exact old `{observationId}`-only Component
+shape before applying that checkpoint's Component migration, then verifies its
+authenticated Review backfill and audit quarantine of non-bindable pre-Eval
+shells. The retained audit flags deletion in this migration as a separate
+schema/data authority risk; a passing rehearsal does not authorize migration:
 
 ```bash
 UPGRADE_REHEARSAL_ALLOWED=true \

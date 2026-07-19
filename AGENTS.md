@@ -4,42 +4,54 @@
 
 The product and architecture source of truth is:
 
-`learning-foundry-docs@fb5446b7934366a416d03ee28449faa5468c37bd`
+`learning-foundry-docs@c77132314e385308c9a49fd0b5af5ed720d420a3`
 
 Read in this order before implementation or review:
 
 1. `docs/00-current-mvp-contract.md`
-2. `docs/01-product-definition.md`
-3. `docs/02-product-surfaces-and-user-journeys.md`
-4. `docs/08-asset-and-component-lifecycle.md`
-5. `docs/20-full-framework-rewrite-and-cutover.md`
-6. `docs/03-system-architecture.md`
-7. `docs/04-context-architecture.md`
-8. `docs/05-evidence-and-retrieval.md`
-9. `docs/06-storage-and-data-lifecycle.md`
+2. `docs/21-learning-loop-and-outcome-contract.md`
+3. `docs/08-asset-and-component-lifecycle.md`
+4. `docs/06-storage-and-data-lifecycle.md`
+5. `docs/01-product-definition.md`
+6. `docs/02-product-surfaces-and-user-journeys.md`
+7. `docs/03-system-architecture.md`
+8. `docs/04-context-architecture.md`
+9. `docs/05-evidence-and-retrieval.md`
 10. `docs/07-learner-model-goals-and-pedagogy.md`
 11. `docs/09-eval-and-governance.md`
 12. `docs/17-build-buy-partner-and-external-components.md`
-13. `docs/15-human-development-handoff.md`
-14. `docs/12-docs-demo-traceability.md`
-15. `docs/22-document-audit-cleanup-register.md`
+13. `docs/20-full-framework-rewrite-and-cutover.md`
+14. `docs/15-human-development-handoff.md`
+
+After normative authority, use these operational records without allowing them
+to redefine product scope:
+
+15. `docs/11-demo-and-implementation-status.md`
+16. `docs/12-docs-demo-traceability.md`
+17. `OPEN_QUESTIONS.md`
 
 Authority order:
 
 ```text
-Current MVP Contract
+Current Showcase Release Contract
+> Learning Loop and Outcome Contract
 > Learning Component Platform Contract
-> Complete Rewrite and Cutover Contract
+> Semantic Data and Authority Catalog
 > accepted ADR
 > active normative domain document
-> operational status / traceability / handoff
+> operational evidence / decision document
 > historical or superseded document
-> implementation prose
-> task prompt
-> fixture or seed
+> implementation prose, prompt or fixture
 ```
 
-Historical Docs 13, 14, 16, 18 and 19 do not control current implementation.
+Historical Docs 13 and 16 and superseded Docs 14, 18 and 19 do not control
+current implementation.
+
+The completed PR #22 audit is historical exact-head evidence at
+`b6f023fe995e44e714bf5da2c2096128e1def9fe`. Its retained artifacts and
+42-to-113 transition map live in the companion documentation Draft under
+`evidence/implementation/pr-22/`. They do not grant acceptance, authority
+switch, Legacy deletion, merge, preview, release, production or cutover.
 
 ## 2. Operating model
 
@@ -60,15 +72,19 @@ The Engineering PM owns work decomposition, sequencing, diff review, testing, re
 
 Codex implements bounded work packages issued by the Engineering PM.
 
-## 3. Complete product versus internal decomposition
+## 3. Historical checkpoint versus current work packages
 
-The target remains one complete replacement product on:
+The audited PR #22 checkpoint is preserved on:
 
 `rewrite/full-framework`
 
-The Legacy reference remains:
+Its historical base is preserved as:
 
 `archive/legacy-wave1-6734b2f`
+
+Neither branch name is current product authority. The current Engineering PM
+must issue separately bounded, reviewable and independently revertible work
+packages against the accepted documentation authority.
 
 Important distinction:
 
@@ -86,7 +102,8 @@ A technically narrow work package is valid only when it maps to a complete-produ
 
 Do not claim product completion from scaffolding, one graph, one Workspace, a schema, a seed flow, test count or a partial E2E path.
 
-Do not change `main`, production deployment or canonical user data without explicit Product Owner authorization.
+Do not change `main`, delete Legacy, merge, grant preview approval, deploy,
+alter production or cut over without explicit Product Owner authorization.
 
 ## 4. Product core
 
@@ -100,14 +117,14 @@ Task and authorized Context
 → Evidence Retrieval
 → Component Retrieval / Capability Resolution
 → Activity and Learner Attempt
-→ Diagnostic Observation
+→ DiagnosticObservationProposal
 → Teacher Review
 → Retry / Transfer / Retention
-→ Learning Outcome
+→ LearningOutcome
 
 Learning Component Supply Loop
 Manual create / Upload / Import / Conversation Evidence
-→ SourceAsset and ComponentDraft
+→ SourceAsset and ComponentDraftRevision
 → Authoring, Contract Checks and Eval
 → comments, requested changes and human approval
 → immutable ComponentVersion publication
@@ -144,7 +161,7 @@ LangGraph checkpoint state
 - receive context-aware, Evidence-grounded support with citations;
 - execute published Components and governed Capabilities;
 - submit Learner Attempts;
-- receive explainable Diagnostic Observations and feedback;
+- receive explainable DiagnosticObservationProposals and feedback;
 - use Library and Schedule;
 - complete Retry, Transfer and Retention activities;
 - inspect learning history and Outcomes.
@@ -162,7 +179,7 @@ LangGraph checkpoint state
 
 ### Foundry Studio
 
-- manually create a Component Draft;
+- manually create a ComponentDraftRevision;
 - upload/import a real asset while preserving original SourceAsset and processing lineage;
 - create a Draft from governed Conversation/Attempt/Review/Outcome Evidence;
 - edit contract, content, attachments, Evidence, eligibility, dependencies and runtime behavior;
@@ -225,17 +242,16 @@ Persist formal records for at least:
 - SourceAsset and derived processing records;
 - EvidenceUnit and source/version/rights records;
 - LearnerAttempt;
-- DiagnosticObservation;
+- DiagnosticObservationProposal;
 - TeacherReview and correction history;
 - RetryAttempt, TransferActivity and RetentionReview;
 - LearningOutcome;
 - Capability and CapabilityVersion;
-- Component and ComponentDraft;
+- Component and ComponentDraftRevision;
 - Component attachment/dependency records;
-- Component evaluation and review assignment/comment/decision records;
+- ComponentEvaluationRun and review assignment/comment/decision records;
 - ComponentVersion and PublicationDecision;
-- Registry state;
-- Component selection/exclusion and RuntimeDelivery;
+- RegistryEntry, ComponentSelection and RuntimeDelivery;
 - maintenance, deprecation, disable and rollback decisions.
 
 TeacherReview, LearningOutcome and PublicationDecision require authorized human commands. Model or workflow output may propose but cannot create them.
@@ -256,23 +272,18 @@ Component Retrieval must consider learner eligibility, Task, curriculum, languag
 
 External resource launch is not native Component execution and cannot directly create Diagnosis, TeacherReview, LearningOutcome or PublicationDecision.
 
-## 9. Legacy deletion boundary
+## 9. Legacy and migration authority boundary
 
-Do not preserve or reintroduce as target requirements:
+PR #22's exact-head audit records historical implementation and deletion facts;
+it is not permission to delete or replace Legacy. No current work package may
+delete Legacy paths, perform canonical schema/data migration, switch runtime
+authority, merge or cut over unless the Product Owner grants that boundary after
+the applicable documentation decision and evidence review.
 
-- handwritten `runAgent` and old gateway;
-- custom Legacy provider/tool loop;
-- runtime shadow and parity;
-- authoritative/candidate dual-run machinery;
-- candidate-authority migration;
-- file-backed formal Product State;
-- Legacy trace/recorder schema compatibility;
-- fixed-port multi-service orchestration;
-- old AgentEval runner infrastructure;
-- tests protecting only Legacy round counts, tool order or terminal reasons;
-- old Demo Shell as the product UI.
-
-Migrate only reviewed product requirements, domain assets, deterministic capabilities, valid Eval/failure cases and rights/privacy/authorization invariants.
+Preserve PR #22 head `b6f023fe995e44e714bf5da2c2096128e1def9fe`
+as immutable historical evidence. Changes after it must be separately bounded
+and revertible; do not rewrite the checkpoint or use a passing scan/test as an
+authority decision.
 
 ## 10. Work-package contract
 
@@ -306,7 +317,7 @@ The Engineering PM rejects work when:
 
 Implementation status must use row-level proof from Doc 12. Never report a single “complete Asset Loop” result.
 
-## 12. Required validation before product completion
+## 12. Required evidence before product completion
 
 - install from lockfile;
 - lint and type check;
@@ -327,7 +338,9 @@ Implementation status must use row-level proof from Doc 12. Never report a singl
 - rollback rehearsal;
 - zero Legacy production-import scan.
 
-The old 286-test result is historical evidence only.
+The retained PR #22 automated and browser results are historical exact-head
+evidence only. Tests do not confer human validation, live-provider validation,
+preview approval, Product Owner acceptance, merge authority or cutover authority.
 
 ## 13. Reporting
 
@@ -335,4 +348,8 @@ Internal work-package reports go to the Engineering PM and include exact commit/
 
 Reports to the Product Owner focus on what learners, teachers, experts and operators can do, which complete online flows pass, and which genuine product decision remains.
 
-Do not report the complete product as ready until all required rows are independently accepted. The final positive verdict is `CUTOVER_READY`; otherwise use `REWORK` with explicit missing product paths.
+Do not report the complete product as ready until every applicable Doc 12
+dimension is independently evidenced, every blocker is closed and one explicit
+Product Owner release-acceptance event references the accepted ledger
+snapshot/head. Use the Doc 12 verdict vocabulary; tests alone never create
+`ACCEPTED`.
