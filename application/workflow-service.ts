@@ -17,11 +17,37 @@ import { buildRetryOutcomeGraph } from "@/workflows/retry-outcome";
 import { buildComponentLifecycleGraph } from "@/workflows/component-lifecycle";
 import { traced } from "@/application/telemetry";
 import { requireTaskEpisodeScope } from "@/application/task-scope";
+import {
+  assertExecutionActive,
+  operationalFailureStatus,
+  runWithExecutionControl,
+  type ExecutionControlInput,
+} from "@/application/execution-control";
+import { claimWorkflowResume, finalizeWorkflowResumeClaim } from "@/application/workflow-resume-lease";
+import type { LearnerTaskFaultHooks } from "@/workflows/learner-task";
 
 type WorkflowKind = "LEARNER_TASK" | "EXPLANATION" | "DIAGNOSIS" | "TEACHER_REVIEW" | "RETRY_OUTCOME" | "COMPONENT_LIFECYCLE";
 
-type GraphConfig = { configurable: { thread_id: string }; recursionLimit: number };
+type GraphConfig = { configurable: { thread_id: string }; recursionLimit: number; signal?: AbortSignal };
 type InvokableGraph = { invoke(input: unknown, config: GraphConfig): Promise<unknown> };
+
+export type WorkflowServiceTestFaults = LearnerTaskFaultHooks & {
+  afterGraphCompletion?: (input: { kind: WorkflowKind; runId: string; threadId: string; result: unknown }) => Promise<void> | void;
+};
+
+/** Test-only sentinel that models process loss: no catch-path operational write may run. */
+export class WorkflowProcessCrashForTests extends Error {
+  constructor(message = "Injected workflow process crash") {
+    super(message);
+    this.name = "WorkflowProcessCrashForTests";
+  }
+}
+
+export type WorkflowExecutionOptions = {
+  execution?: ExecutionControlInput;
+  /** Injectable fault seam for PostgreSQL/LangGraph recovery tests only. */
+  testFaults?: WorkflowServiceTestFaults;
+};
 
 const RetryWorkflowStart = z.object({
   observationId: z.string().uuid(),
@@ -50,6 +76,7 @@ const ExplanationWorkflowStart = z.object({
   taskId: z.string().uuid(),
   episodeId: z.string().uuid(),
   question: z.string().min(1),
+  idempotencyKey: z.string().min(8),
 }).strict();
 
 const DiagnosisWorkflowStart = z.object({
@@ -174,10 +201,10 @@ async function authorizeWorkflowStart(input: {
   return { state: parsed, taskId: undefined, episodeId: undefined };
 }
 
-function graphFor(kind: WorkflowKind): InvokableGraph {
+function graphFor(kind: WorkflowKind, testFaults?: WorkflowServiceTestFaults): InvokableGraph {
   const checkpointer = getWorkflowCheckpointer();
-  if (kind === "LEARNER_TASK") return buildLearnerTaskGraph(checkpointer) as unknown as InvokableGraph;
-  if (kind === "EXPLANATION") return buildExplanationGraph(checkpointer) as unknown as InvokableGraph;
+  if (kind === "LEARNER_TASK") return buildLearnerTaskGraph(checkpointer, testFaults) as unknown as InvokableGraph;
+  if (kind === "EXPLANATION") return buildExplanationGraph(checkpointer, testFaults?.explanation) as unknown as InvokableGraph;
   if (kind === "DIAGNOSIS") return buildDiagnosisGraph(checkpointer) as unknown as InvokableGraph;
   if (kind === "TEACHER_REVIEW") return buildTeacherReviewGraph(checkpointer) as unknown as InvokableGraph;
   if (kind === "RETRY_OUTCOME") return buildRetryOutcomeGraph(checkpointer) as unknown as InvokableGraph;
@@ -189,34 +216,41 @@ function interruptType(result: unknown): string | null {
   return interrupts?.[0]?.value?.type ?? null;
 }
 
-export async function startWorkflow(input: { kind: WorkflowKind; actor: Actor; state: Record<string, unknown>; taskId?: string; episodeId?: string; threadId?: string }) {
-  const authorized = await authorizeWorkflowStart(input);
-  const { state, taskId, episodeId } = authorized;
-  const threadId = input.threadId ?? `${input.kind.toLowerCase()}:${randomUUID()}`;
-  const runId = randomUUID();
-  await getDb().insert(workflowRuns).values({
-    id: runId,
-    threadId,
-    workflowKind: input.kind,
-    institutionId: input.actor.institutionId,
-    taskId,
-    episodeId,
-    actorUserId: input.actor.userId,
-    status: "RUNNING",
+export async function startWorkflow(input: { kind: WorkflowKind; actor: Actor; state: Record<string, unknown>; taskId?: string; episodeId?: string; threadId?: string } & WorkflowExecutionOptions) {
+  return runWithExecutionControl(input.execution, async (control) => {
+    const authorized = await authorizeWorkflowStart(input);
+    const { state, taskId, episodeId } = authorized;
+    const threadId = input.threadId ?? `${input.kind.toLowerCase()}:${randomUUID()}`;
+    const runId = randomUUID();
+    assertExecutionActive(control);
+    await getDb().insert(workflowRuns).values({
+      id: runId,
+      threadId,
+      workflowKind: input.kind,
+      institutionId: input.actor.institutionId,
+      taskId,
+      episodeId,
+      actorUserId: input.actor.userId,
+      status: "RUNNING",
+    });
+    const started = performance.now();
+    try {
+      const eventState = input.kind === "EXPLANATION" ? { ...state, eventIdempotencyKey: (state as z.infer<typeof ExplanationWorkflowStart>).idempotencyKey } : state;
+      const graphState = input.kind === "COMPONENT_LIFECYCLE" ? { ...eventState, workflowThreadId: threadId, actor: input.actor } : { ...eventState, actor: input.actor };
+      const result = await traced(`foundry.workflow.${input.kind.toLowerCase()}`, { userId: input.actor.userId, institutionId: input.actor.institutionId, taskId: taskId ?? "", "workflow.thread_id": threadId }, () => graphFor(input.kind, input.testFaults).invoke(graphState, { configurable: { thread_id: threadId }, recursionLimit: 50, signal: control.signal }));
+      await input.testFaults?.afterGraphCompletion?.({ kind: input.kind, runId, threadId, result });
+      assertExecutionActive(control);
+      const interrupted = interruptType(result);
+      const status = interrupted ? "INTERRUPTED" : "COMPLETED";
+      const interruptVersion = interrupted ? 1 : 0;
+      await getDb().update(workflowRuns).set({ status, interruptType: interrupted, interruptVersion, metrics: { latencyMs: performance.now() - started }, completedAt: interrupted ? null : new Date(), productLinks: extractProductLinks(result) }).where(eq(workflowRuns.id, runId));
+      return { runId, threadId, status, interruptType: interrupted, expectedVersion: interruptVersion, result };
+    } catch (error) {
+      if (error instanceof WorkflowProcessCrashForTests) throw error;
+      await getDb().update(workflowRuns).set({ status: operationalFailureStatus(error), failure: error instanceof Error ? error.message : String(error), metrics: { latencyMs: performance.now() - started }, completedAt: new Date() }).where(eq(workflowRuns.id, runId));
+      throw error;
+    }
   });
-  const started = performance.now();
-  try {
-    const graphState = input.kind === "COMPONENT_LIFECYCLE" ? { ...state, workflowThreadId: threadId, actor: input.actor } : { ...state, actor: input.actor };
-    const result = await traced(`foundry.workflow.${input.kind.toLowerCase()}`, { userId: input.actor.userId, institutionId: input.actor.institutionId, taskId: taskId ?? "", "workflow.thread_id": threadId }, () => graphFor(input.kind).invoke(graphState, { configurable: { thread_id: threadId }, recursionLimit: 50 }));
-    const interrupted = interruptType(result);
-    const status = interrupted ? "INTERRUPTED" : "COMPLETED";
-    const interruptVersion = interrupted ? 1 : 0;
-    await getDb().update(workflowRuns).set({ status, interruptType: interrupted, interruptVersion, metrics: { latencyMs: performance.now() - started }, completedAt: interrupted ? null : new Date(), productLinks: extractProductLinks(result) }).where(eq(workflowRuns.id, runId));
-    return { runId, threadId, status, interruptType: interrupted, expectedVersion: interruptVersion, result };
-  } catch (error) {
-    await getDb().update(workflowRuns).set({ status: "FAILED", failure: error instanceof Error ? error.message : String(error), metrics: { latencyMs: performance.now() - started }, completedAt: new Date() }).where(eq(workflowRuns.id, runId));
-    throw error;
-  }
 }
 
 function extractProductLinks(result: unknown): Record<string, string> {
@@ -225,11 +259,10 @@ function extractProductLinks(result: unknown): Record<string, string> {
   return Object.fromEntries(keys.flatMap((key) => typeof state?.[key] === "string" ? [[key, state[key] as string]] : []));
 }
 
-export async function resumeWorkflow(actor: Actor, threadId: string, payload: Record<string, unknown>) {
+export async function resumeWorkflow(actor: Actor, threadId: string, payload: Record<string, unknown>, options: WorkflowExecutionOptions = {}) {
+  return runWithExecutionControl(options.execution, async (control) => {
   const [run] = await getDb().select().from(workflowRuns).where(and(eq(workflowRuns.threadId, threadId), eq(workflowRuns.institutionId, actor.institutionId))).limit(1);
   if (!run) throw new DomainInvariantError("Workflow is outside the actor's authorized scope", "TENANT_ISOLATION");
-  if (run.status === "RESUMING") throw new DomainInvariantError("Workflow resume is already claimed and requires operator recovery if stale", "WORKFLOW_RESUME_IN_PROGRESS");
-  if (run.status !== "INTERRUPTED") throw new DomainInvariantError("Workflow is not waiting for a human decision", "WORKFLOW_NOT_INTERRUPTED");
   if (run.interruptType === "TEACHER_REVIEW_REQUIRED" || run.interruptType === "RETRY_RESULT_REVIEW_REQUIRED") requireRole(actor, ["TEACHER", "ADMIN"]);
   if (run.interruptType === "LEARNER_RETRY_REQUIRED") requireRole(actor, ["LEARNER", "ADMIN"]);
   if (run.interruptType === "EXPERT_PUBLICATION_REVIEW_REQUIRED") requireRole(actor, ["EXPERT", "ADMIN"]);
@@ -245,31 +278,32 @@ export async function resumeWorkflow(actor: Actor, threadId: string, payload: Re
   }
   const expectedVersion = Number(payload.expectedVersion);
   if (!Number.isInteger(expectedVersion) || expectedVersion < 1) throw new DomainInvariantError("Resume requires the current interrupt version", "RESUME_VERSION_REQUIRED");
-  const [claimed] = await getDb().update(workflowRuns).set({ status: "RESUMING", resumeClaimedAt: new Date() }).where(and(
-    eq(workflowRuns.id, run.id),
-    eq(workflowRuns.status, "INTERRUPTED"),
-    eq(workflowRuns.interruptVersion, expectedVersion),
-  )).returning();
-  if (!claimed) throw new DomainInvariantError("Interrupt was already resumed or the version is stale", "RESUME_CONFLICT");
+  const claim = await claimWorkflowResume(run, expectedVersion);
   const kind = run.workflowKind as WorkflowKind;
   const started = performance.now();
   try {
     const { expectedVersion: _expectedVersion, ...resumePayload } = payload;
     void _expectedVersion;
-    const result = await graphFor(kind).invoke(new Command({ resume: { ...resumePayload, actor } }), { configurable: { thread_id: threadId }, recursionLimit: 50 });
+    const result = await graphFor(kind, options.testFaults).invoke(new Command({ resume: { ...resumePayload, actor } }), { configurable: { thread_id: threadId }, recursionLimit: 50, signal: control.signal });
+    await options.testFaults?.afterGraphCompletion?.({ kind, runId: run.id, threadId, result });
+    assertExecutionActive(control);
     const nextInterrupt = interruptType(result);
     const status = nextInterrupt ? "INTERRUPTED" : "COMPLETED";
     const nextVersion = nextInterrupt ? expectedVersion + 1 : expectedVersion;
-    await getDb().update(workflowRuns).set({ status, interruptType: nextInterrupt, interruptVersion: nextVersion, resumeClaimedAt: null, metrics: { latencyMs: performance.now() - started }, completedAt: nextInterrupt ? null : new Date(), productLinks: { ...run.productLinks, ...extractProductLinks(result) } }).where(eq(workflowRuns.id, run.id));
+    await finalizeWorkflowResumeClaim(claim, { status, interruptType: nextInterrupt, interruptVersion: nextVersion, metrics: { latencyMs: performance.now() - started }, completedAt: nextInterrupt ? null : new Date(), productLinks: { ...run.productLinks, ...extractProductLinks(result) } });
     return { runId: run.id, threadId, status, interruptType: nextInterrupt, expectedVersion: nextVersion, result };
   } catch (error) {
-    await getDb().update(workflowRuns).set({ status: "FAILED", failure: error instanceof Error ? error.message : String(error), completedAt: new Date() }).where(eq(workflowRuns.id, run.id));
+    if (error instanceof WorkflowProcessCrashForTests) throw error;
+    if (error instanceof DomainInvariantError && error.code === "WORKFLOW_RESUME_LEASE_LOST") throw error;
+    await finalizeWorkflowResumeClaim(claim, { status: operationalFailureStatus(error), failure: error instanceof Error ? error.message : String(error), metrics: { latencyMs: performance.now() - started }, completedAt: new Date() });
     throw error;
   }
+  });
 }
 
-export async function startDiagnosisWithTeacherReview(actor: Actor, state: Record<string, unknown> & { taskId: string; episodeId: string }) {
-  const diagnosis = await startWorkflow({ kind: "DIAGNOSIS", actor, state, taskId: state.taskId, episodeId: state.episodeId });
+export async function startDiagnosisWithTeacherReview(actor: Actor, state: Record<string, unknown> & { taskId: string; episodeId: string }, options: WorkflowExecutionOptions = {}) {
+  return runWithExecutionControl(options.execution, async () => {
+  const diagnosis = await startWorkflow({ kind: "DIAGNOSIS", actor, state, taskId: state.taskId, episodeId: state.episodeId, ...options });
   const result = diagnosis.result as { observationId?: string; attemptId?: string; diagnosisStatus?: string };
   if (!result.observationId || !result.attemptId) throw new Error("Diagnosis workflow did not create governed lineage");
   const teacherReview = await startWorkflow({
@@ -278,8 +312,10 @@ export async function startDiagnosisWithTeacherReview(actor: Actor, state: Recor
     state: { observationId: result.observationId },
     taskId: state.taskId,
     episodeId: state.episodeId,
+    ...options,
   });
   return { diagnosis, teacherReview };
+  });
 }
 
 export async function getAttemptForObservation(observationId: string) {

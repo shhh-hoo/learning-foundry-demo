@@ -6,6 +6,7 @@ import { buildLearnerCapabilityInput, executeReferencePackCapability, getLearner
 import { z, ZodError } from "zod";
 import type { Actor } from "@/domain/model";
 import { requireTaskEpisodeScope } from "@/application/task-scope";
+import { assertExecutionActive } from "@/application/execution-control";
 
 const CapabilityEvaluationFixture = z.object({
   input: z.record(z.string(), z.unknown()),
@@ -68,6 +69,7 @@ export async function resolveLearnerCapabilityInput(input: {
 }
 
 export async function executePersistedCapability(input: { taskId: string; capabilityId: string; structuredInput: Record<string, unknown> }) {
+  assertExecutionActive();
   const [binding] = await getDb().select({
     capability: capabilities,
     version: capabilityVersions,
@@ -88,7 +90,9 @@ export async function executePersistedCapability(input: { taskId: string; capabi
   }
   let result;
   try {
+    assertExecutionActive();
     result = executeReferencePackCapability(binding.version.implementationKey, input.structuredInput);
+    assertExecutionActive();
   } catch (error) {
     if (!(error instanceof ZodError)) throw error;
     result = {
@@ -103,6 +107,7 @@ export async function executePersistedCapability(input: { taskId: string; capabi
 }
 
 export async function executePersistedCapabilityFixture(capabilityVersionId: string) {
+  assertExecutionActive();
   const [binding] = await getDb().select({ capability: capabilities, version: capabilityVersions })
     .from(capabilityVersions)
     .innerJoin(capabilities, eq(capabilities.id, capabilityVersions.capabilityId))
@@ -116,6 +121,8 @@ export async function executePersistedCapabilityFixture(capabilityVersionId: str
   const parsed = CapabilityEvaluationFixture.safeParse(binding.version.contract.evaluationFixture);
   if (!parsed.success) throw new DomainInvariantError("Active Capability has no versioned input and expected-output fixture", "CAPABILITY_FIXTURE_UNAVAILABLE");
   const fixture = parsed.data;
+  assertExecutionActive();
   const result = executeReferencePackCapability(binding.version.implementationKey, fixture.input);
+  assertExecutionActive();
   return { ...binding, fixture, result };
 }

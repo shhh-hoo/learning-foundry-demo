@@ -25,7 +25,7 @@ describe("fresh migration contract", () => {
   it("keeps the clean rewrite history and adds governed Asset Loop enforcement", async () => {
     const directory = new URL("../../db/migrations/", import.meta.url);
     const migrations = (await readdir(directory)).filter((name) => name.endsWith(".sql"));
-    expect(migrations).toEqual(["0000_full_framework.sql", "0001_full_framework.sql"]);
+    expect(migrations).toEqual(["0000_full_framework.sql", "0001_full_framework.sql", "0002_recoverable_resume_claims.sql"]);
     const migration = await readFile(new URL("../../db/migrations/0000_full_framework.sql", import.meta.url), "utf8");
     const assetMigration = await readFile(new URL("../../db/migrations/0001_full_framework.sql", import.meta.url), "utf8");
     expect(migration).not.toMatch(/migrated-legacy-record|legacy-review|legacy-outcome|legacy-publication|HUMAN_COMMAND/);
@@ -41,6 +41,16 @@ describe("fresh migration contract", () => {
     expect(assetMigration).toContain("PRE_EVAL_DRAFT_QUARANTINED");
     expect(assetMigration).toContain("Component versions must begin as governed Drafts");
     expect(assetMigration).toContain("Components must begin as governed Candidates without an active version");
+  });
+
+  it("adds forward-compatible recoverable resume claims without rewriting prior migrations", async () => {
+    const migration = await readFile(new URL("../../db/migrations/0002_recoverable_resume_claims.sql", import.meta.url), "utf8");
+    expect(migration).toContain('ADD COLUMN "resume_claim_token" text');
+    expect(migration).toContain('ADD COLUMN "resume_claim_version" integer DEFAULT 0 NOT NULL');
+    expect(migration).toContain('ADD COLUMN "resume_lease_expires_at" timestamp with time zone');
+    expect(migration).toContain("'legacy:' || \"id\"::text");
+    expect(migration).toContain('workflow_resume_claim_integrity_ck');
+    expect(migration).toContain('workflow_runs_resume_lease_idx');
   });
 
   it("enforces one canonical TeacherReview per Observation", async () => {

@@ -21,6 +21,7 @@ import { extractPdfPages } from "@/application/pdf-extraction";
 import { getEmbeddingProvider, getVisionProvider, type TokenUsage } from "@/application/intelligence-providers";
 import { getFileStorage } from "@/infrastructure/file-storage";
 import { startDiagnosisWithTeacherReview } from "@/application/workflow-service";
+import { assertExecutionActive, currentExecutionControl, executionStopStatus, rethrowIfExecutionStopped } from "@/application/execution-control";
 
 type UploadInput = {
   taskId: string;
@@ -102,6 +103,8 @@ async function interpretImage(actor: Actor, input: {
   mediaType: string;
   purpose: "LEARNING_MATERIAL" | "LEARNER_ATTEMPT";
 }) {
+  const control = currentExecutionControl();
+  assertExecutionActive(control);
   const provider = getVisionProvider();
   if (!provider) {
     await getDb().update(fileAssets).set({
@@ -116,7 +119,8 @@ async function interpretImage(actor: Actor, input: {
   }
   const started = performance.now();
   try {
-    const result = await provider.interpret({ bytes: input.bytes, mediaType: input.mediaType, purpose: input.purpose });
+    const result = await provider.interpret({ bytes: input.bytes, mediaType: input.mediaType, purpose: input.purpose }, control);
+    assertExecutionActive(control);
     const transcription = result.transcription.trim();
     await getDb().update(fileAssets).set({
       ingestionStatus: "EXTRACTED",
@@ -138,6 +142,11 @@ async function interpretImage(actor: Actor, input: {
     await recordModelCall({ actor, taskId: input.taskId, fileAssetId: input.fileAssetId, callType: "IMAGE_INTERPRETATION", provider: provider.provider, model: provider.model, status: "SUCCEEDED", latencyMs: performance.now() - started, usage: result.usage });
     return { status: "AVAILABLE" as const, transcription: result.transcription, interpretation: result.interpretation };
   } catch (error) {
+    const stopped = executionStopStatus(error, control);
+    if (stopped) {
+      await recordModelCall({ actor, taskId: input.taskId, fileAssetId: input.fileAssetId, callType: "IMAGE_INTERPRETATION", provider: provider.provider, model: provider.model, status: stopped, latencyMs: performance.now() - started, failureCode: stopped === "TIMED_OUT" ? "EXECUTION_TIMED_OUT" : "EXECUTION_ABORTED" });
+    }
+    rethrowIfExecutionStopped(error, control);
     await getDb().update(fileAssets).set({
       ingestionStatus: "FAILED",
       interpretationStatus: "FAILED",
@@ -152,6 +161,8 @@ async function interpretImage(actor: Actor, input: {
 }
 
 export async function uploadLearningMaterial(actor: Actor, input: UploadInput & { title: string; rights: string }) {
+  const control = currentExecutionControl();
+  assertExecutionActive(control);
   requireRole(actor, ["LEARNER", "TEACHER", "ADMIN"]);
   const scope = await requireTaskEpisodeScope(actor, { taskId: input.taskId, episodeId: input.episodeId, learnerOriginated: actor.roles.includes("LEARNER") });
   const upload = validateUpload({ bytes: input.bytes, declaredMediaType: input.declaredMediaType, originalName: input.originalName, purpose: "LEARNING_MATERIAL" });
@@ -202,7 +213,7 @@ export async function uploadLearningMaterial(actor: Actor, input: UploadInput & 
     });
   });
   try {
-    await getFileStorage().put({ key: storageKey, bytes: upload.bytes });
+    await getFileStorage().put({ key: storageKey, bytes: upload.bytes }, control);
   } catch (error) {
     await getDb().update(fileAssets).set({ ingestionStatus: "FAILED", failureCode: "STORAGE_WRITE_FAILED", failureMessage: error instanceof Error ? error.message : String(error), updatedAt: new Date() }).where(eq(fileAssets.id, fileAssetId));
     throw error;
@@ -264,6 +275,8 @@ function evidenceStructuredContent(asset: typeof fileAssets.$inferSelect, page: 
 }
 
 async function embedEvidence(actor: Actor, taskId: string, rows: Array<typeof evidenceUnits.$inferSelect>) {
+  const control = currentExecutionControl();
+  assertExecutionActive(control);
   const provider = getEmbeddingProvider();
   if (!provider) {
     for (const row of rows) {
@@ -274,7 +287,8 @@ async function embedEvidence(actor: Actor, taskId: string, rows: Array<typeof ev
   }
   const started = performance.now();
   try {
-    const vectors = await provider.embedDocuments(rows.map((row) => row.content));
+    const vectors = await provider.embedDocuments(rows.map((row) => row.content), control);
+    assertExecutionActive(control);
     if (vectors.length !== rows.length || vectors.some((vector) => !vector.length || vector.some((value) => !Number.isFinite(value)))) throw new Error("Embedding provider returned an invalid vector batch");
     for (const [index, row] of rows.entries()) {
       const vector = vectors[index];
@@ -282,6 +296,11 @@ async function embedEvidence(actor: Actor, taskId: string, rows: Array<typeof ev
     }
     await recordModelCall({ actor, taskId, callType: "EVIDENCE_EMBEDDING", provider: "OPENAI", model: provider.model, status: "SUCCEEDED", latencyMs: performance.now() - started, evidenceUnitIds: rows.map((row) => row.id) });
   } catch (error) {
+    const stopped = executionStopStatus(error, control);
+    if (stopped) {
+      await recordModelCall({ actor, taskId, callType: "EVIDENCE_EMBEDDING", provider: "OPENAI", model: provider.model, status: stopped, latencyMs: performance.now() - started, evidenceUnitIds: rows.map((row) => row.id), failureCode: stopped === "TIMED_OUT" ? "EXECUTION_TIMED_OUT" : "EXECUTION_ABORTED" });
+    }
+    rethrowIfExecutionStopped(error, control);
     for (const row of rows) await getDb().update(evidenceUnits).set({ embeddingStatus: "FAILED", embeddingFailure: error instanceof Error ? error.message : String(error) }).where(eq(evidenceUnits.id, row.id));
     await recordModelCall({ actor, taskId, callType: "EVIDENCE_EMBEDDING", provider: "OPENAI", model: provider.model, status: "FAILED", latencyMs: performance.now() - started, evidenceUnitIds: rows.map((row) => row.id), failureCode: errorCode(error) });
   }
@@ -368,6 +387,8 @@ export async function reviewSourceRights(actor: Actor, input: { sourceId: string
 }
 
 export async function uploadImageAttempt(actor: Actor, input: UploadInput & { prompt: string; learnerNote?: string }) {
+  const control = currentExecutionControl();
+  assertExecutionActive(control);
   requireRole(actor, ["LEARNER", "ADMIN"]);
   const scope = await requireTaskEpisodeScope(actor, { taskId: input.taskId, episodeId: input.episodeId, learnerOriginated: true });
   const upload = validateUpload({ bytes: input.bytes, declaredMediaType: input.declaredMediaType, originalName: input.originalName, purpose: "LEARNER_ATTEMPT" });
@@ -398,7 +419,7 @@ export async function uploadImageAttempt(actor: Actor, input: UploadInput & { pr
     contentHash: upload.contentHash,
   });
   try {
-    await getFileStorage().put({ key: storageKey, bytes: upload.bytes });
+    await getFileStorage().put({ key: storageKey, bytes: upload.bytes }, control);
   } catch (error) {
     await getDb().update(fileAssets).set({ ingestionStatus: "FAILED", failureCode: "STORAGE_WRITE_FAILED", failureMessage: error instanceof Error ? error.message : String(error), updatedAt: new Date() }).where(eq(fileAssets.id, fileAssetId));
     throw error;
@@ -432,5 +453,5 @@ export async function authorizeFileRead(actor: Actor, fileAssetId: string) {
   if (!asset) throw new DomainInvariantError("File was not found", "FILE_NOT_FOUND");
   requireCourseAccess(actor, asset.institutionId, asset.courseId);
   if (actor.roles.includes("LEARNER") && asset.ownerUserId !== actor.userId) throw new DomainInvariantError("Learner cannot read another learner's file", "FILE_ACCESS_DENIED");
-  return { asset, bytes: await getFileStorage().read(asset.storageKey) };
+  return { asset, bytes: await getFileStorage().read(asset.storageKey, currentExecutionControl()) };
 }

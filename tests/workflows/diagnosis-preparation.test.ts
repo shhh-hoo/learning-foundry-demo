@@ -7,6 +7,7 @@ import {
   type AttemptPreparationDependencies,
 } from "@/application/attempt-interpreter";
 import { buildDiagnosisGraph, type DiagnosisGraphDependencies } from "@/workflows/diagnosis";
+import { runWithExecutionControl } from "@/application/execution-control";
 
 const actor: Actor = {
   userId: "20000000-0000-4000-8000-000000000001",
@@ -176,6 +177,28 @@ describe("bounded natural Attempt preparation", () => {
     expect(prepared.status).toBe("UNAVAILABLE");
     expect(records).toHaveLength(1);
     expect(records[0]).toMatchObject({ status: "UNAVAILABLE", failureCode: "PROVIDER_NOT_CONFIGURED" });
+  });
+
+  it("passes request cancellation to the fake interpreter and records ABORTED before rethrow", async () => {
+    const request = new AbortController();
+    const controls: AbortSignal[] = [];
+    const records: Record<string, unknown>[] = [];
+    const interpreter: AttemptInterpreter = {
+      provider: "FAKE",
+      model: "fake-cancellable-model",
+      async interpret(_input, control) {
+        if (control) controls.push(control.signal);
+        request.abort();
+        return { output: { status: "UNSUPPORTED", capabilityPublicKey: null, fields: {}, note: "aborted" } };
+      },
+    };
+    await expect(runWithExecutionControl({ signal: request.signal, deadlineMs: 1_000 }, () => prepareAttemptForDiagnosis(baseInput, preparationDependencies({
+      interpreter,
+      recordRun: async (record) => { records.push(record as unknown as Record<string, unknown>); },
+    })))).rejects.toMatchObject({ code: "EXECUTION_ABORTED" });
+    expect(controls).toHaveLength(1);
+    expect(controls[0]?.aborted).toBe(true);
+    expect(records).toContainEqual(expect.objectContaining({ status: "ABORTED", failureCode: "EXECUTION_ABORTED" }));
   });
 
   it("does not lose the Attempt or Teacher-review path when the one recorder attempt fails", async () => {

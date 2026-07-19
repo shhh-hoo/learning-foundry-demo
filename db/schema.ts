@@ -460,12 +460,20 @@ export const workflowRuns = operational.table("workflow_runs", {
   interruptType: text("interrupt_type"),
   interruptVersion: integer("interrupt_version").default(0).notNull(),
   resumeClaimedAt: timestamp("resume_claimed_at", { withTimezone: true }),
+  resumeClaimToken: text("resume_claim_token"),
+  resumeClaimVersion: integer("resume_claim_version").default(0).notNull(),
+  resumeLeaseExpiresAt: timestamp("resume_lease_expires_at", { withTimezone: true }),
   productLinks: jsonb("product_links").$type<Record<string, string>>().default({}).notNull(),
   metrics: jsonb("metrics").$type<Record<string, number>>().default({}).notNull(),
   failure: text("failure"),
   startedAt: createdAt(),
   completedAt: timestamp("completed_at", { withTimezone: true }),
-}, (table) => [index("workflow_runs_institution_idx").on(table.institutionId, table.startedAt)]);
+}, (table) => [
+  index("workflow_runs_institution_idx").on(table.institutionId, table.startedAt),
+  index("workflow_runs_resume_lease_idx").on(table.status, table.resumeLeaseExpiresAt),
+  check("workflow_resume_claim_version_ck", sql`${table.resumeClaimVersion} >= 0`),
+  check("workflow_resume_claim_integrity_ck", sql`(${table.status} = 'RESUMING' AND ${table.resumeClaimedAt} IS NOT NULL AND ${table.resumeClaimToken} IS NOT NULL AND ${table.resumeLeaseExpiresAt} IS NOT NULL) OR (${table.status} <> 'RESUMING' AND ${table.resumeClaimedAt} IS NULL AND ${table.resumeClaimToken} IS NULL AND ${table.resumeLeaseExpiresAt} IS NULL)`),
+]);
 
 export const retrievalRuns = operational.table("retrieval_runs", {
   id: id(),

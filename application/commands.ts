@@ -39,6 +39,7 @@ import {
   requireReviewBeforeOutcome,
   requireRole,
 } from "@/domain/invariants";
+import { assertExecutionActive } from "@/application/execution-control";
 
 function canonical(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonical);
@@ -172,24 +173,59 @@ export async function closeTask(actor: Actor, taskId: string) {
   await getDb().update(learningTasks).set({ status: "CLOSED", closedAt: new Date(), updatedAt: new Date() }).where(eq(learningTasks.id, taskId));
 }
 
-export async function appendConversationEvent(actor: Actor, input: { taskId: string; episodeId: string; kind: string; content: string; actorType?: string; sourceRefs?: Array<Record<string, string>>; evidenceRefs?: Array<Record<string, string>> }) {
+export async function appendConversationEvent(actor: Actor, input: { taskId: string; episodeId: string; kind: string; content: string; actorType?: string; sourceRefs?: Array<Record<string, string>>; evidenceRefs?: Array<Record<string, string>>; idempotencyKey: string }) {
   await requireTaskEpisodeScope(actor, {
     taskId: input.taskId,
     episodeId: input.episodeId,
     learnerOriginated: input.actorType === "LEARNER" || actor.roles.includes("LEARNER"),
   });
-  const [event] = await getDb().insert(conversationEvents).values({
-    taskId: input.taskId,
-    episodeId: input.episodeId,
-    actorUserId: actor.userId,
+  if (input.idempotencyKey.trim().length < 8) throw new DomainInvariantError("Conversation Event requires a stable command identity", "IDEMPOTENCY_KEY_REQUIRED");
+  assertExecutionActive();
+  const eventId = randomUUID();
+  const commandType = "APPEND_CONVERSATION_EVENT";
+  const { idempotencyKey, ...request } = input;
+  void idempotencyKey;
+  const requestHash = commandRequestHash(actor, commandType, {
+    ...request,
     actorType: input.actorType ?? actor.roles[0],
-    kind: input.kind,
-    content: input.content,
     sourceRefs: input.sourceRefs ?? [],
     evidenceRefs: input.evidenceRefs ?? [],
-  }).returning();
-  await getDb().update(learningTasks).set({ updatedAt: new Date() }).where(eq(learningTasks.id, input.taskId));
-  return event;
+  });
+  return getDb().transaction(async (tx) => {
+    assertExecutionActive();
+    const reserved = await tx.insert(idempotencyKeys).values({
+      institutionId: actor.institutionId,
+      key: input.idempotencyKey,
+      commandType,
+      requestHash,
+      resultId: eventId,
+    }).onConflictDoNothing().returning();
+    if (!reserved.length) {
+      const [existing] = await tx.select().from(idempotencyKeys).where(and(
+        eq(idempotencyKeys.institutionId, actor.institutionId),
+        eq(idempotencyKeys.commandType, commandType),
+        eq(idempotencyKeys.key, input.idempotencyKey),
+      )).limit(1);
+      const existingId = assertReplay(existing, commandType, requestHash);
+      const [event] = await tx.select().from(conversationEvents).where(eq(conversationEvents.id, existingId)).limit(1);
+      if (!event) throw new DomainInvariantError("Conversation Event replay target is missing", "IDEMPOTENCY_INTEGRITY");
+      return { ...event, replayed: true };
+    }
+    assertExecutionActive();
+    const [event] = await tx.insert(conversationEvents).values({
+      id: eventId,
+      taskId: input.taskId,
+      episodeId: input.episodeId,
+      actorUserId: actor.userId,
+      actorType: input.actorType ?? actor.roles[0],
+      kind: input.kind,
+      content: input.content,
+      sourceRefs: input.sourceRefs ?? [],
+      evidenceRefs: input.evidenceRefs ?? [],
+    }).returning();
+    await tx.update(learningTasks).set({ updatedAt: new Date() }).where(eq(learningTasks.id, input.taskId));
+    return { ...event, replayed: false };
+  });
 }
 
 export async function captureAttempt(actor: Actor, input: {
@@ -203,6 +239,7 @@ export async function captureAttempt(actor: Actor, input: {
   sourceRefs?: Array<Record<string, string>>;
   idempotencyKey?: string;
 }) {
+  assertExecutionActive();
   requireRole(actor, ["LEARNER", "ADMIN"]);
   const { task } = await requireTaskEpisodeScope(actor, { taskId: input.taskId, episodeId: input.episodeId, learnerOriginated: true });
   if (input.fileAssetId) {
@@ -249,6 +286,7 @@ export async function persistDiagnosticObservation(input: {
   };
   capabilityId: string;
 }) {
+  assertExecutionActive();
   const [attempt] = await getDb().select().from(learnerAttempts).where(eq(learnerAttempts.id, input.attemptId)).limit(1);
   if (!attempt) throw new DomainInvariantError("Diagnosis requires a real LearnerAttempt", "ATTEMPT_REQUIRED");
   const [existing] = await getDb().select().from(diagnosticObservations).where(and(
@@ -271,6 +309,7 @@ export async function persistDiagnosticObservation(input: {
 }
 
 export async function persistUnavailableObservation(input: { attemptId: string; reason: string }) {
+  assertExecutionActive();
   const [attempt] = await getDb().select().from(learnerAttempts).where(eq(learnerAttempts.id, input.attemptId)).limit(1);
   if (!attempt) throw new DomainInvariantError("Observation requires a real LearnerAttempt", "ATTEMPT_REQUIRED");
   const [existing] = await getDb().select().from(diagnosticObservations).where(and(
@@ -301,6 +340,7 @@ export async function createTeacherReview(actor: Actor, input: {
   teachingSupport: string;
   idempotencyKey: string;
 }) {
+  assertExecutionActive();
   requireHumanCommand(actor, ["TEACHER", "ADMIN"]);
   const decision = parseReviewDecision(input);
   const observationId = input.observationId;
@@ -332,6 +372,7 @@ export async function createTeacherReview(actor: Actor, input: {
 }
 
 export async function createRetry(actor: Actor, input: { observationId: string; reviewId: string; activityType: "RETRY"; prompt: string; scheduledFor?: Date; idempotencyKey: string }) {
+  assertExecutionActive();
   const authority = await resolveRetryAuthority(actor, input);
   const retryId = randomUUID();
   const commandType = "CREATE_RETRY";
@@ -358,6 +399,7 @@ export async function createRetry(actor: Actor, input: { observationId: string; 
 }
 
 export async function linkRetryResult(actor: Actor, input: { retryId: string; resultAttemptId: string; resultObservationId: string; resultReviewId: string }) {
+  assertExecutionActive();
   requireHumanCommand(actor, ["TEACHER", "ADMIN"]);
   const [lineage] = await getDb().select({ retry: retryAttempts, originalAttempt: learnerAttempts, task: learningTasks })
     .from(retryAttempts)
@@ -434,6 +476,7 @@ export type RetryResultReviewCommand = RetryResultReviewBase & (
 );
 
 export async function reviewRetryResult(actor: Actor, input: RetryResultReviewCommand) {
+  assertExecutionActive();
   requireHumanCommand(actor, ["TEACHER", "ADMIN"]);
   const decision = parseReviewDecision(input);
   const outcomeInput = input.decision === "ESCALATE" ? null : {
@@ -584,6 +627,7 @@ export async function reviewRetryResult(actor: Actor, input: RetryResultReviewCo
 }
 
 export async function addLibraryItem(actor: Actor, input: { courseId: string; evidenceUnitId: string; title: string; reason: string; idempotencyKey: string }) {
+  assertExecutionActive();
   requireRole(actor, ["LEARNER", "ADMIN"]);
   requireCourseAccess(actor, actor.institutionId, input.courseId);
   const [scope] = await getDb().select({ course: courses, subject: subjects, evidence: evidenceUnits, source: sourceRecords })
@@ -621,6 +665,7 @@ export async function addLibraryItem(actor: Actor, input: { courseId: string; ev
 }
 
 export async function scheduleStudyReview(actor: Actor, input: { taskId: string; dueAt: Date; idempotencyKey: string }) {
+  assertExecutionActive();
   requireRole(actor, ["LEARNER", "ADMIN"]);
   const task = await taskScope(input.taskId);
   requireCourseAccess(actor, task.institutionId, task.courseId);
@@ -850,6 +895,7 @@ export async function decidePublication(actor: Actor, input: {
   rubric: Record<string, unknown>;
   idempotencyKey: string;
 }) {
+  assertExecutionActive();
   requireHumanCommand(actor, ["EXPERT", "ADMIN"]);
   const rationale = input.rationale.trim();
   if (rationale.length < 5) throw new DomainInvariantError("Publication rationale must contain at least five characters", "PUBLICATION_RATIONALE_REQUIRED");
@@ -972,6 +1018,7 @@ export async function rollbackComponent(actor: Actor, input: { componentId: stri
 }
 
 export async function deliverActiveComponentSupport(actor: Actor, input: { observationId: string; idempotencyKey: string }) {
+  assertExecutionActive();
   requireHumanCommand(actor, ["TEACHER", "ADMIN"]);
   const [lineage] = await getDb().select({ observation: diagnosticObservations, attempt: learnerAttempts, task: learningTasks, subject: subjects, review: teacherReviews })
     .from(diagnosticObservations)

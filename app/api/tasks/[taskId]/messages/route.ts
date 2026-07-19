@@ -25,6 +25,7 @@ export async function POST(request: Request, context: { params: Promise<{ taskId
       taskId,
       episodeId: body.episodeId,
       state: { taskId, episodeId: body.episodeId, courseId: detail.task.courseId, message: body.message, requestedAction: body.action, idempotencyKey: body.idempotencyKey, scheduledFor: body.scheduledFor },
+      execution: { signal: request.signal },
     });
     return Response.json(result);
   } catch (error) { return errorResponse(error); }

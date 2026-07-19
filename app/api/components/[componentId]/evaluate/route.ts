@@ -21,6 +21,6 @@ export async function POST(request: Request, context: { params: Promise<{ compon
       .where(and(eq(componentVersions.id, body.componentVersionId), eq(components.id, componentId), eq(components.institutionId, actor.institutionId)))
       .limit(1);
     if (!row) throw new DomainInvariantError("Component version is outside the active institution", "TENANT_ISOLATION");
-    return Response.json(await startWorkflow({ kind: "COMPONENT_LIFECYCLE", actor, state: { componentId, componentVersionId: row.version.id } }), { status: 201 });
+    return Response.json(await startWorkflow({ kind: "COMPONENT_LIFECYCLE", actor, state: { componentId, componentVersionId: row.version.id }, execution: { signal: request.signal } }), { status: 201 });
   } catch (error) { return errorResponse(error); }
 }

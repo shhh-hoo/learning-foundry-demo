@@ -7,8 +7,9 @@ import type { RetrievalHit } from "@/application/retrieval";
 import { traced } from "@/application/telemetry";
 import { getDb } from "@/db/client";
 import { modelRuns } from "@/db/schema";
+import { assertExecutionActive, currentExecutionControl, executionStopStatus, rethrowIfExecutionStopped } from "@/application/execution-control";
 
-type SynthesisClient = { invoke(input: Array<{ role: string; content: string }>): Promise<BaseMessage> };
+type SynthesisClient = { invoke(input: Array<{ role: string; content: string }>, config?: { signal?: AbortSignal }): Promise<BaseMessage> };
 type SynthesisProvider = { provider: "DEEPSEEK" | "OPENAI"; model: string; client: SynthesisClient };
 
 let synthesisProvider: SynthesisProvider | null | undefined;
@@ -87,6 +88,8 @@ async function recordRun(input: {
 }
 
 export async function explainWithEvidence(input: { actor: Actor; taskId: string; question: string; hits: RetrievalHit[]; citations: Citation[]; context: string[] }) {
+  const control = currentExecutionControl();
+  assertExecutionActive(control);
   if (!input.hits.length) return { text: "No authorized Evidence matched this request. Model synthesis was not run.", model: null, provider: null, status: "REVIEW_REQUIRED" as const, citations: [] as Citation[] };
   const active = configuredProvider();
   if (!active) {
@@ -105,7 +108,8 @@ export async function explainWithEvidence(input: { actor: Actor; taskId: string;
       const response = await active.client.invoke([
         { role: "system", content: "You are Learning Foundry. Answer only from the supplied authorized Evidence. Every factual teaching claim must cite one or more supplied Evidence numbers such as [1]. State when Evidence is insufficient. Never cite a number that is not supplied. Do not claim a tool or Diagnosis was executed." },
         { role: "user", content: `Question: ${input.question}\nScoped Context selected by the enforced compiler:\n${input.context.join("\n")}\n\nAuthorized Evidence:\n${evidence}` },
-      ]);
+      ], { signal: control?.signal });
+      assertExecutionActive(control);
       const text = contentText(response.content);
       const integrity = citedEvidence(text, input.citations);
       if (!text || !integrity.valid) {
@@ -121,6 +125,11 @@ export async function explainWithEvidence(input: { actor: Actor; taskId: string;
       await recordRun({ actor: input.actor, taskId: input.taskId, provider: active.provider, model: active.model, status: "SUCCEEDED", latencyMs: performance.now() - started, evidenceUnitIds: integrity.citations.map((citation) => citation.evidenceUnitId), response });
       return { text, model: active.model, provider: active.provider, status: "AVAILABLE" as const, citations: integrity.citations };
     } catch (error) {
+      const stopped = executionStopStatus(error, control);
+      if (stopped) {
+        await recordRun({ actor: input.actor, taskId: input.taskId, provider: active.provider, model: active.model, status: stopped, latencyMs: performance.now() - started, evidenceUnitIds: input.hits.map((hit) => hit.evidenceUnitId), failureCode: stopped === "TIMED_OUT" ? "EXECUTION_TIMED_OUT" : "EXECUTION_ABORTED" });
+      }
+      rethrowIfExecutionStopped(error, control);
       await recordRun({ actor: input.actor, taskId: input.taskId, provider: active.provider, model: active.model, status: "FAILED", latencyMs: performance.now() - started, evidenceUnitIds: input.hits.map((hit) => hit.evidenceUnitId), failureCode: error instanceof Error ? error.name : "MODEL_FAILURE" });
       return {
         text: "The configured model call failed. No answer was generated; the governed Evidence remains available for teacher review.",

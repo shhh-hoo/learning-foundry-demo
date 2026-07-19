@@ -7,6 +7,7 @@ import { getDb, getSql } from "@/db/client";
 import { courses, learningTasks, retrievalRuns, subjects } from "@/db/schema";
 import { traced } from "@/application/telemetry";
 import { getEmbeddingProvider, getRerankProvider } from "@/application/intelligence-providers";
+import { assertExecutionActive, currentExecutionControl, rethrowIfExecutionStopped } from "@/application/execution-control";
 
 export type RetrievalHit = {
   evidenceUnitId: string;
@@ -72,6 +73,8 @@ function reciprocalRankFusion(rows: RetrievalHit[]): RetrievalHit[] {
 }
 
 export async function retrieveEvidence(input: { actor: Actor; taskId: string; query: string; purpose: "LEARNING" | "TEACHING" | "EVAL"; limit?: number }): Promise<RetrievalResult> {
+  const control = currentExecutionControl();
+  assertExecutionActive(control);
   return traced("foundry.retrieval.governed_hybrid", { userId: input.actor.userId, institutionId: input.actor.institutionId, taskId: input.taskId }, async () => {
     const [scope] = await getDb().select({ task: learningTasks, subject: subjects })
       .from(learningTasks)
@@ -122,7 +125,7 @@ export async function retrieveEvidence(input: { actor: Actor; taskId: string; qu
     const embeddingModel: string | null = embeddingProvider?.model ?? null;
     if (embeddingProvider) {
       try {
-        const queryVector = await embeddingProvider.embedQuery(input.query);
+        const queryVector = await embeddingProvider.embedQuery(input.query, control);
         if (!queryVector.length || queryVector.some((value) => !Number.isFinite(value))) throw new Error("Embedding provider returned an invalid query vector");
         let vectorCount = 0;
         for (const row of candidates) {
@@ -131,7 +134,8 @@ export async function retrieveEvidence(input: { actor: Actor; taskId: string; qu
           if (similarity !== null) vectorCount += 1;
         }
         embeddingStatus = vectorCount ? "EXECUTED" : "NO_INDEXED_VECTORS";
-      } catch {
+      } catch (error) {
+        rethrowIfExecutionStopped(error, control);
         embeddingStatus = "FAILED";
       }
     }
@@ -143,14 +147,15 @@ export async function retrieveEvidence(input: { actor: Actor; taskId: string; qu
     if (rerankerProvider && ranked.length) {
       try {
         const pool = ranked.slice(0, 20);
-        const reranked = await rerankerProvider.rerank(pool.map((row) => row.content), input.query, Math.min(input.limit ?? 4, pool.length));
+        const reranked = await rerankerProvider.rerank(pool.map((row) => row.content), input.query, Math.min(input.limit ?? 4, pool.length), control);
         if (!reranked.length || reranked.some((result) => !Number.isInteger(result.index) || result.index < 0 || result.index >= pool.length || !Number.isFinite(result.relevanceScore))) throw new Error("Reranker returned invalid ranking evidence");
         ranked = reranked.flatMap((result) => {
           const row = pool[result.index];
           return row ? [{ ...row, rerankerScore: result.relevanceScore, score: result.relevanceScore }] : [];
         });
         rerankerStatus = "EXECUTED";
-      } catch {
+      } catch (error) {
+        rethrowIfExecutionStopped(error, control);
         rerankerStatus = "FAILED";
       }
     }
@@ -167,6 +172,7 @@ export async function retrieveEvidence(input: { actor: Actor; taskId: string; qu
     const missingSignal = rows.length === 0;
     const conflictingSignal = false;
     const retrievalMode: RetrievalResult["retrievalMode"] = embeddingStatus === "EXECUTED" ? "POSTGRES_FTS_OPENAI_EXACT_VECTOR" : "POSTGRES_FTS";
+    assertExecutionActive(control);
     await getDb().insert(retrievalRuns).values({
       institutionId: input.actor.institutionId,
       taskId: input.taskId,

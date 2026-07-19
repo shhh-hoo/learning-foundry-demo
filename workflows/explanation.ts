@@ -11,6 +11,7 @@ export const ExplanationState = new StateSchema({
   taskId: z.string().uuid(),
   episodeId: z.string().uuid(),
   question: z.string().min(1),
+  eventIdempotencyKey: z.string().min(8),
   context: z.array(z.string()).default([]),
   hits: z.array(z.record(z.string(), z.unknown())).default([]),
   citations: z.array(z.record(z.string(), z.unknown())).default([]),
@@ -30,6 +31,7 @@ export function explanationEventInput(state: {
   episodeId: string;
   response: string;
   citations: Array<Record<string, unknown>>;
+  eventIdempotencyKey: string;
 }) {
   return {
     taskId: state.taskId,
@@ -37,12 +39,17 @@ export function explanationEventInput(state: {
     actorType: "FOUNDRY",
     kind: "EXPLANATION",
     content: state.response,
+    idempotencyKey: state.eventIdempotencyKey,
     sourceRefs: state.citations.map((citation) => ({ sourceId: String(citation.sourceId), sourceVersion: String(citation.sourceVersion), locator: String(citation.locator) })),
     evidenceRefs: state.citations.map((citation) => ({ evidenceUnitId: String(citation.evidenceUnitId), kind: "RETRIEVAL" })),
   };
 }
 
-export function buildExplanationGraph(checkpointer?: BaseCheckpointSaver) {
+export type ExplanationFaultHooks = {
+  afterFoundryEventPersisted?: (eventId: string) => Promise<void> | void;
+};
+
+export function buildExplanationGraph(checkpointer?: BaseCheckpointSaver, faultHooks: ExplanationFaultHooks = {}) {
   const graph = new StateGraph(ExplanationState)
     .addNode("compile_context", async (state) => {
       const compiled = await compileAndPersistContext(state.actor, { taskId: state.taskId, episodeId: state.episodeId });
@@ -62,6 +69,7 @@ export function buildExplanationGraph(checkpointer?: BaseCheckpointSaver) {
     })))
     .addNode("persist_response", async (state) => {
       const event = await appendConversationEvent(state.actor, explanationEventInput(state));
+      await faultHooks.afterFoundryEventPersisted?.(event.id);
       return { responseEventId: event.id };
     })
     .addEdge(START, "compile_context")

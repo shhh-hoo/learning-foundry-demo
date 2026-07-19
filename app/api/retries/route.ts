@@ -16,6 +16,6 @@ export async function POST(request: Request) {
   try {
     const actor = await requireApiActor();
     const state = StartRetry.parse(await request.json());
-    return Response.json(await startWorkflow({ kind: "RETRY_OUTCOME", actor, state }), { status: 201 });
+    return Response.json(await startWorkflow({ kind: "RETRY_OUTCOME", actor, state, execution: { signal: request.signal } }), { status: 201 });
   } catch (error) { return errorResponse(error); }
 }

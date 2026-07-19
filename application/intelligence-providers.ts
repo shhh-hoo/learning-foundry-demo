@@ -2,18 +2,19 @@ import { ChatOpenAI, OpenAIEmbeddings } from "@langchain/openai";
 import { CohereRerank } from "@langchain/cohere";
 import { HumanMessage } from "@langchain/core/messages";
 import { z } from "zod";
+import { assertExecutionActive, type ExecutionControl } from "@/application/execution-control";
 
 export type TokenUsage = { inputTokens?: number; outputTokens?: number; totalTokens?: number };
 
 export interface EmbeddingProvider {
   readonly model: string;
-  embedDocuments(texts: string[]): Promise<number[][]>;
-  embedQuery(text: string): Promise<number[]>;
+  embedDocuments(texts: string[], control?: ExecutionControl): Promise<number[][]>;
+  embedQuery(text: string, control?: ExecutionControl): Promise<number[]>;
 }
 
 export interface RerankProvider {
   readonly model: string;
-  rerank(documents: string[], query: string, topN: number): Promise<Array<{ index: number; relevanceScore: number }>>;
+  rerank(documents: string[], query: string, topN: number, control?: ExecutionControl): Promise<Array<{ index: number; relevanceScore: number }>>;
 }
 
 export type VisionResult = {
@@ -25,7 +26,7 @@ export type VisionResult = {
 export interface VisionProvider {
   readonly provider: string;
   readonly model: string;
-  interpret(input: { bytes: Uint8Array; mediaType: string; purpose: "LEARNING_MATERIAL" | "LEARNER_ATTEMPT" }): Promise<VisionResult>;
+  interpret(input: { bytes: Uint8Array; mediaType: string; purpose: "LEARNING_MATERIAL" | "LEARNER_ATTEMPT" }, control?: ExecutionControl): Promise<VisionResult>;
 }
 
 let embeddingOverride: EmbeddingProvider | null | undefined;
@@ -44,8 +45,20 @@ export function getEmbeddingProvider(): EmbeddingProvider | null {
     const client = new OpenAIEmbeddings({ apiKey: process.env.OPENAI_API_KEY, model, dimensions, maxRetries: 2 });
     embeddingProvider = {
       model,
-      embedDocuments: (texts) => client.embedDocuments(texts),
-      embedQuery: (text) => client.embedQuery(text),
+      async embedDocuments(texts, control) {
+        // The installed LangChain embeddings wrapper exposes no per-call signal.
+        // Guards prevent new writes/calls after expiry but cannot interrupt this in-flight SDK call.
+        assertExecutionActive(control);
+        const result = await client.embedDocuments(texts);
+        assertExecutionActive(control);
+        return result;
+      },
+      async embedQuery(text, control) {
+        assertExecutionActive(control);
+        const result = await client.embedQuery(text);
+        assertExecutionActive(control);
+        return result;
+      },
     };
   }
   return embeddingProvider;
@@ -59,7 +72,13 @@ export function getRerankProvider(): RerankProvider | null {
     const client = new CohereRerank({ apiKey: process.env.COHERE_API_KEY, model });
     rerankProvider = {
       model,
-      rerank: (documents, query, topN) => client.rerank(documents, query, { model, topN }),
+      async rerank(documents, query, topN, control) {
+        // Cohere's SDK can abort, but the installed LangChain wrapper does not expose it.
+        assertExecutionActive(control);
+        const result = await client.rerank(documents, query, { model, topN });
+        assertExecutionActive(control);
+        return result;
+      },
     };
   }
   return rerankProvider;
@@ -90,14 +109,16 @@ export function getVisionProvider(): VisionProvider | null {
     visionProvider = {
       provider: "OPENAI",
       model: modelName,
-      async interpret(input) {
+      async interpret(input, control) {
+        assertExecutionActive(control);
         const instruction = input.purpose === "LEARNER_ATTEMPT"
           ? "Transcribe all visible handwritten or printed learner work exactly, preserving equations and uncertainty. Then provide a concise interpretation for an authorized teacher. Do not grade, diagnose, or invent hidden steps."
           : "Transcribe all visible learning content exactly and provide a concise content description. Preserve visible labels, equations, tables, and uncertainty. Do not invent missing content.";
         const response = await model.invoke([new HumanMessage({ content: [
           { type: "text", text: `${instruction}\nReturn only JSON with string fields transcription and interpretation.` },
           { type: "image_url", image_url: { url: `data:${input.mediaType};base64,${Buffer.from(input.bytes).toString("base64")}`, detail: "high" } },
-        ] })]);
+        ] })], { signal: control?.signal });
+        assertExecutionActive(control);
         const payload = parseJsonPayload(textContent(response.content));
         const usage = response.usage_metadata;
         return {

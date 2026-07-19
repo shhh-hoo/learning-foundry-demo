@@ -7,6 +7,7 @@ import { modelRuns } from "@/db/schema";
 import { requireTaskEpisodeScope } from "@/application/task-scope";
 import { getLearnerCapabilitiesForCourse } from "@/application/queries";
 import { resolveLearnerCapabilityInput } from "@/application/capabilities";
+import { assertExecutionActive, currentExecutionControl, executionStopStatus, rethrowIfExecutionStopped, type ExecutionControl } from "@/application/execution-control";
 
 export const AttemptInterpretationOutput = z.object({
   status: z.enum(["MATCHED", "AMBIGUOUS", "UNSUPPORTED"]),
@@ -35,7 +36,7 @@ export interface AttemptInterpreter {
     working: string;
     capabilityHint?: string;
     activities: AttemptInterpreterActivity[];
-  }): Promise<AttemptInterpreterResult>;
+  }, control?: ExecutionControl): Promise<AttemptInterpreterResult>;
 }
 
 export const DEEPSEEK_ATTEMPT_INTERPRETER_MODEL_KWARGS = {
@@ -110,7 +111,8 @@ class DeepSeekAttemptInterpreter implements AttemptInterpreter {
     this.structured = client.withStructuredOutput(AttemptInterpretationOutput, { name: "attempt_interpretation", includeRaw: true });
   }
 
-  async interpret(input: Parameters<AttemptInterpreter["interpret"]>[0]): Promise<AttemptInterpreterResult> {
+  async interpret(input: Parameters<AttemptInterpreter["interpret"]>[0], control?: ExecutionControl): Promise<AttemptInterpreterResult> {
+    assertExecutionActive(control);
     const activities = input.activities.map((activity) => ({
       publicKey: activity.publicKey,
       name: activity.name,
@@ -122,7 +124,8 @@ class DeepSeekAttemptInterpreter implements AttemptInterpreter {
     const result = await this.structured.invoke([
       { role: "system", content: "You extract typed calculation inputs for Learning Foundry. This is not grading, Evidence, feedback, or pedagogical diagnosis. Select only an activity in the supplied list. Copy only values explicitly present in the problem or working; never invent or convert a missing fact. In fields, use the exact valueKey and unitKey names supplied: every value is a numeric string without a unit, and every quantity unit is a separate allowed-unit string. Do not return extra field names. Return AMBIGUOUS when more than one mapping remains plausible or a required field is missing; return UNSUPPORTED when no activity applies. For AMBIGUOUS or UNSUPPORTED, capabilityPublicKey must be JSON null and fields must be empty. The note must be a short non-pedagogical extraction summary without hidden reasoning." },
       { role: "user", content: `Activity hint: ${input.capabilityHint ?? "none"}\nLearner-safe activities: ${JSON.stringify(activities)}\nProblem: ${input.problem}\nLearner working and answer: ${input.working}` },
-    ]);
+    ], { signal: control?.signal });
+    assertExecutionActive(control);
     const usage = (result.raw as { usage_metadata?: { input_tokens?: number; output_tokens?: number; total_tokens?: number } }).usage_metadata;
     const parsed = AttemptInterpretationOutput.safeParse(result.parsed);
     return {
@@ -236,6 +239,8 @@ export async function prepareAttemptForDiagnosis(input: {
   trustedCapabilityId?: string;
   trustedStructuredInput?: Record<string, unknown>;
 }, dependencies: AttemptPreparationDependencies = defaultDependencies): Promise<AttemptPreparation> {
+  const control = currentExecutionControl();
+  assertExecutionActive(control);
   if (input.trustedStructuredInput !== undefined) {
     return {
       capabilityId: input.trustedCapabilityId,
@@ -257,7 +262,8 @@ export async function prepareAttemptForDiagnosis(input: {
         status: "MATCHED",
         reason: "Learner-entered calculation values were validated by the active Reference Pack.",
       };
-    } catch {
+    } catch (error) {
+      rethrowIfExecutionStopped(error, control);
       return unavailablePreparation("INVALID", "MANUAL", "The entered calculation values did not validate for the active course activity.");
     }
   }
@@ -273,7 +279,8 @@ export async function prepareAttemptForDiagnosis(input: {
 
   const started = performance.now();
   try {
-    const interpretationResult = await interpreter.interpret({ problem: input.prompt, working: input.response, capabilityHint: input.capabilityPublicKey, activities });
+    const interpretationResult = await interpreter.interpret({ problem: input.prompt, working: input.response, capabilityHint: input.capabilityPublicKey, activities }, control);
+    assertExecutionActive(control);
     const parsed = AttemptInterpretationOutput.safeParse(interpretationResult.output);
     if (!parsed.success) {
       await safelyRecordInterpretationRun(dependencies, { actor: input.actor, taskId: input.taskId, provider: interpreter.provider, model: interpreter.model, status: "VALIDATION_FAILED", latencyMs: performance.now() - started, usage: interpretationResult.usage, failureCode: "OUTPUT_SCHEMA_INVALID" });
@@ -298,11 +305,17 @@ export async function prepareAttemptForDiagnosis(input: {
         status: "MATCHED",
         reason: "One provider interpretation was validated and rebound to the active course Capability.",
       };
-    } catch {
+    } catch (error) {
+      rethrowIfExecutionStopped(error, control);
       await safelyRecordInterpretationRun(dependencies, { actor: input.actor, taskId: input.taskId, provider: interpreter.provider, model: interpreter.model, status: "VALIDATION_FAILED", latencyMs: performance.now() - started, usage: interpretationResult.usage, failureCode: "CAPABILITY_INPUT_INVALID" });
       return unavailablePreparation("INVALID", "MODEL", "The interpreted fields failed active Pack validation.", interpretation.note);
     }
   } catch (error) {
+    const stopped = executionStopStatus(error, control);
+    if (stopped) {
+      await safelyRecordInterpretationRun(dependencies, { actor: input.actor, taskId: input.taskId, provider: interpreter.provider, model: interpreter.model, status: stopped, latencyMs: performance.now() - started, failureCode: stopped === "TIMED_OUT" ? "EXECUTION_TIMED_OUT" : "EXECUTION_ABORTED" });
+    }
+    rethrowIfExecutionStopped(error, control);
     await safelyRecordInterpretationRun(dependencies, { actor: input.actor, taskId: input.taskId, provider: interpreter.provider, model: interpreter.model, status: "FAILED", latencyMs: performance.now() - started, failureCode: error instanceof Error ? error.name : "INTERPRETER_FAILURE" });
     return unavailablePreparation("UNAVAILABLE", "MODEL", "Attempt interpretation failed; Teacher Review is required.");
   }
