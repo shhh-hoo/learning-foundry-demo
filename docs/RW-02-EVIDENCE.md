@@ -10,7 +10,7 @@ Status: **INTERNAL DRAFT IMPLEMENTATION CHECKPOINT — NOT PRODUCTION-READY TENA
 - Branch: `codex/rw-02-production-auth-tenant-enforcement`
 - Exact stacked base: `78fe22ffe167f59cbb0b872478263d36044319d8`
 - Base subject: `Implement replay and recovery safety`
-- RW-02 implementation commit/head: **NOT YET ASSIGNED**. This ledger describes the uncommitted implementation-task diff for independent PM review; the PM must record the reviewed commit after creating it.
+- Reviewed RW-02 implementation checkpoint: `ff4d43210155a7fb7ce517544d64e1a61958dc98`. The follow-up commit that binds this ledger to that SHA changes evidence prose only; it does not change runtime, migration or test behavior.
 - Documentation authority followed: `learning-foundry-docs@c77132314e385308c9a49fd0b5af5ed720d420a3`
 - RW-00 and RW-01 evidence remain historical inputs. This change does not rewrite or re-audit them.
 
@@ -18,7 +18,7 @@ Relevant authority requirements:
 
 - `REL-05`: Authentication, authorization, tenant isolation, privacy and execution safety must satisfy Doc 09 `SEC-*` requirements. RW-02 supplies bounded implementation evidence for authentication and tenant enforcement only; it does not claim the whole release row.
 - `SEC-01`: server-side authorization and tenant isolation must cover commands, queries, retrieval, files, projections and Component selection/delivery.
-- `SEC-12`: security denial, injection, leakage, replay and rollback cases require browser/integration execution against an exact implementation SHA. The current working diff has denial/replay/rollback and relevant leakage boundaries under test, but its implementation SHA is not yet assigned and this ledger does not upgrade the row or claim complete injection coverage.
+- `SEC-12`: security denial, injection, leakage, replay and rollback cases require browser/integration execution against an exact implementation SHA. The reviewed checkpoint has denial/replay/rollback and relevant leakage-boundary evidence bound to `ff4d43210155a7fb7ce517544d64e1a61958dc98`, but this ledger does not upgrade the row or claim complete injection coverage.
 - `OPS-06`: session expiry and interrupted workflows must preserve authorized saved state and provide safe reauthentication/resume. The PostgreSQL suite exercises this as one combined case; it is not live-provider or human recovery evidence.
 - `DEC-008`: managed-auth selection and its official terms, minor/privacy fit, recovery operations, lock-in and exit evidence remain unresolved. This generic OIDC Draft does not select or approve a production provider.
 
@@ -121,7 +121,7 @@ Latest results on 2026-07-19:
 
 Focused coverage includes production auth configuration fail-closed behavior, Credentials production exclusion, immutable issuer+subject lookup, email non-authority, ambiguous or foreign tenant-claim denial, session issue/verify/rotation/expiry/revocation, interrupted-state survival across replacement-session reauthentication/resume, real audited service-facade execution and rollback, absence of exported raw worker access, password-verifier privilege denial, full migration catalog/RLS/writable-lineage parity, dynamic discovery of every current protected route, exact role startup URL construction, tenant-scoped Engineering checkpoint inspection and existing route/migration contracts.
 
-The integration suite also retains RW-01 replay/recovery and Component rollback cases. Those current-working-diff results are relevant to `SEC-12`, but an exact RW-02 implementation SHA does not yet exist. The PM must assign a commit, rerun or bind the evidence to that exact head, and conservatively decide the row; this task does not claim complete security-injection coverage.
+The integration suite also retains RW-01 replay/recovery and Component rollback cases. Those results are relevant to `SEC-12` and are bound to reviewed implementation checkpoint `ff4d43210155a7fb7ce517544d64e1a61958dc98`; the ledger-only follow-up does not alter tested behavior. This internal checkpoint does not upgrade the row or claim complete security-injection coverage.
 
 Automated success is implementation evidence only. It is not product, security, privacy, provider, preview or production acceptance.
 
@@ -192,7 +192,7 @@ No production migration, database-role grant, identity binding, provider callbac
 
 ### PRODUCT_OWNER_NOT_ACCEPTED
 
-This work remains an implementation-task result awaiting independent PM diff/evidence review. Tests and local evidence do not authorize acceptance, merge, preview, deployment or cutover.
+Independent PM review accepts this work only for publication as a Draft internal implementation checkpoint. Tests and local evidence do not authorize Product Owner production acceptance, merge, preview, deployment or cutover.
 
 ## Retained failure evidence
 
@@ -208,7 +208,7 @@ Failures were retained and repaired rather than hidden or favorably resampled:
 8. The local E2E reset guard stopped a run without `E2E_RESET_ALLOWED=true`, and a subsequent command used the wrong isolated-cluster login role; neither safety failure was bypassed silently.
 9. The successful OIDC exchange then exposed Auth.js normalizing its internal OAuth user ID away from the Foundry DB user ID; RW-02 now carries the DB-bound principal separately and does not create an identity from callback claims.
 10. The first full suite after request scoping exposed an unsupported nested `begin` call. Existing command transactions now reuse the stronger request transaction and the complete suite passed on rerun.
-11. Independent PM review returned R1–R5 rather than accepting the first implementation: runtime role startup was only assumed, Engineering checkpoint inspection was unscoped, denial/sign-out audit evidence was incomplete, authority rows were misdescribed, route coverage was static, and the direct database harness lacked real two-tenant positive/cross-lineage cases. Each finding is preserved in the rework history and addressed by this working diff; final acceptance remains the PM's decision.
+11. Independent PM review returned R1–R5 rather than accepting the first implementation: runtime role startup was only assumed, Engineering checkpoint inspection was unscoped, denial/sign-out audit evidence was incomplete, authority rows were misdescribed, route coverage was static, and the direct database harness lacked real two-tenant positive/cross-lineage cases. Each finding is preserved in the rework history and addressed by the reviewed implementation checkpoint; the final PM decision is Draft-only acceptance at the reduced internal-checkpoint bar.
 12. The first full integration run after checkpoint-role rework retained 1 failed of 40 plus 25 unhandled checkpoint RLS write errors. Direct integration checkpointers were not tenant-scoped and several supplied thread IDs lacked institution prefixes. The code and tests were corrected before the later 41/41 run.
 13. One integration invocation omitted the isolated database variables, so three cases failed and 37 skipped before governed behavior ran. It is not counted as product evidence; the explicit seven-URL local invocation later passed 41/41.
 14. One browser invocation omitted `E2E_RESET_ALLOWED=true`; the guard refused the reset before mutation. The explicitly authorized disposable-database rerun later passed 19 with 3 declared skips.
