@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { performance } from "node:perf_hooks";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import type { Actor } from "@/domain/model";
 import { DomainInvariantError, requireCourseAccess, requireHumanCommand, requireRole } from "@/domain/invariants";
 import { validateUpload } from "@/domain/file-intake";
@@ -13,6 +13,8 @@ import {
   idempotencyKeys,
   modelRuns,
   sourceRecords,
+  sourceAssetVersions,
+  sourceProcessingAttempts,
   subjects,
 } from "@/db/schema";
 import { commandRequestHash } from "@/application/commands";
@@ -22,6 +24,7 @@ import { getEmbeddingProvider, getVisionProvider, type TokenUsage } from "@/appl
 import { getFileStorage } from "@/infrastructure/file-storage";
 import { startDiagnosisWithTeacherReview } from "@/application/workflow-service";
 import { assertExecutionActive, currentExecutionControl, executionStopStatus, rethrowIfExecutionStopped } from "@/application/execution-control";
+import { deterministicUuid, putWithDatabaseCompensation } from "@/application/canonical-data";
 
 type UploadInput = {
   taskId: string;
@@ -308,8 +311,9 @@ async function embedEvidence(actor: Actor, taskId: string, rows: Array<typeof ev
 
 export async function reviewSourceRights(actor: Actor, input: { sourceId: string; decision: "APPROVED" | "DENIED"; rights: string; idempotencyKey: string }) {
   requireHumanCommand(actor, ["TEACHER", "ADMIN"]);
-  const [scope] = await getDb().select({ source: sourceRecords, asset: fileAssets, course: courses, subject: subjects })
+  const [scope] = await getDb().select({ source: sourceRecords, sourceVersion: sourceAssetVersions, asset: fileAssets, course: courses, subject: subjects })
     .from(sourceRecords)
+    .innerJoin(sourceAssetVersions, eq(sourceAssetVersions.id, sourceRecords.sourceAssetVersionId))
     .innerJoin(fileAssets, eq(fileAssets.sourceId, sourceRecords.id))
     .innerJoin(courses, eq(courses.id, fileAssets.courseId))
     .innerJoin(subjects, eq(subjects.id, courses.subjectId))
@@ -325,6 +329,14 @@ export async function reviewSourceRights(actor: Actor, input: { sourceId: string
     rights: input.rights,
   });
   const pages = input.decision === "APPROVED" && scope.asset.ingestionStatus === "EXTRACTED" ? extractedPages(scope.asset) : [];
+  const rightsSnapshotHash = createHash("sha256").update(JSON.stringify({
+    predecessor: scope.sourceVersion.id,
+    decision: input.decision,
+    rights: input.rights.trim(),
+    actorUserId: actor.userId,
+  })).digest("hex");
+  const rightsVersionId = deterministicUuid(`source-rights-version|${scope.sourceVersion.id}|${rightsSnapshotHash}`);
+  const rightsVersionKey = `${scope.source.version}:rights:${rightsSnapshotHash.slice(0, 16)}`;
   const outcome = await getDb().transaction(async (tx) => {
     const reservation = await tx.insert(idempotencyKeys).values({
       institutionId: actor.institutionId,
@@ -345,11 +357,35 @@ export async function reviewSourceRights(actor: Actor, input: { sourceId: string
       return { replayed: true, evidence: [] as Array<typeof evidenceUnits.$inferSelect> };
     }
 
+    await tx.insert(sourceAssetVersions).values({
+      id: rightsVersionId,
+      sourceAssetId: scope.source.sourceAssetId,
+      institutionId: scope.source.institutionId,
+      versionKey: rightsVersionKey,
+      contentHash: scope.sourceVersion.contentHash,
+      storageKey: scope.sourceVersion.storageKey,
+      stableLocator: scope.sourceVersion.stableLocator,
+      mediaType: scope.sourceVersion.mediaType,
+      byteSize: scope.sourceVersion.byteSize,
+      provenance: {
+        predecessorSourceAssetVersionId: scope.sourceVersion.id,
+        rightsReview: "AUTHENTICATED_HUMAN_COMMAND",
+        actorUserId: actor.userId,
+        sourceRecordId: scope.source.id,
+      },
+      rightsBasis: input.rights.trim(),
+      rightsStatus: input.decision,
+      accessScope: scope.source.distributionScope,
+      effectiveFrom: new Date(),
+      supersedesVersionId: scope.sourceVersion.id,
+      createdBy: actor.userId,
+    }).onConflictDoNothing();
     const transitioned = await tx.update(sourceRecords).set({
       rightsAuthorizationStatus: input.decision,
       rights: input.rights.trim(),
       authority: "AUTHENTICATED_HUMAN_RIGHTS_REVIEW",
       active: input.decision === "APPROVED",
+      sourceAssetVersionId: rightsVersionId,
     }).where(and(
       eq(sourceRecords.id, input.sourceId),
       eq(sourceRecords.rightsAuthorizationStatus, "REVIEW_REQUIRED"),
@@ -357,6 +393,10 @@ export async function reviewSourceRights(actor: Actor, input: { sourceId: string
     if (!transitioned.length) {
       throw new DomainInvariantError("Source rights already have a terminal decision", "SOURCE_RIGHTS_CONFLICT");
     }
+    const relinkedFiles = await tx.update(fileAssets).set({ sourceAssetVersionId: rightsVersionId, updatedAt: new Date() })
+      .where(and(eq(fileAssets.sourceId, input.sourceId), eq(fileAssets.sourceAssetVersionId, scope.sourceVersion.id)))
+      .returning({ id: fileAssets.id });
+    if (!relinkedFiles.length) throw new DomainInvariantError("Source rights transition lost its FileAsset lineage", "SOURCE_VERSION_LINEAGE");
     await tx.insert(governanceEvents).values({
       institutionId: actor.institutionId,
       actorUserId: actor.userId,
@@ -368,6 +408,7 @@ export async function reviewSourceRights(actor: Actor, input: { sourceId: string
     if (!pages.length) return { replayed: false, evidence: [] as Array<typeof evidenceUnits.$inferSelect> };
     const evidence = await tx.insert(evidenceUnits).values(pages.map((page) => ({
       sourceId: scope.source.id,
+      sourceAssetVersionId: rightsVersionId,
       institutionId: scope.asset.institutionId,
       modality: scope.asset.mediaType === "application/pdf" ? "TEXT" : "FIGURE",
       locator: page.locator,
@@ -454,4 +495,113 @@ export async function authorizeFileRead(actor: Actor, fileAssetId: string) {
   requireCourseAccess(actor, asset.institutionId, asset.courseId);
   if (actor.roles.includes("LEARNER") && asset.ownerUserId !== actor.userId) throw new DomainInvariantError("Learner cannot read another learner's file", "FILE_ACCESS_DENIED");
   return { asset, bytes: await getFileStorage().read(asset.storageKey, currentExecutionControl()) };
+}
+
+/**
+ * Application-only repair command for a legacy/canonical FileAsset whose
+ * external storage write failed. It preserves canonical IDs and requires the
+ * caller to supply the original bytes again; it is not an ingestion route.
+ */
+export async function retryFailedSourceStorage(actor: Actor, input: {
+  fileAssetId: string;
+  bytes: Uint8Array;
+  idempotencyKey: string;
+}) {
+  requireHumanCommand(actor, ["TEACHER", "ADMIN"]);
+  if (input.idempotencyKey.trim().length < 8) throw new DomainInvariantError("Storage repair requires a stable command identity", "IDEMPOTENCY_KEY_REQUIRED");
+  const [lineage] = await getDb().select({ asset: fileAssets, version: sourceAssetVersions })
+    .from(fileAssets)
+    .innerJoin(sourceAssetVersions, eq(sourceAssetVersions.id, fileAssets.sourceAssetVersionId))
+    .where(eq(fileAssets.id, input.fileAssetId))
+    .limit(1);
+  if (!lineage) throw new DomainInvariantError("Failed FileAsset was not found", "FILE_NOT_FOUND");
+  requireCourseAccess(actor, lineage.asset.institutionId, lineage.asset.courseId);
+  const suppliedHash = createHash("sha256").update(input.bytes).digest("hex");
+  if (suppliedHash !== lineage.asset.contentHash || suppliedHash !== lineage.version.contentHash || input.bytes.byteLength !== lineage.asset.byteSize) {
+    throw new DomainInvariantError("Repair bytes do not match the immutable SourceAssetVersion", "SOURCE_VERSION_HASH_MISMATCH");
+  }
+  const [replay] = await getDb().select().from(sourceProcessingAttempts).where(and(
+    eq(sourceProcessingAttempts.institutionId, actor.institutionId),
+    eq(sourceProcessingAttempts.operation, "STORAGE_REPAIR"),
+    eq(sourceProcessingAttempts.idempotencyKey, input.idempotencyKey),
+  )).limit(1);
+  if (replay) {
+    if (replay.fileAssetId !== lineage.asset.id || replay.sourceAssetVersionId !== lineage.version.id) {
+      throw new DomainInvariantError("Repair idempotency key belongs to a different source version", "IDEMPOTENCY_MISMATCH");
+    }
+    return { fileAssetId: lineage.asset.id, sourceAssetVersionId: lineage.version.id, attemptId: replay.id, status: replay.status, replayed: true };
+  }
+  if (lineage.asset.ingestionStatus !== "FAILED" || lineage.asset.failureCode !== "STORAGE_WRITE_FAILED") {
+    throw new DomainInvariantError("Only a failed storage write can be repaired by this command", "STORAGE_REPAIR_NOT_ELIGIBLE");
+  }
+  const [prior] = await getDb().select().from(sourceProcessingAttempts)
+    .where(and(eq(sourceProcessingAttempts.fileAssetId, lineage.asset.id), eq(sourceProcessingAttempts.status, "FAILED")))
+    .orderBy(desc(sourceProcessingAttempts.startedAt))
+    .limit(1);
+  const attemptId = randomUUID();
+  const reserved = await getDb().insert(sourceProcessingAttempts).values({
+    id: attemptId,
+    institutionId: actor.institutionId,
+    sourceAssetVersionId: lineage.version.id,
+    fileAssetId: lineage.asset.id,
+    operation: "STORAGE_REPAIR",
+    processor: "FOUNDRY_FILE_STORAGE",
+    processorVersion: "rw03",
+    status: "STARTED",
+    retryOfAttemptId: prior?.id,
+    actorUserId: actor.userId,
+    idempotencyKey: input.idempotencyKey,
+  }).onConflictDoNothing().returning();
+  if (!reserved.length) {
+    const [existing] = await getDb().select().from(sourceProcessingAttempts).where(and(
+      eq(sourceProcessingAttempts.institutionId, actor.institutionId),
+      eq(sourceProcessingAttempts.operation, "STORAGE_REPAIR"),
+      eq(sourceProcessingAttempts.idempotencyKey, input.idempotencyKey),
+    )).limit(1);
+    if (existing && (existing.fileAssetId !== lineage.asset.id || existing.sourceAssetVersionId !== lineage.version.id)) {
+      throw new DomainInvariantError("Repair idempotency key belongs to a different source version", "IDEMPOTENCY_MISMATCH");
+    }
+    if (existing) return { fileAssetId: lineage.asset.id, sourceAssetVersionId: lineage.version.id, attemptId: existing.id, status: existing.status, replayed: true };
+    const [active] = await getDb().select().from(sourceProcessingAttempts).where(and(
+      eq(sourceProcessingAttempts.fileAssetId, lineage.asset.id),
+      eq(sourceProcessingAttempts.operation, "STORAGE_REPAIR"),
+      eq(sourceProcessingAttempts.status, "STARTED"),
+    )).limit(1);
+    if (active) throw new DomainInvariantError("A storage repair is already in progress for this FileAsset", "STORAGE_REPAIR_IN_PROGRESS");
+    throw new DomainInvariantError("Storage repair reservation conflicted with another command", "STORAGE_REPAIR_CONFLICT");
+  }
+  try {
+    await putWithDatabaseCompensation({
+      storage: getFileStorage(),
+      key: lineage.asset.storageKey,
+      bytes: input.bytes,
+      control: currentExecutionControl(),
+      finalize: async () => getDb().transaction(async (tx) => {
+        const updated = await tx.update(fileAssets).set({
+          ingestionStatus: "STORED",
+          failureCode: null,
+          failureMessage: null,
+          updatedAt: new Date(),
+        }).where(and(
+          eq(fileAssets.id, lineage.asset.id),
+          eq(fileAssets.institutionId, actor.institutionId),
+          eq(fileAssets.contentHash, suppliedHash),
+          eq(fileAssets.ingestionStatus, "FAILED"),
+        )).returning({ id: fileAssets.id });
+        if (!updated.length) throw new DomainInvariantError("Failed FileAsset changed before repair finalization", "STORAGE_REPAIR_CONFLICT");
+        await tx.update(sourceProcessingAttempts).set({ status: "SUCCEEDED", finishedAt: new Date(), failureCode: null, failureMessage: null })
+          .where(and(eq(sourceProcessingAttempts.id, attemptId), eq(sourceProcessingAttempts.status, "STARTED")));
+        return updated[0];
+      }),
+    });
+  } catch (error) {
+    await getDb().update(sourceProcessingAttempts).set({
+      status: "FAILED",
+      finishedAt: new Date(),
+      failureCode: error instanceof AggregateError ? "STORAGE_COMPENSATION_FAILED" : "STORAGE_REPAIR_FAILED",
+      failureMessage: error instanceof Error ? error.message : String(error),
+    }).where(and(eq(sourceProcessingAttempts.id, attemptId), eq(sourceProcessingAttempts.status, "STARTED")));
+    throw error;
+  }
+  return { fileAssetId: lineage.asset.id, sourceAssetVersionId: lineage.version.id, attemptId, status: "SUCCEEDED" as const, replayed: false };
 }

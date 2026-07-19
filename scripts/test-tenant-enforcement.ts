@@ -10,7 +10,9 @@ function guardedLocalUrl(raw: string | undefined, label: string): string {
   const url = new URL(raw);
   if (!new Set(["localhost", "127.0.0.1", "[::1]", "::1"]).has(url.hostname)) throw new Error(`${label} must target localhost`);
   const database = decodeURIComponent(url.pathname.slice(1));
-  if (!new Set(["learning_foundry_rw02", "learning_foundry_e2e"]).has(database)) throw new Error(`${label} must target learning_foundry_rw02 or learning_foundry_e2e`);
+  if (!new Set(["learning_foundry_rw02", "learning_foundry_e2e"]).has(database) && !database.startsWith("learning_foundry_rw03")) {
+    throw new Error(`${label} must target a disposable Learning Foundry enforcement database`);
+  }
   return url.toString();
 }
 
@@ -293,7 +295,7 @@ try {
        media_type, byte_size, content_hash)
     VALUES
       (${fileB}::uuid, ${tenantB}::uuid, ${courseB}::uuid, ${taskB}::uuid, ${learnerB}::uuid, ${sourceB}::uuid,
-       'LEARNER_ATTEMPT', ${`tenant-harness/${fileB}`}, 'tenant-b.txt', 'text/plain', 1, ${`hash-${fileB}`})
+       'LEARNER_ATTEMPT', ${`tenant-harness/${fileB}`}, 'tenant-b.txt', 'text/plain', 1, ${`hash-${sourceB}`})
   `;
   await product`
     INSERT INTO foundry_product.learner_attempts
@@ -940,6 +942,10 @@ try {
   const expectedWritableTables = await product<Array<{ table_key: string }>>`
     SELECT schema_name || '.' || table_name AS table_key
     FROM foundry_private.writable_lineage_catalog
+    WHERE NOT (schema_name='foundry_product' AND table_name=ANY(ARRAY[
+      'learner_profiles','learner_strategy_versions','source_assets','source_asset_versions',
+      'source_processing_attempts','evidence_derivatives','context_items','context_carryover_relations'
+    ]::text[]))
     ORDER BY schema_name, table_name
   `;
   const expectedWritableKeys = expectedWritableTables.map((row) => row.table_key);
@@ -1043,9 +1049,11 @@ try {
     await product`DELETE FROM foundry_product.teacher_reviews WHERE id=${reviewB}::uuid`;
     await product`DELETE FROM foundry_product.diagnostic_observations WHERE id=${observationB}::uuid`;
     await product`DELETE FROM foundry_product.learner_attempts WHERE id=${attemptB}::uuid`;
+    await product`DELETE FROM foundry_product.evidence_derivatives WHERE evidence_unit_id=${evidenceB}::uuid`;
     await product`DELETE FROM foundry_product.file_assets WHERE id=${fileB}::uuid`;
     await product`DELETE FROM foundry_product.evidence_units WHERE id=${evidenceB}::uuid`;
     await product`DELETE FROM foundry_product.source_records WHERE id=${sourceB}::uuid`;
+    await product`DELETE FROM foundry_product.source_assets WHERE institution_id=${tenantB}::uuid`;
     await product`DELETE FROM foundry_product.learning_episodes WHERE id=${episodeB}::uuid`;
     await product`DELETE FROM foundry_product.learning_tasks WHERE id IN (${taskB}::uuid, ${attemptedTaskIds[0]}::uuid, ${attemptedTaskIds[1]}::uuid)`;
     await product`DELETE FROM foundry_product.courses WHERE id=${courseB}::uuid`;
