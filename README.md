@@ -46,9 +46,17 @@ Optional live integrations:
 - `DEEPSEEK_API_KEY`: grounded synthesis when `FOUNDRY_SYNTHESIS_PROVIDER=DEEPSEEK` or when it is the first configured synthesis provider.
 - `FILE_STORAGE_LOCAL_ROOT`: explicit local object root; required in production until managed object storage is configured.
 
+Workflow starts and resumes use request-scoped cancellation plus a bounded
+deadline (30 seconds by default, capped at 120 seconds). LangGraph, chat and
+vision calls receive native abort signals. The installed LangChain OpenAI
+embeddings and Cohere rerank wrappers do not expose per-call signals, so those
+two boundaries enforce pre/post deadline guards but cannot cooperatively stop an
+already in-flight wrapper call. They must not be reported as cooperatively
+cancelled; the workflow still stops before subsequent canonical writes.
+
 External telemetry, product/pedagogy/learning-effectiveness Eval, managed object storage, production ANN/vector infrastructure, and a production authentication provider remain unavailable or not configured. No public preview is authorized.
 
-Managed database roles and RLS (or an equivalent database-enforced tenant policy) are **NOT_CONFIGURED**. Application authorization remains mandatory, but is not a claim of database-level tenant enforcement. Automated recovery for a crashed `RESUMING` workflow is **NOT_IMPLEMENTED**; stale claims are reported to Engineering and remain fail-closed. Both gaps block any public preview.
+Managed database roles and RLS (or an equivalent database-enforced tenant policy) are **NOT_CONFIGURED**. Application authorization remains mandatory, but is not a claim of database-level tenant enforcement. Background or automatic recovery for a crashed `RESUMING` workflow is **NOT_IMPLEMENTED**. On request, an authorized actor may reclaim an expired resume lease using the current interrupt version; fresh leases remain protected from concurrent resume. This bounded reclaim path grants no preview or production authorization. Missing database-enforced tenant policy and missing automatic recovery remain public-preview blockers.
 
 Dependency audit status: Next.js 16.2.10 currently installs nested PostCSS 8.4.31, which remains affected by moderate advisory `GHSA-qx2v-qp2m-jg93`. A package override was tested and removed because Next continued to resolve its pinned nested version and npm correctly marked the forced tree invalid. The other current moderate findings are in the `drizzle-kit` / `@esbuild-kit` / `esbuild` development-tooling chain; npm's proposed remediation is an incompatible downgrade and is not applied. There are currently no high or critical audit findings. The runtime PostCSS advisory remains an explicit preview blocker pending a compatible upstream resolution.
 

@@ -1,14 +1,15 @@
 import { requireApiActor } from "@/application/identity";
 import { errorResponse } from "@/application/http";
 import { authorizeFileRead } from "@/application/file-intake";
+import { runWithExecutionControl } from "@/application/execution-control";
 
 export const runtime = "nodejs";
 
-export async function GET(_request: Request, context: { params: Promise<{ fileAssetId: string }> }) {
+export async function GET(request: Request, context: { params: Promise<{ fileAssetId: string }> }) {
   try {
     const actor = await requireApiActor();
     const { fileAssetId } = await context.params;
-    const { asset, bytes } = await authorizeFileRead(actor, fileAssetId);
+    const { asset, bytes } = await runWithExecutionControl({ signal: request.signal }, () => authorizeFileRead(actor, fileAssetId));
     const body = bytes.buffer instanceof ArrayBuffer
       ? bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
       : Uint8Array.from(bytes).buffer;

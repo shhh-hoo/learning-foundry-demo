@@ -9,6 +9,6 @@ export async function POST(request: Request, context: { params: Promise<{ thread
   try {
     const actor = await requireApiActor();
     const { threadId } = await context.params;
-    return Response.json(await resumeWorkflow(actor, threadId, ResumePayload.parse(await request.json())));
+    return Response.json(await resumeWorkflow(actor, threadId, ResumePayload.parse(await request.json()), { execution: { signal: request.signal } }));
   } catch (error) { return errorResponse(error); }
 }

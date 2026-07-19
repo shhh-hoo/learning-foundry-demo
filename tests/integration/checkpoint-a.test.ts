@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it, afterAll, beforeAll } from "vitest";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import {
   captureAttempt,
   appendConversationEvent,
@@ -15,15 +15,17 @@ import {
 } from "@/application/commands";
 import { compileAndPersistContext } from "@/application/context-service";
 import { getActor } from "@/application/actor";
-import { getAuthorizedEvidenceCatalog, getFoundryWorkspace, getStaleResumingRuns, getTaskDetail, getTeacherWorkspace, STALE_RESUMING_TIMEOUT_MS } from "@/application/queries";
+import { getAuthorizedEvidenceCatalog, getFoundryWorkspace, getStaleResumingRuns, getTaskDetail, getTeacherWorkspace } from "@/application/queries";
 import { retrieveEvidence } from "@/application/retrieval";
-import { resumeWorkflow, startWorkflow } from "@/application/workflow-service";
+import { resumeWorkflow, startWorkflow, WorkflowProcessCrashForTests } from "@/application/workflow-service";
+import { claimWorkflowResume, finalizeWorkflowResumeClaim, RESUME_LEASE_MS } from "@/application/workflow-resume-lease";
 import { closeDb, getDb, getSql } from "@/db/client";
 import { SEED } from "@/db/ids";
-import { courseEnrollments, courses, evidenceUnits, idempotencyKeys, institutionMemberships, learningOutcomes, libraryItems, retryAttempts, scheduleItems, sourceRecords, teacherReviews, users, workflowRuns } from "@/db/schema";
+import { conversationEvents, courseEnrollments, courses, evidenceUnits, idempotencyKeys, institutionMemberships, learningOutcomes, libraryItems, retryAttempts, scheduleItems, sourceRecords, teacherReviews, users, workflowRuns } from "@/db/schema";
 import type { Actor } from "@/domain/model";
 import { DomainInvariantError } from "@/domain/invariants";
-import { closeWorkflowCheckpointer } from "@/workflows/checkpointer";
+import { closeWorkflowCheckpointer, getWorkflowCheckpointer } from "@/workflows/checkpointer";
+import { buildLearnerTaskGraph } from "@/workflows/learner-task";
 
 type EligiblePatternSignal = {
   observation_id: string;
@@ -165,6 +167,23 @@ describe.sequential("Checkpoint A PostgreSQL integration", () => {
     await expect(createTask(learner, { courseId: SEED.course, title: "Changed request", goal: "This body must not reuse the key", idempotencyKey })).rejects.toMatchObject({ code: "IDEMPOTENCY_MISMATCH" });
   });
 
+  it("returns the exact original ConversationEvent and rejects changed replay payloads", async () => {
+    const fixture = randomUUID();
+    const input = {
+      taskId: SEED.task,
+      episodeId: SEED.episode,
+      kind: "MESSAGE",
+      actorType: "LEARNER",
+      content: `Stable Event command ${fixture}`,
+      idempotencyKey: `conversation-event:${fixture}`,
+    };
+    const first = await appendConversationEvent(learner, input);
+    const replay = await appendConversationEvent(learner, input);
+    expect(replay).toMatchObject({ id: first.id, replayed: true });
+    expect(await getDb().select().from(conversationEvents).where(eq(conversationEvents.id, first.id))).toHaveLength(1);
+    await expect(appendConversationEvent(learner, { ...input, content: `Changed Event command ${fixture}` })).rejects.toMatchObject({ code: "IDEMPOTENCY_MISMATCH" });
+  });
+
   it("binds command idempotency to the authenticated actor", async () => {
     const fixture = randomUUID();
     const secondLearnerId = randomUUID();
@@ -286,7 +305,7 @@ describe.sequential("Checkpoint A PostgreSQL integration", () => {
     });
     const mismatchedPair = { taskId: SEED.task, episodeId: otherTask.episodeId! };
 
-    await expect(appendConversationEvent(learner, { ...mismatchedPair, kind: "MESSAGE", actorType: "LEARNER", content: "Must not cross Task lineage" })).rejects.toMatchObject({ code: "TASK_EPISODE_LINEAGE" });
+    await expect(appendConversationEvent(learner, { ...mismatchedPair, kind: "MESSAGE", actorType: "LEARNER", content: "Must not cross Task lineage", idempotencyKey: `cross-pair-event:${fixture}` })).rejects.toMatchObject({ code: "TASK_EPISODE_LINEAGE" });
     await expect(captureAttempt(learner, { ...mismatchedPair, prompt: "Cross pair", response: "Must fail", structuredInput: {}, idempotencyKey: `cross-pair-attempt:${fixture}` })).rejects.toMatchObject({ code: "TASK_EPISODE_LINEAGE" });
     await expect(compileAndPersistContext(learner, mismatchedPair)).rejects.toMatchObject({ code: "TASK_EPISODE_LINEAGE" });
     await expect(startWorkflow({
@@ -297,7 +316,7 @@ describe.sequential("Checkpoint A PostgreSQL integration", () => {
     await expect(startWorkflow({
       kind: "EXPLANATION",
       actor: learner,
-      state: { ...mismatchedPair, question: "Cross pair explanation" },
+      state: { ...mismatchedPair, question: "Cross pair explanation", idempotencyKey: `cross-pair-explanation:${fixture}` },
     })).rejects.toMatchObject({ code: "TASK_EPISODE_LINEAGE" });
     await expect(startWorkflow({
       kind: "DIAGNOSIS",
@@ -318,6 +337,117 @@ describe.sequential("Checkpoint A PostgreSQL integration", () => {
       taskId: otherTask.taskId,
       episodeId: otherTask.episodeId,
     })).rejects.toMatchObject({ code: "WORKFLOW_BINDING_MISMATCH" });
+  });
+
+  it("replays learner and Foundry Events by exact ID after node/checkpoint failures", async () => {
+    const checkpoint = getWorkflowCheckpointer();
+    const learnerFixture = randomUUID();
+    const learnerKey = `learner-node-fault:${learnerFixture}`;
+    const learnerMessage = `Learner node fault ${learnerFixture}`;
+    const beforeLearner = await getDb().select().from(conversationEvents).where(and(eq(conversationEvents.taskId, SEED.task), eq(conversationEvents.actorType, "LEARNER")));
+    let committedLearnerId = "";
+    const learnerFaultGraph = buildLearnerTaskGraph(checkpoint, {
+      afterLearnerEventPersisted(eventId) {
+        committedLearnerId = eventId;
+        throw new Error("INJECTED_AFTER_LEARNER_EVENT");
+      },
+    });
+    const learnerState = { actor: learner, taskId: SEED.task, episodeId: SEED.episode, courseId: SEED.course, message: learnerMessage, requestedAction: "EXPLAIN" as const, idempotencyKey: learnerKey };
+    const learnerThread = `learner-node-fault:${randomUUID()}`;
+    await expect(learnerFaultGraph.invoke(learnerState, { configurable: { thread_id: learnerThread }, recursionLimit: 50 })).rejects.toThrow("INJECTED_AFTER_LEARNER_EVENT");
+    expect(committedLearnerId).not.toBe("");
+    expect(await getDb().select().from(conversationEvents).where(and(eq(conversationEvents.taskId, SEED.task), eq(conversationEvents.actorType, "LEARNER")))).toHaveLength(beforeLearner.length + 1);
+    const learnerReplay = await buildLearnerTaskGraph(checkpoint).invoke(learnerState, { configurable: { thread_id: learnerThread }, recursionLimit: 50 });
+    expect(learnerReplay.learnerEventId).toBe(committedLearnerId);
+    expect(await getDb().select().from(conversationEvents).where(and(eq(conversationEvents.taskId, SEED.task), eq(conversationEvents.actorType, "LEARNER")))).toHaveLength(beforeLearner.length + 1);
+
+    const foundryFixture = randomUUID();
+    const foundryKey = `foundry-node-fault:${foundryFixture}`;
+    const beforeFoundry = await getDb().select().from(conversationEvents).where(and(eq(conversationEvents.taskId, SEED.task), eq(conversationEvents.actorType, "FOUNDRY")));
+    let committedFoundryId = "";
+    const foundryFaultGraph = buildLearnerTaskGraph(checkpoint, {
+      explanation: {
+        afterFoundryEventPersisted(eventId) {
+          committedFoundryId = eventId;
+          throw new Error("INJECTED_AFTER_FOUNDRY_EVENT");
+        },
+      },
+    });
+    const foundryState = { actor: learner, taskId: SEED.task, episodeId: SEED.episode, courseId: SEED.course, message: `Foundry node fault ${foundryFixture}`, requestedAction: "EXPLAIN" as const, idempotencyKey: foundryKey };
+    const foundryThread = `foundry-node-fault:${randomUUID()}`;
+    await expect(foundryFaultGraph.invoke(foundryState, { configurable: { thread_id: foundryThread }, recursionLimit: 50 })).rejects.toThrow("INJECTED_AFTER_FOUNDRY_EVENT");
+    expect(committedFoundryId).not.toBe("");
+    expect(await getDb().select().from(conversationEvents).where(and(eq(conversationEvents.taskId, SEED.task), eq(conversationEvents.actorType, "FOUNDRY")))).toHaveLength(beforeFoundry.length + 1);
+    const foundryReplay = await buildLearnerTaskGraph(checkpoint).invoke(foundryState, { configurable: { thread_id: foundryThread }, recursionLimit: 50 });
+    expect((foundryReplay.result as { responseEventId?: string }).responseEventId).toBe(committedFoundryId);
+    expect(await getDb().select().from(conversationEvents).where(and(eq(conversationEvents.taskId, SEED.task), eq(conversationEvents.actorType, "FOUNDRY")))).toHaveLength(beforeFoundry.length + 1);
+  });
+
+  it("replays completed graph Events without duplication after an operational terminal-write crash", async () => {
+    const fixture = randomUUID();
+    const state = { taskId: SEED.task, episodeId: SEED.episode, courseId: SEED.course, message: `Operational terminal fault ${fixture}`, requestedAction: "EXPLAIN" as const, idempotencyKey: `operational-fault:${fixture}` };
+    const before = await getDb().select().from(conversationEvents).where(eq(conversationEvents.taskId, SEED.task));
+    let crashedRunId = "";
+    await expect(startWorkflow({
+      kind: "LEARNER_TASK",
+      actor: learner,
+      state,
+      testFaults: {
+        afterGraphCompletion({ runId }) {
+          crashedRunId = runId;
+          throw new WorkflowProcessCrashForTests();
+        },
+      },
+    })).rejects.toBeInstanceOf(WorkflowProcessCrashForTests);
+    const [crashed] = await getDb().select().from(workflowRuns).where(eq(workflowRuns.id, crashedRunId));
+    expect(crashed.status).toBe("RUNNING");
+    const afterCrash = await getDb().select().from(conversationEvents).where(eq(conversationEvents.taskId, SEED.task));
+    expect(afterCrash).toHaveLength(before.length + 2);
+    const learnerEvent = afterCrash.find((event) => event.actorType === "LEARNER" && event.content === state.message);
+    const foundryEvent = afterCrash.find((event) => event.actorType === "FOUNDRY" && !before.some((prior) => prior.id === event.id));
+    expect(learnerEvent?.id).toBeTruthy();
+    expect(foundryEvent?.id).toBeTruthy();
+
+    const replay = await startWorkflow({ kind: "LEARNER_TASK", actor: learner, state });
+    const replayResult = replay.result as { learnerEventId?: string; result?: { responseEventId?: string } };
+    expect(replayResult.learnerEventId).toBe(learnerEvent?.id);
+    expect(replayResult.result?.responseEventId).toBe(foundryEvent?.id);
+    expect(await getDb().select().from(conversationEvents).where(eq(conversationEvents.taskId, SEED.task))).toHaveLength(afterCrash.length);
+  });
+
+  it("records request abort and deadline honestly and stops before later canonical writes", async () => {
+    const abortFixture = randomUUID();
+    const abortThread = `abort-control:${abortFixture}`;
+    const abortKey = `abort-control:${abortFixture}`;
+    const abortController = new AbortController();
+    await expect(startWorkflow({
+      kind: "LEARNER_TASK",
+      actor: learner,
+      threadId: abortThread,
+      state: { taskId: SEED.task, episodeId: SEED.episode, courseId: SEED.course, message: `Abort after learner Event ${abortFixture}`, requestedAction: "EXPLAIN", idempotencyKey: abortKey },
+      execution: { signal: abortController.signal, deadlineMs: 1_000 },
+      testFaults: { afterLearnerEventPersisted() { abortController.abort(); } },
+    })).rejects.toMatchObject({ code: "EXECUTION_ABORTED" });
+    const [aborted] = await getDb().select().from(workflowRuns).where(eq(workflowRuns.threadId, abortThread));
+    expect(aborted.status).toBe("ABORTED");
+    expect(await getDb().select().from(conversationEvents).where(and(eq(conversationEvents.taskId, SEED.task), eq(conversationEvents.content, `Abort after learner Event ${abortFixture}`)))).toHaveLength(1);
+    expect(await getDb().select().from(idempotencyKeys).where(and(eq(idempotencyKeys.commandType, "APPEND_CONVERSATION_EVENT"), eq(idempotencyKeys.key, `${abortKey}:conversation:foundry`)))).toEqual([]);
+
+    const deadlineFixture = randomUUID();
+    const deadlineThread = `deadline-control:${deadlineFixture}`;
+    const deadlineKey = `deadline-control:${deadlineFixture}`;
+    await expect(startWorkflow({
+      kind: "LEARNER_TASK",
+      actor: learner,
+      threadId: deadlineThread,
+      state: { taskId: SEED.task, episodeId: SEED.episode, courseId: SEED.course, message: `Deadline after learner Event ${deadlineFixture}`, requestedAction: "EXPLAIN", idempotencyKey: deadlineKey },
+      execution: { deadlineMs: 5 },
+      testFaults: { async afterLearnerEventPersisted() { await new Promise((resolve) => setTimeout(resolve, 10)); } },
+    })).rejects.toMatchObject({ code: "EXECUTION_TIMED_OUT" });
+    const [timedOut] = await getDb().select().from(workflowRuns).where(eq(workflowRuns.threadId, deadlineThread));
+    expect(timedOut.status).toBe("TIMED_OUT");
+    expect(await getDb().select().from(conversationEvents).where(and(eq(conversationEvents.taskId, SEED.task), eq(conversationEvents.content, `Deadline after learner Event ${deadlineFixture}`)))).toHaveLength(1);
+    expect(await getDb().select().from(idempotencyKeys).where(and(eq(idempotencyKeys.commandType, "APPEND_CONVERSATION_EVENT"), eq(idempotencyKeys.key, `${deadlineKey}:conversation:foundry`)))).toEqual([]);
   });
 
   it("blocks cross-tenant Task and Teacher queries", async () => {
@@ -393,25 +523,64 @@ describe.sequential("Checkpoint A PostgreSQL integration", () => {
     expect(await getDb().select().from(teacherReviews).where(eq(teacherReviews.observationId, observation.id))).toHaveLength(1);
   });
 
-  it("reports stale RESUMING claims and keeps them fail-closed", async () => {
-    const now = new Date("2031-05-01T12:00:00.000Z");
-    const threadId = `stale-resume:${randomUUID()}`;
-    const [run] = await getDb().insert(workflowRuns).values({
-      threadId,
-      workflowKind: "TEACHER_REVIEW",
-      institutionId: SEED.institution,
-      taskId: SEED.task,
-      episodeId: SEED.episode,
-      actorUserId: learner.userId,
-      status: "RESUMING",
-      interruptType: "TEACHER_REVIEW_REQUIRED",
-      interruptVersion: 1,
-      resumeClaimedAt: new Date(now.getTime() - STALE_RESUMING_TIMEOUT_MS - 1),
-    }).returning();
-    const stale = await getStaleResumingRuns(engineer, now);
-    expect(stale.map((item) => item.id)).toContain(run.id);
-    await expect(resumeWorkflow(teacher, threadId, { expectedVersion: 1, decision: "ACCEPT" })).rejects.toMatchObject({ code: "WORKFLOW_RESUME_IN_PROGRESS" });
-    expect((await getDb().select().from(workflowRuns).where(eq(workflowRuns.id, run.id)))[0]?.status).toBe("RESUMING");
+  it("rejects a fresh resume lease and reclaims an expired crash lease without duplicating Review", async () => {
+    const fixture = randomUUID();
+    const attempt = await captureAttempt(learner, { taskId: SEED.task, episodeId: SEED.episode, prompt: `Lease fixture ${fixture}`, response: "Lease recovery requires one Review.", structuredInput: {}, idempotencyKey: `lease-attempt:${fixture}` });
+    const observation = await persistUnavailableObservation({ attemptId: attempt.id, reason: "Lease recovery integration fixture" });
+    const started = await startWorkflow({ kind: "TEACHER_REVIEW", actor: learner, state: { observationId: observation.id } });
+    const [run] = await getDb().select().from(workflowRuns).where(eq(workflowRuns.id, started.runId));
+    const freshNow = new Date();
+    await getDb().update(workflowRuns).set({ status: "RESUMING", resumeClaimedAt: freshNow, resumeClaimToken: `fresh:${fixture}`, resumeClaimVersion: 1, resumeLeaseExpiresAt: new Date(freshNow.getTime() + RESUME_LEASE_MS) }).where(eq(workflowRuns.id, run.id));
+    const payload = { expectedVersion: started.expectedVersion, decision: "ACCEPT", teachingSupport: "Recover the exact interrupted Review safely.", idempotencyKey: `lease-review:${fixture}` };
+    await expect(resumeWorkflow(teacher, started.threadId, payload)).rejects.toMatchObject({ code: "WORKFLOW_RESUME_IN_PROGRESS" });
+
+    const expiredAt = new Date(Date.now() - 1_000);
+    await getDb().update(workflowRuns).set({ resumeClaimedAt: new Date(expiredAt.getTime() - RESUME_LEASE_MS), resumeLeaseExpiresAt: expiredAt }).where(eq(workflowRuns.id, run.id));
+    expect((await getStaleResumingRuns(engineer)).map((item) => item.id)).toContain(run.id);
+    const recovered = await resumeWorkflow(teacher, started.threadId, payload);
+    expect(recovered.status).toBe("COMPLETED");
+    expect(await getDb().select().from(teacherReviews).where(eq(teacherReviews.observationId, observation.id))).toHaveLength(1);
+    await expect(resumeWorkflow(teacher, started.threadId, payload)).rejects.toMatchObject({ code: "WORKFLOW_NOT_INTERRUPTED" });
+  });
+
+  it("reclaims an actual post-graph resume crash and preserves the exact canonical Review", async () => {
+    const fixture = randomUUID();
+    const attempt = await captureAttempt(learner, { taskId: SEED.task, episodeId: SEED.episode, prompt: `Post-graph crash ${fixture}`, response: "The resumed graph must not duplicate this Review.", structuredInput: {}, idempotencyKey: `post-graph-attempt:${fixture}` });
+    const observation = await persistUnavailableObservation({ attemptId: attempt.id, reason: "Post-graph resume crash fixture" });
+    const started = await startWorkflow({ kind: "TEACHER_REVIEW", actor: learner, state: { observationId: observation.id } });
+    const payload = { expectedVersion: started.expectedVersion, decision: "ACCEPT", teachingSupport: "Preserve the exact human Review across reclaim.", idempotencyKey: `post-graph-review:${fixture}` };
+    await expect(resumeWorkflow(teacher, started.threadId, payload, {
+      testFaults: { afterGraphCompletion() { throw new WorkflowProcessCrashForTests(); } },
+    })).rejects.toBeInstanceOf(WorkflowProcessCrashForTests);
+    const [afterCrash] = await getDb().select().from(workflowRuns).where(eq(workflowRuns.id, started.runId));
+    expect(afterCrash).toMatchObject({ status: "RESUMING", resumeClaimVersion: 1 });
+    expect(afterCrash.resumeClaimToken).toBeTruthy();
+    const [originalReview] = await getDb().select().from(teacherReviews).where(eq(teacherReviews.observationId, observation.id));
+    expect(originalReview?.id).toBeTruthy();
+
+    await getDb().update(workflowRuns).set({ resumeLeaseExpiresAt: new Date(Date.now() - 1) }).where(eq(workflowRuns.id, started.runId));
+    const recovered = await resumeWorkflow(teacher, started.threadId, payload);
+    expect(recovered.status).toBe("COMPLETED");
+    expect((recovered.result as { reviewId?: string }).reviewId).toBe(originalReview.id);
+    expect(await getDb().select().from(teacherReviews).where(eq(teacherReviews.observationId, observation.id))).toEqual([originalReview]);
+  });
+
+  it("allows only one concurrent expired-lease reclaim and denies old-token finalization", async () => {
+    const started = await startWorkflow({ kind: "TEACHER_REVIEW", actor: learner, state: { observationId: fixtureObservationId } });
+    const [original] = await getDb().select().from(workflowRuns).where(eq(workflowRuns.id, started.runId));
+    const first = await claimWorkflowResume(original, started.expectedVersion);
+    await getDb().update(workflowRuns).set({ resumeLeaseExpiresAt: new Date(Date.now() - 1) }).where(eq(workflowRuns.id, original.id));
+    const [expired] = await getDb().select().from(workflowRuns).where(eq(workflowRuns.id, original.id));
+    const results = await Promise.allSettled([
+      claimWorkflowResume(expired, started.expectedVersion),
+      claimWorkflowResume(expired, started.expectedVersion),
+    ]);
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    const current = (results.find((result): result is PromiseFulfilledResult<Awaited<ReturnType<typeof claimWorkflowResume>>> => result.status === "fulfilled"))!.value;
+    await expect(finalizeWorkflowResumeClaim(first, { status: "COMPLETED", completedAt: new Date() })).rejects.toMatchObject({ code: "WORKFLOW_RESUME_LEASE_LOST" });
+    await finalizeWorkflowResumeClaim(current, { status: "INTERRUPTED", completedAt: null });
+    const [row] = await getDb().select().from(workflowRuns).where(eq(workflowRuns.id, original.id));
+    expect(row).toMatchObject({ status: "INTERRUPTED", resumeClaimToken: null, resumeClaimVersion: current.version });
   });
 
   it("enforces ACCEPT, CORRECT, SUPPLEMENT and terminal ESCALATE transitions", async () => {
@@ -566,9 +735,24 @@ describe.sequential("Checkpoint A PostgreSQL integration", () => {
     expect(retry.interruptType).toBe("LEARNER_RETRY_REQUIRED");
     const learnerResume = await resumeWorkflow(learner, retry.threadId, { expectedVersion: retry.expectedVersion, response: "I checked units and justified each transformation.", structuredInput: { responseType: "FREE_TEXT" }, idempotencyKey: `retry-attempt:${randomUUID()}` });
     expect(learnerResume.interruptType).toBe("RETRY_RESULT_REVIEW_REQUIRED");
-    const teacherResume = await resumeWorkflow(teacher, retry.threadId, { expectedVersion: learnerResume.expectedVersion, decision: "ACCEPT", teachingSupport: "The retry now states the evidence for each transformation.", outcomeStatus: "IMPROVED", outcomeNarrative: "The learner improved on the linked Retry after direct human Review.", reviewIdempotencyKey: `retry-review:${randomUUID()}`, outcomeIdempotencyKey: `retry-outcome:${randomUUID()}` });
+    const teacherPayload = { expectedVersion: learnerResume.expectedVersion, decision: "ACCEPT", teachingSupport: "The retry now states the evidence for each transformation.", outcomeStatus: "IMPROVED", outcomeNarrative: "The learner improved on the linked Retry after direct human Review.", reviewIdempotencyKey: `retry-review:${randomUUID()}`, outcomeIdempotencyKey: `retry-outcome:${randomUUID()}` } as const;
+    await expect(resumeWorkflow(teacher, retry.threadId, teacherPayload, { testFaults: { afterGraphCompletion() { throw new WorkflowProcessCrashForTests(); } } })).rejects.toBeInstanceOf(WorkflowProcessCrashForTests);
+    const crashedResult = await getDb().select().from(workflowRuns).where(eq(workflowRuns.id, retry.runId));
+    expect(crashedResult[0]).toMatchObject({ status: "RESUMING" });
+    const retryId = String((learnerResume.result as Record<string, unknown>).retryId);
+    const resultObservationId = String((learnerResume.result as Record<string, unknown>).resultObservationId);
+    const [originalReview] = await getDb().select().from(teacherReviews).where(eq(teacherReviews.observationId, resultObservationId));
+    const [originalOutcome] = await getDb().select().from(learningOutcomes).where(eq(learningOutcomes.retryId, retryId));
+    expect(originalReview?.id).toBeTruthy();
+    expect(originalOutcome?.id).toBeTruthy();
+    await getDb().update(workflowRuns).set({ resumeLeaseExpiresAt: new Date(Date.now() - 1) }).where(eq(workflowRuns.id, retry.runId));
+    const teacherResume = await resumeWorkflow(teacher, retry.threadId, teacherPayload);
     expect(teacherResume.status).toBe("COMPLETED");
     const outcomeId = String((teacherResume.result as Record<string, unknown>).outcomeId);
+    expect(outcomeId).toBe(originalOutcome.id);
+    expect(String((teacherResume.result as Record<string, unknown>).resultReviewId)).toBe(originalReview.id);
+    expect(await getDb().select().from(teacherReviews).where(eq(teacherReviews.observationId, resultObservationId))).toEqual([originalReview]);
+    expect(await getDb().select().from(learningOutcomes).where(eq(learningOutcomes.retryId, retryId))).toEqual([originalOutcome]);
     const [outcome] = await getDb().select().from(learningOutcomes).where(eq(learningOutcomes.id, outcomeId)).limit(1);
     expect(outcome.outcomeType).toBe("RETRY");
     expect(outcome.evidenceRefs.map((reference) => reference.kind)).toEqual(["ATTEMPT", "DIAGNOSIS", "REVIEW"]);

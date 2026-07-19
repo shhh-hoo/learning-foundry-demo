@@ -11,7 +11,7 @@ import {
 } from "@/application/commands";
 import { getActor } from "@/application/actor";
 import { getFoundryWorkspace, getTaskDetail } from "@/application/queries";
-import { resumeWorkflow, startWorkflow } from "@/application/workflow-service";
+import { resumeWorkflow, startWorkflow, WorkflowProcessCrashForTests } from "@/application/workflow-service";
 import { closeDb, getDb, getSql } from "@/db/client";
 import { SEED } from "@/db/ids";
 import {
@@ -23,6 +23,7 @@ import {
   components,
   diagnosticObservations,
   publicationDecisions,
+  workflowRuns,
 } from "@/db/schema";
 import type { Actor } from "@/domain/model";
 import { CHEMISTRY_CAPABILITIES } from "@/reference-packs/chemistry/capabilities";
@@ -156,13 +157,26 @@ describe.sequential("Complete governed Component Asset Loop", () => {
     const publishRun = await startWorkflow({ kind: "COMPONENT_LIFECYCLE", actor: expert, state: { componentId: component.id, componentVersionId: successor.componentVersionId } });
     expect((publishRun.result as Record<string, unknown>).systemStatus).toBe("PASSED");
     const publicationKey = `approve:${randomUUID()}`;
-    const published = await resumeWorkflow(expert, publishRun.threadId, { expectedVersion: publishRun.expectedVersion, action: "APPROVE", rationale: "Two current reviewed Attempts and all system gates support publication.", rubric, idempotencyKey: publicationKey });
+    const publicationPayload = { expectedVersion: publishRun.expectedVersion, action: "APPROVE" as const, rationale: "Two current reviewed Attempts and all system gates support publication.", rubric, idempotencyKey: publicationKey };
+    await expect(resumeWorkflow(expert, publishRun.threadId, publicationPayload, { testFaults: { afterGraphCompletion() { throw new WorkflowProcessCrashForTests(); } } })).rejects.toBeInstanceOf(WorkflowProcessCrashForTests);
+    const [crashedRun] = await getDb().select().from(workflowRuns).where(eq(workflowRuns.id, publishRun.runId));
+    expect(crashedRun.status).toBe("RESUMING");
+    const [originalDecision] = await getDb().select().from(publicationDecisions).where(eq(publicationDecisions.componentVersionId, successor.componentVersionId));
+    expect(originalDecision?.id).toBeTruthy();
+    await getDb().update(workflowRuns).set({ resumeLeaseExpiresAt: new Date(Date.now() - 1) }).where(eq(workflowRuns.id, publishRun.runId));
+    const published = await resumeWorkflow(expert, publishRun.threadId, publicationPayload);
     expect(published.status).toBe("COMPLETED");
+    expect(String((published.result as Record<string, unknown>).decisionId)).toBe(originalDecision.id);
+    expect(await getDb().select().from(publicationDecisions).where(eq(publicationDecisions.componentVersionId, successor.componentVersionId))).toEqual([originalDecision]);
     const evaluationId = String((publishRun.result as Record<string, unknown>).evaluationId);
     const replay = await decidePublication(expert, { componentVersionId: successor.componentVersionId, evaluationId, workflowThreadId: publishRun.threadId, action: "APPROVE", rationale: "Two current reviewed Attempts and all system gates support publication.", rubric, idempotencyKey: publicationKey });
     expect(replay.replayed).toBe(true);
 
-    const firstDelivery = await deliverActiveComponentSupport(teacher, { observationId: signalObservationIds[1], idempotencyKey: `delivery:${randomUUID()}` });
+    const deliveryKey = `delivery:${randomUUID()}`;
+    const firstDelivery = await deliverActiveComponentSupport(teacher, { observationId: signalObservationIds[1], idempotencyKey: deliveryKey });
+    const replayedDelivery = await deliverActiveComponentSupport(teacher, { observationId: signalObservationIds[1], idempotencyKey: deliveryKey });
+    expect(replayedDelivery).toMatchObject({ deliveryId: firstDelivery.deliveryId, replayed: true });
+    expect(await getDb().select().from(componentDeliveries).where(eq(componentDeliveries.id, firstDelivery.deliveryId))).toHaveLength(1);
     expect(firstDelivery.componentVersionId).toBe(successor.componentVersionId);
     const learnerDetail = await getTaskDetail(learner, SEED.task);
     expect(learnerDetail?.componentSupport.some(({ delivery }) => delivery.id === firstDelivery.deliveryId)).toBe(true);

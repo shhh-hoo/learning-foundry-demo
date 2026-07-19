@@ -15,6 +15,13 @@
       "when": 1784398774970,
       "tag": "0001_full_framework",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784433600000,
+      "tag": "0002_recoverable_resume_claims",
+      "breakpoints": true
     }
   ]
 }

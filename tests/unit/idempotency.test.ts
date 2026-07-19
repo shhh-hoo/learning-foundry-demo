@@ -11,4 +11,13 @@ describe("idempotency request identity", () => {
     expect(commandRequestHash(actor, "CREATE_TASK", { title: "A" })).not.toBe(commandRequestHash(actor, "OTHER", { title: "A" }));
     expect(commandRequestHash(actor, "CREATE_TASK", { title: "A" })).not.toBe(commandRequestHash(otherActor, "CREATE_TASK", { title: "A" }));
   });
+
+  it("binds ConversationEvent replay identity to actor, command, and exact payload", () => {
+    const event = { taskId: "task-1", episodeId: "episode-1", actorType: "LEARNER", kind: "MESSAGE", content: "same", sourceRefs: [], evidenceRefs: [] };
+    const hash = commandRequestHash(actor, "APPEND_CONVERSATION_EVENT", event);
+    expect(commandRequestHash(actor, "APPEND_CONVERSATION_EVENT", { ...event, evidenceRefs: [], sourceRefs: [] })).toBe(hash);
+    expect(commandRequestHash(actor, "APPEND_CONVERSATION_EVENT", { ...event, content: "changed" })).not.toBe(hash);
+    expect(commandRequestHash(otherActor, "APPEND_CONVERSATION_EVENT", event)).not.toBe(hash);
+    expect(commandRequestHash(actor, "OTHER_EVENT_COMMAND", event)).not.toBe(hash);
+  });
 });

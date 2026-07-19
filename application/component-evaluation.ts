@@ -23,6 +23,7 @@ import {
   subjects,
   teacherReviews,
 } from "@/db/schema";
+import { assertExecutionActive, rethrowIfExecutionStopped } from "@/application/execution-control";
 
 export const COMPONENT_EVALUATOR_KEY = "foundry-component-system-gates";
 export const COMPONENT_EVALUATOR_VERSION = "1.0.0";
@@ -66,6 +67,7 @@ function fixtureMatchesExpected(actual: {
 }
 
 export async function runComponentEvaluation(actor: Actor, componentVersionId: string) {
+  assertExecutionActive();
   requireRole(actor, ["EXPERT", "ADMIN"]);
   const db = getDb();
   const [row] = await db.select({ component: components, version: componentVersions })
@@ -151,6 +153,7 @@ export async function runComponentEvaluation(actor: Actor, componentVersionId: s
         result: execution.result,
       };
     } catch (error) {
+      rethrowIfExecutionStopped(error);
       fixtureExecution = { status: "FAILED", reason: error instanceof Error ? error.message : String(error) };
     }
   }
@@ -214,6 +217,7 @@ export async function runComponentEvaluation(actor: Actor, componentVersionId: s
     evidenceChecks,
   })).digest("hex");
   const evaluationId = randomUUID();
+  assertExecutionActive();
   const evaluation = await db.transaction(async (tx) => {
     const [locked] = await tx.select().from(componentVersions).where(eq(componentVersions.id, row.version.id)).for("update").limit(1);
     if (!locked || locked.status !== "DRAFT" || locked.contentHash !== row.version.contentHash) {

@@ -1,13 +1,14 @@
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
+import { assertExecutionActive, type ExecutionControl } from "@/application/execution-control";
 
 export type StoredObject = { storageKey: string; byteSize: number };
 
 export interface FileStorage {
-  put(input: { key: string; bytes: Uint8Array }): Promise<StoredObject>;
-  read(key: string): Promise<Uint8Array>;
-  delete(key: string): Promise<void>;
+  put(input: { key: string; bytes: Uint8Array }, control?: ExecutionControl): Promise<StoredObject>;
+  read(key: string, control?: ExecutionControl): Promise<Uint8Array>;
+  delete(key: string, control?: ExecutionControl): Promise<void>;
 }
 
 function configuredRoot(): string {
@@ -30,20 +31,38 @@ export class LocalFileStorage implements FileStorage {
     return target;
   }
 
-  async put(input: { key: string; bytes: Uint8Array }): Promise<StoredObject> {
+  async put(input: { key: string; bytes: Uint8Array }, control?: ExecutionControl): Promise<StoredObject> {
+    assertExecutionActive(control);
     const target = this.pathFor(input.key);
     await mkdir(dirname(target), { recursive: true });
+    assertExecutionActive(control);
     const temporary = `${target}.${randomUUID()}.tmp`;
-    await writeFile(temporary, input.bytes, { flag: "wx" });
-    await rename(temporary, target);
-    return { storageKey: input.key, byteSize: input.bytes.byteLength };
+    let renamed = false;
+    try {
+      await writeFile(temporary, input.bytes, { flag: "wx", signal: control?.signal });
+      assertExecutionActive(control);
+      // rename has no AbortSignal option; the following guard makes that
+      // limitation explicit and removes the just-written unique object on stop.
+      await rename(temporary, target);
+      renamed = true;
+      assertExecutionActive(control);
+      return { storageKey: input.key, byteSize: input.bytes.byteLength };
+    } catch (error) {
+      await unlink(temporary).catch(() => undefined);
+      if (renamed) await unlink(target).catch(() => undefined);
+      throw error;
+    }
   }
 
-  async read(key: string): Promise<Uint8Array> {
-    return new Uint8Array(await readFile(this.pathFor(key)));
+  async read(key: string, control?: ExecutionControl): Promise<Uint8Array> {
+    assertExecutionActive(control);
+    const bytes = new Uint8Array(await readFile(this.pathFor(key), { signal: control?.signal }));
+    assertExecutionActive(control);
+    return bytes;
   }
 
-  async delete(key: string): Promise<void> {
+  async delete(key: string, control?: ExecutionControl): Promise<void> {
+    assertExecutionActive(control);
     try {
       await unlink(this.pathFor(key));
     } catch (error) {

@@ -34,22 +34,30 @@ import { authorizeEvidenceUnitInstitution, authorizePersistedEvidence, evidenceA
 import { requireCourseAccess, requireRole } from "@/domain/invariants";
 import { learnerCapabilityDescriptorsForCourse } from "@/application/capabilities";
 
-export const STALE_RESUMING_TIMEOUT_MS = 5 * 60 * 1_000;
-
-export async function getStaleResumingRuns(actor: Actor, now = new Date()) {
+export async function getRecoverableResumingRuns(actor: Actor, now = new Date()) {
   requireRole(actor, ["ENGINEER", "ADMIN"]);
   const authorizedTasks = await getDb().select({ id: learningTasks.id }).from(learningTasks).where(and(
     eq(learningTasks.institutionId, actor.institutionId),
     inArray(learningTasks.courseId, actor.courseIds.length ? actor.courseIds : ["00000000-0000-0000-0000-000000000000"]),
   ));
-  if (!authorizedTasks.length) return [];
-  return getDb().select().from(workflowRuns).where(and(
+  const authorizedComponents = await getDb().select({ id: components.id }).from(components).where(and(
+    eq(components.institutionId, actor.institutionId),
+    inArray(components.courseId, actor.courseIds.length ? actor.courseIds : ["00000000-0000-0000-0000-000000000000"]),
+  ));
+  const taskIds = new Set(authorizedTasks.map((task) => task.id));
+  const componentIds = new Set(authorizedComponents.map((component) => component.id));
+  const rows = await getDb().select().from(workflowRuns).where(and(
     eq(workflowRuns.institutionId, actor.institutionId),
     eq(workflowRuns.status, "RESUMING"),
-    inArray(workflowRuns.taskId, authorizedTasks.map((task) => task.id)),
-    lte(workflowRuns.resumeClaimedAt, new Date(now.getTime() - STALE_RESUMING_TIMEOUT_MS)),
-  )).orderBy(workflowRuns.resumeClaimedAt);
+    lte(workflowRuns.resumeLeaseExpiresAt, now),
+  )).orderBy(workflowRuns.resumeLeaseExpiresAt);
+  return rows
+    .filter((run) => run.taskId ? taskIds.has(run.taskId) : Boolean(run.productLinks.componentId && componentIds.has(run.productLinks.componentId)))
+    .map((run) => ({ ...run, recoveryStatus: "RECLAIMABLE" as const }));
 }
+
+/** Compatibility name for existing Engineering consumers. Returned claims are recoverable, not permanently stuck. */
+export const getStaleResumingRuns = getRecoverableResumingRuns;
 
 export async function getLearnerWorkspace(actor: Actor) {
   requireRole(actor, ["LEARNER", "ADMIN"]);
@@ -486,7 +494,7 @@ export async function getEngineeringWorkspace(actor: Actor) {
       productEval: "UNAVAILABLE",
       pedagogyEval: "UNAVAILABLE",
       learningEffectivenessEval: "UNAVAILABLE",
-      automatedResumeCrashRecovery: "NOT_IMPLEMENTED",
+      automatedResumeCrashRecovery: "LEASED_RECLAIM_AVAILABLE",
       managedDatabaseTenantPolicy: "NOT_CONFIGURED",
       publicPreview: "BLOCKED",
     },

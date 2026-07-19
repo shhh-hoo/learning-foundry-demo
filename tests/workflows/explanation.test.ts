@@ -62,6 +62,7 @@ describe("Evidence-present explanation without a configured model", () => {
       episodeId: "80000000-0000-4000-8000-000000000002",
       response: mapped.response,
       citations: [citation],
+      eventIdempotencyKey: "explanation-event:test",
     });
     expect(event.content).toBe(mapped.response);
     expect(event.sourceRefs).toEqual([{ sourceId: citation.sourceId, sourceVersion: citation.sourceVersion, locator: citation.locator }]);
