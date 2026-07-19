@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { createTask } from "@/application/commands";
-import { requireApiActor } from "@/application/identity";
+import { withApiActor } from "@/application/identity";
 import { errorResponse } from "@/application/http";
 import { getLearnerWorkspace } from "@/application/queries";
 
@@ -12,13 +12,12 @@ const CreateTask = z.object({
 });
 
 export async function GET() {
-  try { return Response.json(await getLearnerWorkspace(await requireApiActor())); }
+  try { return await withApiActor(async (actor) => Response.json(await getLearnerWorkspace(actor))); }
   catch (error) { return errorResponse(error); }
 }
 
 export async function POST(request: Request) {
   try {
-    const actor = await requireApiActor();
-    return Response.json(await createTask(actor, CreateTask.parse(await request.json())), { status: 201 });
+    return await withApiActor(async (actor) => Response.json(await createTask(actor, CreateTask.parse(await request.json())), { status: 201 }));
   } catch (error) { return errorResponse(error); }
 }

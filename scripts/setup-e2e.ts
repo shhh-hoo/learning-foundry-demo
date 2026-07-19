@@ -36,6 +36,8 @@ async function setupE2eDatabase(): Promise<void> {
 
   const reset = postgres(databaseUrl, { max: 1, prepare: false });
   try {
+    await reset`DROP SCHEMA IF EXISTS foundry_checkpoint_private CASCADE`;
+    await reset`DROP SCHEMA IF EXISTS foundry_private CASCADE`;
     await reset`DROP SCHEMA IF EXISTS langgraph_checkpoint CASCADE`;
     await reset`DROP SCHEMA IF EXISTS foundry_operational CASCADE`;
     await reset`DROP SCHEMA IF EXISTS foundry_product CASCADE`;
@@ -69,8 +71,21 @@ async function setupE2eDatabase(): Promise<void> {
   const checkpointer = PostgresSaver.fromConnString(databaseUrl, { schema: "langgraph_checkpoint" });
   await checkpointer.setup();
   await checkpointer.end();
+  const { applyCheckpointSecurity } = await import("@/db/checkpoint-security");
+  await applyCheckpointSecurity(databaseUrl);
 
   await import("@/db/seed-showcase");
+  const [{ getDb: getSeedDb, closeDb: closeSeedDb }, { authIdentities }, { SEED }, { SYNTHETIC_ISSUER }] = await Promise.all([
+    import("@/db/client"),
+    import("@/db/schema"),
+    import("@/db/ids"),
+    import("@/application/auth-session"),
+  ]);
+  await getSeedDb().insert(authIdentities).values([
+    { issuer: "https://localhost:3201", subject: "oidc-e2e-learner", userId: SEED.learner },
+    ...[SEED.learner, SEED.teacher, SEED.expert, SEED.engineer].map((userId) => ({ issuer: SYNTHETIC_ISSUER, subject: userId, userId })),
+  ]).onConflictDoNothing();
+  await closeSeedDb();
   console.log(`Reset and seeded guarded local E2E database ${E2E_DATABASE_NAME}.`);
 }
 

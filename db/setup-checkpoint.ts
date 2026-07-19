@@ -1,10 +1,13 @@
 import { PostgresSaver } from "@langchain/langgraph-checkpoint-postgres";
-import { getCheckpointDatabaseUrl } from "@/db/client";
+import { getCheckpointMigrationDatabaseUrl } from "@/db/client";
+import { applyCheckpointSecurity } from "@/db/checkpoint-security";
 
-const checkpointer = PostgresSaver.fromConnString(getCheckpointDatabaseUrl(), {
+const databaseUrl = getCheckpointMigrationDatabaseUrl();
+const checkpointer = PostgresSaver.fromConnString(databaseUrl, {
   schema: "langgraph_checkpoint",
 });
 
 await checkpointer.setup();
 await checkpointer.end();
-console.log("LangGraph checkpoint migrations applied to langgraph_checkpoint.");
+await applyCheckpointSecurity(databaseUrl);
+console.log("LangGraph checkpoint migrations and tenant policies applied to langgraph_checkpoint.");

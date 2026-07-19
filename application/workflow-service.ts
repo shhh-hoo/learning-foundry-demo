@@ -201,8 +201,8 @@ async function authorizeWorkflowStart(input: {
   return { state: parsed, taskId: undefined, episodeId: undefined };
 }
 
-function graphFor(kind: WorkflowKind, testFaults?: WorkflowServiceTestFaults): InvokableGraph {
-  const checkpointer = getWorkflowCheckpointer();
+function graphFor(kind: WorkflowKind, institutionId: string, testFaults?: WorkflowServiceTestFaults): InvokableGraph {
+  const checkpointer = getWorkflowCheckpointer(institutionId);
   if (kind === "LEARNER_TASK") return buildLearnerTaskGraph(checkpointer, testFaults) as unknown as InvokableGraph;
   if (kind === "EXPLANATION") return buildExplanationGraph(checkpointer, testFaults?.explanation) as unknown as InvokableGraph;
   if (kind === "DIAGNOSIS") return buildDiagnosisGraph(checkpointer) as unknown as InvokableGraph;
@@ -220,7 +220,11 @@ export async function startWorkflow(input: { kind: WorkflowKind; actor: Actor; s
   return runWithExecutionControl(input.execution, async (control) => {
     const authorized = await authorizeWorkflowStart(input);
     const { state, taskId, episodeId } = authorized;
-    const threadId = input.threadId ?? `${input.kind.toLowerCase()}:${randomUUID()}`;
+    const expectedThreadPrefix = `${input.actor.institutionId}:`;
+    if (input.threadId && !input.threadId.startsWith(expectedThreadPrefix)) {
+      throw new DomainInvariantError("Workflow thread IDs require the active institution prefix", "CHECKPOINT_TENANT_PREFIX_REQUIRED");
+    }
+    const threadId = input.threadId ?? `${expectedThreadPrefix}${input.kind.toLowerCase()}:${randomUUID()}`;
     const runId = randomUUID();
     assertExecutionActive(control);
     await getDb().insert(workflowRuns).values({
@@ -237,7 +241,7 @@ export async function startWorkflow(input: { kind: WorkflowKind; actor: Actor; s
     try {
       const eventState = input.kind === "EXPLANATION" ? { ...state, eventIdempotencyKey: (state as z.infer<typeof ExplanationWorkflowStart>).idempotencyKey } : state;
       const graphState = input.kind === "COMPONENT_LIFECYCLE" ? { ...eventState, workflowThreadId: threadId, actor: input.actor } : { ...eventState, actor: input.actor };
-      const result = await traced(`foundry.workflow.${input.kind.toLowerCase()}`, { userId: input.actor.userId, institutionId: input.actor.institutionId, taskId: taskId ?? "", "workflow.thread_id": threadId }, () => graphFor(input.kind, input.testFaults).invoke(graphState, { configurable: { thread_id: threadId }, recursionLimit: 50, signal: control.signal }));
+      const result = await traced(`foundry.workflow.${input.kind.toLowerCase()}`, { userId: input.actor.userId, institutionId: input.actor.institutionId, taskId: taskId ?? "", "workflow.thread_id": threadId }, () => graphFor(input.kind, input.actor.institutionId, input.testFaults).invoke(graphState, { configurable: { thread_id: threadId }, recursionLimit: 50, signal: control.signal }));
       await input.testFaults?.afterGraphCompletion?.({ kind: input.kind, runId, threadId, result });
       assertExecutionActive(control);
       const interrupted = interruptType(result);
@@ -261,6 +265,9 @@ function extractProductLinks(result: unknown): Record<string, string> {
 
 export async function resumeWorkflow(actor: Actor, threadId: string, payload: Record<string, unknown>, options: WorkflowExecutionOptions = {}) {
   return runWithExecutionControl(options.execution, async (control) => {
+  if (!threadId.startsWith(`${actor.institutionId}:`)) {
+    throw new DomainInvariantError("Checkpoint thread scope does not match the active institution", "TENANT_ISOLATION");
+  }
   const [run] = await getDb().select().from(workflowRuns).where(and(eq(workflowRuns.threadId, threadId), eq(workflowRuns.institutionId, actor.institutionId))).limit(1);
   if (!run) throw new DomainInvariantError("Workflow is outside the actor's authorized scope", "TENANT_ISOLATION");
   if (run.interruptType === "TEACHER_REVIEW_REQUIRED" || run.interruptType === "RETRY_RESULT_REVIEW_REQUIRED") requireRole(actor, ["TEACHER", "ADMIN"]);
@@ -284,7 +291,7 @@ export async function resumeWorkflow(actor: Actor, threadId: string, payload: Re
   try {
     const { expectedVersion: _expectedVersion, ...resumePayload } = payload;
     void _expectedVersion;
-    const result = await graphFor(kind, options.testFaults).invoke(new Command({ resume: { ...resumePayload, actor } }), { configurable: { thread_id: threadId }, recursionLimit: 50, signal: control.signal });
+    const result = await graphFor(kind, actor.institutionId, options.testFaults).invoke(new Command({ resume: { ...resumePayload, actor } }), { configurable: { thread_id: threadId }, recursionLimit: 50, signal: control.signal });
     await options.testFaults?.afterGraphCompletion?.({ kind, runId: run.id, threadId, result });
     assertExecutionActive(control);
     const nextInterrupt = interruptType(result);

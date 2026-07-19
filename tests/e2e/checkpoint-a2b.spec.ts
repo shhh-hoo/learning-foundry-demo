@@ -1,4 +1,6 @@
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import postgres from "postgres";
+import { SEED } from "@/db/ids";
 import { minimalPng, simplePdf } from "@/tests/helpers/files";
 
 const institutionSlug = "checkpoint-showcase";
@@ -51,6 +53,22 @@ test("wrong-role navigation redirects to a data-free denied page", async ({ page
   await expect(page.getByText("No workspace query was executed and no workspace data is shown.")).toBeVisible();
   await expect(page.getByText("CAPABILITY_UNAVAILABLE")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Course-scoped failure codes" })).toHaveCount(0);
+  const rawUrl = process.env.E2E_DATABASE_URL;
+  if (!rawUrl) throw new Error("E2E_DATABASE_URL is required");
+  const sql = postgres(rawUrl, { max: 1, prepare: false });
+  try {
+    await expect.poll(async () => {
+      const [row] = await sql<Array<{ count: number }>>`
+        SELECT count(*)::int AS count FROM foundry_operational.security_events
+        WHERE event_class = 'AUTHORIZATION' AND event_code = 'ROLE_DENIED'
+          AND institution_id = ${SEED.institution}::uuid AND actor_user_id = ${SEED.learner}::uuid
+          AND detail->>'workspace' = 'Teacher Workspace'
+      `;
+      return row?.count ?? 0;
+    }).toBeGreaterThan(0);
+  } finally {
+    await sql.end();
+  }
 });
 
 test("complete Learning Loop and governed Component Asset Loop", async ({ browser }, testInfo) => {

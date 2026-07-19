@@ -22,6 +22,13 @@
       "when": 1784433600000,
       "tag": "0002_recoverable_resume_claims",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1784455200000,
+      "tag": "0003_production_auth_tenant_enforcement",
+      "breakpoints": true
     }
   ]
 }

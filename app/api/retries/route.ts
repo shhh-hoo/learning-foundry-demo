@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { requireApiActor } from "@/application/identity";
+import { withApiActor } from "@/application/identity";
 import { errorResponse } from "@/application/http";
 import { startWorkflow } from "@/application/workflow-service";
 
@@ -14,8 +14,9 @@ const StartRetry = z.object({
 
 export async function POST(request: Request) {
   try {
-    const actor = await requireApiActor();
-    const state = StartRetry.parse(await request.json());
-    return Response.json(await startWorkflow({ kind: "RETRY_OUTCOME", actor, state, execution: { signal: request.signal } }), { status: 201 });
+    return await withApiActor(async (actor) => {
+      const state = StartRetry.parse(await request.json());
+      return Response.json(await startWorkflow({ kind: "RETRY_OUTCOME", actor, state, execution: { signal: request.signal } }), { status: 201 });
+    });
   } catch (error) { return errorResponse(error); }
 }
