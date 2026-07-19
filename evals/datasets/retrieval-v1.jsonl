@@ -1,0 +1,2 @@
+{"id":"calculation-route","query":"How should I check a calculation route and its units?","expectedLocator":"synthetic-note#reasoning-route"}
+{"id":"structured-review","query":"Show the structured review path for a transformation and result","expectedModality":"TABLE"}

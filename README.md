@@ -1,93 +1,212 @@
-# Learning Foundry
+# Learning Foundry · full-framework rewrite
 
-Learning Foundry is a governed learning system where a real DeepSeek Agent uses explicit tools, deterministic diagnosis and human publication gates.
+This branch contains the Next.js App Router, LangGraph JS and PostgreSQL replacement baseline. It is an internal engineering checkpoint, not a completed product, accepted Showcase or cutover claim.
 
-- **Learner Workspace** — real learner input, source-grounded Agent responses, Learner Diagnosis evidence, and user-confirmed Library or Schedule writes.
-- **Foundry Studio** — a configurable repeated-diagnosis signal from PRODUCT runs, a teacher-operated governed Hint Editor, Component Contract Checks, Expert Review and publication.
-- **Engineering Inspector** — real Agent Traces, AgentEval reports, Learner Diagnosis, Runtime Validation, Component Registry and system boundaries.
-- **Demo Shell** — an event-driven observer around the product surfaces; it is not the product and cannot create evidence.
+## Product authority
 
-No key means no model answer, tool result, Trace, pattern, candidate, Library artifact or Schedule item. Presets only fill learner input and are recorded as `PRESET_INPUT`.
-
-## Local services
+Current documentation authority:
 
 ```text
-4173  Learning Foundry UI
-4174  Standard Trainer UI
-4175  Component Registry
-4176  DeepSeek Agent Gateway
-4177  Trainer Diagnosis API
+shhh-hoo/learning-foundry-docs@05413353c5b4d231878747d307cb8dd3c232eeb1
 ```
 
-Export the values shown in `docs/DEEPSEEK_LOCAL_SETUP.md`, or copy `.env.local.example` to the gitignored `.env.local`. `DEEPSEEK_API_KEY` and `DEEPSEEK_MODEL` are both required for Agent runs. Never expose the key through Vite variables or browser storage.
+Learning Foundry is an **AI Learning Orchestration Platform**.
 
-```bash
-npm install
-npm run demo:local
+```text
+Context
++ Diagnosis
++ Capability Registry
++ Matching / Generation
++ Runtime Orchestration
++ Teacher Governance
++ Learning Feedback
 ```
 
-Open `http://127.0.0.1:4173/`. Standard Trainer must exist at `../standard-trainer-demo` unless `TRAINER_REPO` points elsewhere.
+A `ComponentAsset` is an executable, interactive or orchestratable learning tool or experience. It is not an article, PDF, page or generic CMS content record.
 
-## Governed 9701 corpus
+Repository instructions are in [`AGENTS.md`](AGENTS.md).
 
-Place the two school-internal source files at `private-sources/9701-2025-2027-syllabus.pdf` and `private-sources/Chem_Calculation_Book_Almost_Everything.pdf`. Both `private-sources/` and `.local-data/corpus/` are gitignored. Source authority, versions and distribution rules come from `corpus/02_SOURCE_MANIFEST.json`; source bytes never enter Git or retrieval traces.
+## Product surfaces
 
-```bash
-npm run corpus:ingest
-npm run corpus:inspect
+1. **Learner Workspace** — Task, Chat / Guidance, Active Asset Stage, Attempts, progress and next step.
+2. **Teacher Workspace** — Assign, Monitor and Intervene, Learning Evidence, and Improve.
+3. **Capability Workshop** — need-driven parameterization, composition, adaptation, generation, checks and confirmation.
+4. **Engineering / Evaluation** — workflow, Product State, Context, retrieval, capability resolution, runtime, security and Eval inspection.
+
+Capability Workshop is not a CMS. Generic article/page authoring, giant manual Component forms, field/block editorial workflows and a standalone content-publishing backend are not current product scope.
+
+## Three orchestration loops
+
+```text
+Learning Delivery
+Task / Goal
+→ Context
+→ current learning need
+→ capability resolution
+→ Asset Stage
+→ learner operations and Attempt
+
+Diagnosis and Teacher Governance
+Attempt
+→ DiagnosticObservationProposal
+→ confidence/risk gate
+→ teacher review or bounded continuation
+→ Retry / Transfer / Retention
+→ reviewed Outcome
+
+Capability Supply and Optimization
+no-match / failure / improvement signal
+→ existing asset
+→ parameterize
+→ compose
+→ adapt
+→ generate only when necessary
+→ checks and teacher confirmation
+→ Registry availability
+→ real delivery
+→ asset / routing / learning-strategy optimization
 ```
 
-Ingestion validates every chunk against `corpus/04_RETRIEVAL_CHUNK_SCHEMA.json`, then writes a content-addressed immutable lexical index. Gateway startup reports registered/missing sources, the index version, and chunk counts by source type and distribution scope. The public-safe export command includes only source metadata plus the original Teacher Notes and structured cases.
+## Repository and PR status
 
-## Verification
+```text
+main
+  Legacy/current baseline; unchanged by the rewrite
+
+rewrite/full-framework
+  umbrella implementation branch
+
+PR #22
+  Draft umbrella PR to main
+
+child PRs
+  target rewrite/full-framework
+```
+
+The independently audited implementation checkpoint is:
+
+```text
+b6f023fe995e44e714bf5da2c2096128e1def9fe
+```
+
+Historical audit result at that exact head:
+
+- browser validated: 10 historical rows;
+- automated verified: 3 historical rows;
+- rework: 15 historical rows;
+- not implemented: 14 historical rows;
+- human, live-provider and preview validation: none.
+
+The former 42-row/113-row mappings and `COMP-*` authority are superseded. Current implementation evidence must be remapped to `REL`, `LEARN`, `TEACH`, `OUTCOME`, `CTX`, `EVID`, `CAP`, `DATA`, `SEC`, `EVAL` and `OPS` requirements.
+
+## Current technical foundation
+
+The rewrite currently includes substantial foundations for:
+
+- Next.js product surfaces;
+- PostgreSQL Product State;
+- separate LangGraph checkpoint state;
+- workflow interrupt/resume and persisted execution;
+- source/PDF/image intake and Evidence lineage;
+- lexical/vector retrieval and optional reranking/provider adapters;
+- deterministic Chemistry capabilities;
+- Attempts, TeacherReview and partial Retry/Outcome paths;
+- version-pinned capability/asset delivery;
+- Engineering inspection;
+- synthetic-role browser flows.
+
+These foundations do not constitute corrected-contract acceptance.
+
+## State and authority boundaries
+
+- `foundry_product` stores canonical Product State.
+- `foundry_operational` stores workflow, retrieval and Eval inspection records.
+- `langgraph_checkpoint` is the separate checkpoint store.
+- Authenticated actor provenance, not caller-supplied identity text, authorizes human decisions.
+- LangGraph checkpoint state is not canonical Product State.
+- Runtime completion is not Diagnosis, TeacherReview or LearningOutcome.
+- Evidence Retrieval, Capability Resolution and Component Asset Runtime are separate operations.
+
+## Known blockers at the audited checkpoint
+
+- production authentication is not integrated; synthetic credentials remain Showcase/test-only;
+- database-level tenant enforcement/RLS is not complete;
+- canonical orchestration Product State is incomplete;
+- Context Compiler is partial;
+- Capability Resolution is not yet a complete candidate/exclusion/rationale resolver;
+- Transfer and Retention behavior is incomplete;
+- live multimodal/provider success is not independently validated;
+- online preview is unavailable;
+- replay/recovery/cancellation safety requires further work;
+- generic CMS-like code must be reviewed and removed or repurposed where it does not support callable learning assets.
+
+Do not convert these blockers into optimistic completion language.
+
+## Build / Adopt / Partner
+
+Use mature infrastructure for non-differentiating foundations:
+
+- managed authentication;
+- organization and membership foundations;
+- database-enforced tenant isolation;
+- Object Storage;
+- durable workflow mechanics;
+- hybrid retrieval/vector infrastructure;
+- provider adapters;
+- observability;
+- queues, email and deployment.
+
+Foundry retains Task, Context, Evidence, Diagnosis, capability selection, ActivityPlan, runtime semantics, teacher authority, Outcomes and optimization policy.
+
+## Optional live integrations
+
+- `OPENAI_API_KEY` — configured OpenAI model, embedding or multimodal paths;
+- `COHERE_API_KEY` — configured Cohere reranking;
+- `DEEPSEEK_API_KEY` — configured synthesis path where selected;
+- `FILE_STORAGE_LOCAL_ROOT` — explicit local object root for local verification.
+
+Missing providers must return honest unavailable/failed states. They must never synthesize success.
+
+Provider presence is not provider validation or permanent selection evidence.
+
+## Local verification
 
 ```bash
-npm run policy:audit
-npm run core:leakage
-npm test
+npm ci
 npm run check
+npm run lint
+npm test
 npm run build
-npm run agenteval:checkpoint
-npm run agenteval:baseline
-npm run agenteval:core-contract
-npm run agenteval:reference-pack
-npm run agenteval:generalization
-npm run agenteval:adversarial
-npm run agenteval:learning-loop
-npm run agenteval:retrieval
-npm run agenteval:live
-npm run agenteval:report
-npm run agenteval:compare -- --baseline <evalRunId> --candidate <evalRunId>
-npm run runtime:parity:fixture
-npm run runtime:parity:checkpoint -- --run <evalRunId>
-npm run runtime:parity:baseline -- --run <evalRunId>
-npm run runtime:parity:layer -- --run <evalRunId>
-npm run runtime:parity:dimension -- --run <evalRunId>
-npm run runtime:parity:self-check -- --run <evalRunId>
+npm run legacy:scan
 ```
 
-`agenteval:live` requires the real server-side DeepSeek configuration and returns non-zero if it is absent. The full `2.0.0` contract contains 73 cases across the formal suite layers; retrieval is an orthogonal assessment dimension. Automated Tests validate the runner with controlled fixtures; they do not claim that a live AgentEval passed.
+Database verification requires an isolated PostgreSQL database:
 
-Product and AgentEval evidence have required `runPurpose` classification and separate physical stores. Diagnosis problem facts must be backed by exact quotes from the current user message before the Trainer API is called.
+```bash
+export DATABASE_URL=postgresql://...
+npm run db:migrate
+npm run db:checkpoint
+SYNTHETIC_SHOWCASE_MODE=true SHOWCASE_PASSWORD='<unique local secret>' npm run db:seed
+npm run test:integration
+npm run test:integration:rerun
+```
 
-Current runtime infrastructure is reached through narrow contracts for Agent execution, corpus search, Learning Capability execution, AgentEval target transport, trace storage and the local diagnostic Component Repository. The target seam covers health and one Agent run; selection, iteration, grading, persistence and reporting remain in the existing AgentEval runner. The current DeepSeek, lexical corpus, Standard Trainer, file-store and local-showcase implementations remain authoritative Legacy adapters; no candidate framework has authority.
+Synthetic credential authentication is disabled unless `SYNTHETIC_SHOWCASE_MODE=true`. The Showcase password has no repository default and must be supplied through the environment.
 
-The Agent Gateway also contains a candidate-neutral shadow foundation. It is default-off, always returns the Legacy authoritative result, isolates candidate failure and writes role-separated normalized comparison records. No candidate implementation or framework dependency is included.
+## Current engineering priority
 
-The case-level runtime parity harness consumes those role-separated records, reuses AgentEval cases and graders, and writes redacted comparison artifacts under `.runtime-parity-results/`. It reports behavioral equivalence, directional governed quality and operational impact separately. Candidate improvements, shared quality failures and all latency/usage/cost differences require review and exit non-zero. Shadow records move from `RUNNING` to a terminal state under the same execution ID; the CLI waits for a bounded window and distinguishes absent, pending, timed-out and failed candidate evidence. `runtime:parity:self-check` is explicitly Legacy harness validation, not candidate parity.
+```text
+repository guidance alignment
+→ replay / recovery / cancellation safety
+→ mature auth and database tenant enforcement
+→ canonical orchestration Product State
+→ Context and Evidence
+→ Capability Registry / Resolution / Asset Stage
+→ teacher assignment and intervention
+→ Retry / Transfer / Retention / Outcome
+→ one real gap-driven asset adaptation or generation path
+→ asset / routing / strategy optimization
+→ Product Eval and online preview
+```
 
-## Documentation
-
-- [Real Agent architecture](docs/REAL_AGENT_ARCHITECTURE.md)
-- [DeepSeek local setup](docs/DEEPSEEK_LOCAL_SETUP.md)
-- [AgentEval](docs/AGENT_EVAL.md)
-- [Runtime-boundary acceptance](docs/RUNTIME_BOUNDARY_ACCEPTANCE.md)
-- [Runtime shadow foundation acceptance](docs/RUNTIME_SHADOW_FOUNDATION_ACCEPTANCE.md)
-- [Runtime parity acceptance](docs/RUNTIME_PARITY_ACCEPTANCE.md)
-- [Runtime candidate readiness](docs/RUNTIME_CANDIDATE_READINESS.md)
-- [Core / Chemistry Pack acceptance](docs/CORE_CHEMISTRY_PACK_ACCEPTANCE.md)
-- [Chemistry Pack ownership](docs/CHEMISTRY_REFERENCE_PACK_OWNERSHIP.md)
-- [Data-origin policy](docs/DATA_ORIGIN_POLICY.md)
-- [Terminology](docs/TERMINOLOGY.md)
-- [Capability Registry](docs/CAPABILITY_REGISTRY.md)
-- [Product surfaces](docs/PRODUCT_SURFACES.md)
+PR #22 remains Draft until corrected requirements are independently reviewed and the Product Owner explicitly accepts the release. No implementation merge, preview, Pilot, production or cutover authority is implied by this README.

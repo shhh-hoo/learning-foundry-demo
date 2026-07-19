@@ -1,6 +1,0 @@
-{
-  "version": "1.0.0",
-  "statuses": ["ANSWERED", "NEEDS_MORE_EVIDENCE", "CAPABILITY_GAP"],
-  "required": ["status", "learnerMessage", "sourceRefs", "evidenceRefs"],
-  "rule": "sourceRefs contain only governed curriculum, Teacher Note or case source IDs. evidenceRefs contain retrieval, capability, gap, AgentTrace and Diagnosis IDs. All references must come from successful tools in this run. Proposals require later human confirmation."
-}

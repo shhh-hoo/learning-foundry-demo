@@ -1,596 +1,452 @@
-# Learning Foundry Implementation Instructions
+# Learning Foundry Rewrite — Repository Instructions
 
-## Authoritative documentation
+## 1. Authoritative product documentation
 
-The architecture and product source of truth is:
-
-`learning-foundry-docs@260747722e8040972deceed3290bce237676f225`
-
-Before architecture, runtime, Eval, Retrieval, Product State, Component,
-Reference Pack or governance work, read the following documents at that
-authority commit:
-
-1. `docs/00-current-mvp-contract.md`
-2. `docs/15-human-development-handoff.md`
-3. `docs/03-system-architecture.md`
-4. `docs/12-docs-demo-traceability.md`
-5. `docs/14-runtime-adoption-and-migration-program.md`
-6. `docs/16-engineering-history-and-decision-rationale.md`
-7. `docs/09-eval-and-governance.md`
-8. `docs/13-design-debt-and-phasing.md`
-9. `docs/17-build-buy-partner-and-external-components.md`
-
-The current implementation baseline is:
-
-`learning-foundry-demo@8af1ce29e2024ae0d1b45591a570141bb709044f`
-
-That baseline includes:
-
-- stable current-code-backed runtime boundaries and Legacy adapters;
-- a default-off, authoritative-first, candidate-neutral shadow foundation;
-- purpose-and-role-separated runtime evidence;
-- a case-level runtime parity foundation;
-- corrected AgentEval empty-selection and coverage semantics.
-
-When instructions conflict, follow:
-
-`Current MVP Contract > accepted ADR > active domain document > implementation repository prose > task prompt > fixtures`
-
-Historical PR descriptions explain the evidence and scope that existed at
-the time. They do not override the current merged documentation.
-
-Do not allow implementation details, a framework API, an Agent memory
-format or a candidate trace schema to redefine the Learning Foundry domain
-model.
-
-## Current implementation status
-
-The following foundations are merged:
+The current product and architecture source of truth is:
 
 ```text
-stable boundaries and Legacy adapters                 MERGED
-candidate-neutral shadow execution                    MERGED / default-off
-case-level runtime parity                             MERGED / harness validated
-real candidate RuntimeExecutor                        ABSENT
-candidate checkpoint or baseline parity               NOT EXECUTED
-candidate runtime authority                           NOT GRANTED
-AgentEval release-gate authority change               NOT GRANTED
-Legacy deletion authority                             NOT GRANTED
-canonical Product State migration                     NOT STARTED
-full AgentEval 2.0.0 73-case live validation          NOT VALIDATED
+shhh-hoo/learning-foundry-docs@05413353c5b4d231878747d307cb8dd3c232eeb1
 ```
 
-Legacy DeepSeek execution remains the only authoritative learner-facing
-runtime.
+Read in this order before implementation or review:
 
-`runtime:parity:self-check` validates evidence mapping and comparison
-plumbing. It is not candidate parity and it is not a quality pass for a
-failed authoritative case.
+1. `docs/00-current-mvp-contract.md` — current Showcase Release contract;
+2. `docs/01-product-definition.md` — product definition and North Star;
+3. `docs/02-product-surfaces-and-user-journeys.md` — four product surfaces;
+4. `docs/03-system-architecture.md` — orchestration architecture;
+5. `docs/08-asset-and-component-lifecycle.md` — LearningCapability and ComponentAsset contract;
+6. `docs/21-learning-loop-and-outcome-contract.md` — Learning Loop and Outcome;
+7. `docs/04-context-architecture.md` — Context Compiler and isolation;
+8. `docs/05-evidence-and-retrieval.md` — Evidence intake and retrieval;
+9. `docs/06-storage-and-data-lifecycle.md` — semantic objects and authority classes;
+10. `docs/07-learner-model-goals-and-pedagogy.md` — learner adaptation and capability eligibility;
+11. `docs/09-eval-and-governance.md` — Eval and security;
+12. `docs/17-build-buy-partner-and-external-components.md` — mature infrastructure and external-resource boundary;
+13. `docs/20-full-framework-rewrite-and-cutover.md` — rewrite and cutover boundary;
+14. `docs/15-human-development-handoff.md` — engineering operating protocol;
+15. `docs/12-docs-demo-traceability.md` — evidence reset and current requirement inventory.
 
-## Current development program
-
-### Product-critical lane
-
-The current product-critical milestone is the remaining part of
-Cross-disciplinary Core contracts:
-
-`Define domain-neutral Core contracts and the Chemistry CAIE 9701 Reference Pack boundary.`
-
-This lane may include:
-
-- a concrete inventory of Chemistry-specific coupling;
-- a type-checkable or loadable Chemistry Reference Pack manifest;
-- explicit mapping of current Chemistry parsers, schemas, capabilities,
-  components and graders into the Pack;
-- domain-neutral Core relationships for Task, Evidence, Capability,
-  Component, Review, Retry and Outcome;
-- dependency and contract tests that prevent new Chemistry leakage into
-  Core;
-- compatibility adapters that preserve the current Chemistry reference
-  path;
-- implementation and docs traceability updates.
-
-Prefer a manifest, ownership map, adapter contract and leakage tests before
-large-scale physical file movement.
-
-Do not claim generalization merely because Chemistry-specific names were
-renamed.
-
-The product-critical lane must not be blocked by a candidate framework
-experiment.
-
-After the Core / Reference Pack boundary, the next product milestone is
-canonical persistent Product State and a real Learning Loop.
-
-### Candidate-experiment lane
-
-One separately reviewed, default-off candidate `RuntimeExecutor` adapter
-may be developed in parallel.
-
-A candidate experiment must:
-
-- implement only the stable runtime contract plus provider/framework
-  translation;
-- consume the existing Foundry-owned request, Execution Plan, obligations,
-  tools, policy snapshot and response contract;
-- remain disabled by default;
-- run only after authoritative execution succeeds;
-- return no learner-facing result;
-- write no canonical Product State;
-- use no authoritative trace writer;
-- propagate `AbortSignal` through model, tool and write boundaries;
-- emit provider-neutral runtime records for case-level comparison;
-- remain independently revertible.
-
-The candidate-experiment lane must not:
-
-- move Foundry policy into framework prompts or workflow state;
-- add a candidate-authoritative mode;
-- weaken cases, graders, provenance, delivery policy or reference
-  integrity;
-- switch runtime authority;
-- change the AgentEval release gate;
-- delete Legacy implementations;
-- bundle Product State or Retrieval migration.
-
-Mastra, LangGraph, AI SDK or another framework may be evaluated as a
-candidate. None is preselected by repository popularity or feature lists.
-
-## Current milestone non-scope
-
-Unless a task is explicitly authorized as a separate architecture change,
-do not include:
-
-- runtime authority switching;
-- AgentEval release-gate switching;
-- Legacy deletion;
-- Product State migration inside a runtime candidate PR;
-- retrieval-engine replacement;
-- full Chemistry Reference Pack physical relocation;
-- automated TeacherReview, LearningOutcome or Component publication;
-- a claim that the full 73-case suite has passed;
-- a universal platform interface or speculative empty boundaries.
-
-## Learning Foundry authority
-
-Learning Foundry owns:
-
-- LearningTask, LearningEpisode and ConversationEvent semantics;
-- Context scope, lifecycle, carryover and conflict policy;
-- EvidenceUnit, source authority, provenance and rights;
-- Concept, Task Type and Curriculum relationships;
-- Capability contracts and capability-resolution policy;
-- LearnerAttempt and DiagnosticObservation semantics;
-- TeacherReview, RetryAttempt and LearningOutcome semantics;
-- Component contracts, checks, versions and publication gates;
-- route and orthogonal obligations;
-- `sourceRefs` and `evidenceRefs` as separate reference classes;
-- Eval cases, graders, eligibility and release gates;
-- teacher and expert governance decisions.
-
-A framework may execute, store or display these contracts. It must not
-replace them with its own memory, workflow state, prompt format, trace
-schema or evaluation ontology.
-
-Agent memory, conversation history, summaries and runtime snapshots are
-not canonical Product State.
-
-Model output must not directly become canonical TeacherReview,
-LearningOutcome or a published Component.
-
-## Core and Reference Pack boundary
-
-Cross-disciplinary Core contracts must not require:
-
-- CAIE;
-- syllabus 9701;
-- Chemistry;
-- MgO;
-- Calculation Family;
-- Standard Trainer;
-- a specific model provider;
-- a specific Agent or workflow framework;
-- a specific retrieval or Eval platform;
-- a fixed component or golden-case entity.
-
-The following current behavior belongs conceptually to the Chemistry CAIE
-9701 Reference Pack:
-
-- CAIE and 9701 metadata;
-- Calculation Families;
-- Chemistry corpus parsers and enrichers;
-- stoichiometry and MgO canonicalization;
-- Chemistry target and failure-code contracts;
-- Standard Trainer adapters;
-- Chemistry components and domain graders.
-
-Core defines shared product objects and lifecycle. The Pack supplies
-domain assets, mappings, adapters and domain-specific evaluators.
-
-Do not create a separate product state machine for each Pack.
-
-## Infrastructure adoption sequence
-
-Every commodity infrastructure replacement follows:
-
-`characterization → stable Foundry-owned contract → Legacy adapter → candidate shadow adapter → case-level parity → operational and privacy review → explicit authority decision → separate Legacy deletion`
-
-The stable-boundary, Legacy-adapter, shadow-foundation and parity-foundation
-steps now exist for Agent / Workflow execution.
-
-Their existence does not grant authority to a future candidate.
-
-Do not:
-
-- make a candidate authoritative in its first integration PR;
-- delete the Legacy path in a candidate adapter PR;
-- let candidate failure affect the authoritative path;
-- start a shadow before authoritative success;
-- let shadow execution write canonical Product State;
-- mix PRODUCT and AGENT_EVAL runtime evidence physically;
-- weaken policy or graders to achieve parity;
-- interpret CI success alone as an authority decision.
-
-## Boundary design rules
-
-Do not create one universal platform interface.
-
-A boundary is justified only when:
-
-1. there is a real implementation behind it;
-2. at least one real entrypoint is wired to it;
-3. there is a credible replacement candidate;
-4. focused tests define the contract;
-5. it preserves route, obligation, provenance, permission and reference
-   integrity;
-6. it provides evidence required for later case-level comparison.
-
-Do not create empty interfaces for every item in the long-term architecture
-map.
-
-Do not force Agent Runtime and Workflow Runtime into separate interfaces
-unless independent lifecycle, persistence or permission boundaries justify
-the split.
-
-Name contracts after their actual responsibility rather than a desired
-framework abstraction.
-
-Remote-capable repository contracts must not be made synchronously
-in-memory-only.
-
-Persisted record shapes must receive a schema-version change when their
-lifecycle or required semantics change. Current runtime records write
-schema `1.1.0`; terminal-only `1.0.0` records remain a read-compatibility
-format.
-
-## Foundry policy must remain outside commodity adapters
-
-Do not move these authorities into a provider or framework adapter:
-
-- route classification;
-- route obligations;
-- required and forbidden tool rules;
-- ordered capability resolution;
-- source/evidence reference validation;
-- problem-context provenance;
-- corpus delivery policy;
-- Component contract checks;
-- Component publication rules;
-- AgentEval cases, graders, eligibility or release gates.
-
-Adapters invoke these policies; adapters do not own them.
-
-Capability identity is authoritative at the Learning Capability contract.
-An adapter must not execute a payload whose embedded component identity or
-version conflicts with the requested capability identity.
-
-## Runtime shadow and evidence rules
-
-Authoritative execution must complete successfully before a shadow starts.
-This is a governance and delivery gate, not only a scheduling choice.
-
-Authoritative and shadow executors receive separately cloned, recursively
-immutable normalized requests.
-
-Runtime evidence is physically separated as:
+Authority order:
 
 ```text
-runtime-executions/
-├── product/
-│   ├── authoritative/
-│   └── shadow/
-└── agent-eval/
-    ├── authoritative/
-    └── shadow/
+Current Showcase Release Contract
+> Product Definition
+> Product Surfaces and User Journeys
+> Learning Capability and Component Asset Contract
+> Learning Loop and Outcome Contract
+> Context / Evidence / Data / Eval owner documents
+> accepted ADRs
+> operational evidence and implementation status
+> historical documents and Git history
+> implementation prose
+> task prompt
+> fixture or seed
 ```
 
-Recorder reads and waits must specify both `runPurpose` and execution role.
+The CMS-like `COMP-*` contract, the former 113-row ledger, docs PR #14 mapping and any instruction derived from them are superseded.
 
-Shadow lifecycle evidence distinguishes:
-
-- `RUNNING`;
-- `COMPLETED`;
-- `FAILED`;
-- `TIMED_OUT`;
-- `NOT_CONFIGURED`;
-- genuinely absent candidate evidence.
-
-Only completed authoritative execution IDs are eligible for shadow polling.
-An authoritative infrastructure failure takes precedence over candidate
-absence.
-
-Execution-local result IDs, trace IDs and diagnosis IDs must be normalized
-through governed lineage before cross-runtime comparison.
-
-## Eval and parity rules
-
-The following remain authoritative assets:
-
-- `agent-eval/cases.jsonl`;
-- versioned behavioral baselines;
-- suite layers and dimensions;
-- eligibility semantics;
-- deterministic and domain graders.
-
-Current recorded facts:
-
-- the historical checkpoint at the PR #5 migration baseline passed 6/6;
-- the versioned 1.2.0 baseline at that migration baseline passed 18/18;
-- AgentEval 2.0.0 defines 73 cases;
-- the complete 73-case live suite has not been validated;
-- Learning Loop has zero planned cases;
-- the current implementation reports zero planned cases as `UNPLANNED`;
-- an explicitly selected empty layer or dimension fails non-zero;
-- subset execution cannot claim complete full-suite coverage;
-- the final immutable post-foundation checkpoint evidence was 5/6, with
-  one `INVALID_AGENT_RESPONSE` infrastructure failure;
-- its Legacy self-comparison preserved five exact cases plus one
-  authoritative infrastructure failure and exited `4`.
-
-Do not invent Learning Loop cases merely to remove `UNPLANNED`.
-
-A defined case is not an executed or passed case.
-
-A parity report separates:
-
-- behavioral equivalence;
-- directional governed quality;
-- operational impact.
-
-Direction matters:
+## 2. Operating model
 
 ```text
-Legacy pass   → Candidate fail = CANDIDATE_REGRESSION
-Legacy fail   → Candidate pass = CANDIDATE_IMPROVEMENT / REVIEW_REQUIRED
-Legacy fail   → Candidate fail = SHARED_QUALITY_FAILURE / REVIEW_REQUIRED
-both pass                       = QUALITY_MATCH
+Shijia Hu = Product Owner
+ChatGPT / Work = Engineering PM and docs maintainer
+Codex / developers = implementation team
 ```
 
-The same directional rule applies to required tools, forbidden tools and
-evidence integrity.
+The Product Owner has already defined the product. Do not ask the Product Owner to restate requirements, relay logs, manage branches or interpret ordinary engineering evidence.
 
-Latency, token or cost differences are `REVIEW_REQUIRED` unless explicit
-thresholds and approval say otherwise. They must not be automatically
-called acceptable.
+Engineering work is decomposed into bounded, reviewable child PRs. The Product Owner receives product-visible progress and material decisions, not unmanaged implementation transcripts.
 
-Do not reduce parity to one aggregate pass rate. Preserve exact case-level
-differences and eligible denominators.
+## 3. Product definition
 
-## Evidence, privacy and delivery authorization
-
-Preserve:
-
-- PRODUCT and AGENT_EVAL physical and semantic separation;
-- exact provenance requirements;
-- source/evidence reference separation;
-- corpus delivery-policy enforcement;
-- private-source protections;
-- fail-closed behavior;
-- content hashes and version integrity;
-- append-only correction semantics.
-
-Technical environment availability and data-delivery authorization are
-separate gates.
-
-Before a live external-model run, confirm both:
-
-1. the key, model, governed corpus, Registry and Trainer services are
-   technically available;
-2. the configured provider, purpose, distribution scope and source type
-   are explicitly approved by delivery policy.
-
-Do not report an authorization block as an unavailable environment.
-
-Never commit:
-
-- API keys;
-- Authorization headers;
-- raw private PDFs;
-- generated private corpus excerpts;
-- hidden model reasoning;
-- `.local-data`;
-- `.runtime-parity-results`;
-- local absolute paths.
-
-Do not weaken a safety, provenance or delivery check to make tests pass.
-
-## Change discipline
-
-Before behavior-bearing work:
-
-1. inspect current docs authority and the relevant acceptance records;
-2. identify existing characterization tests;
-3. add missing tests before changing a governed behavior;
-4. make the smallest coherent change;
-5. run focused tests;
-6. run full automated validation;
-7. inspect the complete diff;
-8. remove dead exploratory code and accidental abstraction;
-9. update implementation and docs traceability when status changes.
-
-Do not rewrite unrelated modules.
-
-Do not add a production dependency unless the task explicitly authorizes
-it.
-
-Do not reset, overwrite or delete unrelated user changes.
-
-When an implementation changes architecture authority, canonical state,
-release gates or deletion policy, update `learning-foundry-docs` first and
-reference its merged commit.
-
-## Required validation
-
-For implementation changes run:
-
-```bash
-npm test
-npm run check
-npm run build
-git diff --check
-```
-
-For runtime shadow or parity changes also run:
-
-```bash
-npm run runtime:parity:fixture
-```
-
-For a real candidate adapter, run the smallest sequence that preserves
-failure evidence:
+Learning Foundry is an **AI Learning Orchestration Platform**.
 
 ```text
-offline adapter tests
-→ live checkpoint
-→ repeated-run reliability evidence
-→ live versioned baseline
-→ case-level decision report
+Context
++ Diagnosis
++ Capability Registry
++ Matching / Generation
++ Runtime Orchestration
++ Teacher Governance
++ Learning Feedback
 ```
 
-Live AgentEval or candidate comparison may run only when both the genuine
-environment and required delivery authorization exist.
+North Star:
 
-Record every attempt. Do not resample until a favorable pass appears and
-then hide earlier failures.
-
-When live work cannot run, state the exact unavailable environment or
-missing authorization. Do not replace live validation with fixtures and
-call it live.
-
-Do not claim a full 73-case validation unless all 73 selected cases were
-actually executed and the report preserves their case-level outcomes.
-
-## Git and pull requests
-
-Work from the latest `main` on a dedicated branch.
-
-Use focused checkpoint commits when a task has multiple phases.
-
-Do not force push or rewrite `main`.
-
-Do not auto-merge:
-
-- authority-switch PRs;
-- canonical domain-schema or Product State migrations;
-- AgentEval release-gate changes;
-- Legacy deletion;
-- automated Component publication;
-- TeacherReview or LearningOutcome automation.
-
-Every architecture-boundary, candidate-runtime, Product State, Reference
-Pack or external-learning-component PR must cite the applicable Doc 17
-sections and include:
-
-`Docs authority: learning-foundry-docs@260747722e8040972deceed3290bce237676f225`
-
-It must also state the implementation lane, authority changes (including
-`NONE`), live evidence actually collected, rollback, and known limitations.
-
-A candidate PR must also state:
+> Do not make learners search, compare and configure learning resources. Deliver the right learning tool to the right learner at the right time.
 
 ```text
-Candidate authority: NOT GRANTED
-Release-gate authority: NOT GRANTED
-Legacy deletion authority: NOT GRANTED
+Chat = entry and guidance
+ComponentAsset = executable learning experience
+Asset Stage = learner runtime surface
+Capability Registry = machine-callable capability directory
+Learning orchestration = product core
 ```
 
-Keep product-critical Core / Reference Pack work and a candidate runtime
-experiment in separate PRs.
+## 4. Component Asset meaning
 
-Before opening a PR:
+A `ComponentAsset` is an executable, interactive or otherwise orchestratable learning tool or experience.
 
-- inspect the complete diff;
-- confirm the branch is based on current `main`;
-- confirm no unrelated framework or storage migration was added;
-- confirm no Legacy path was deleted without authority;
-- list automated checks actually run;
-- list live checks actually run or not run;
-- state remaining Chemistry coupling;
-- state privacy and delivery-policy impact;
-- state rollback;
-- state every authority status.
+Examples:
 
-## Definition of done: Core / Reference Pack boundary
+- calculation trainer;
+- particle animation;
+- equation-balancing interaction;
+- quiz or recall activity;
+- simulation;
+- visual explorer;
+- rubric evaluator;
+- diagnostic tool;
+- generator;
+- reviewed Web learning application;
+- composite learning flow.
 
-A Core / Chemistry Pack boundary PR is complete only when:
+The following are not Component Assets by default:
 
-- Core contracts do not require CAIE, 9701, Chemistry, MgO, Calculation
-  Family or Standard Trainer;
-- current Chemistry assets have an explicit ownership inventory;
-- the Pack has a type-checkable or loadable manifest and adapter boundary;
-- current Chemistry behavior remains executable;
-- leakage tests prevent new Pack-specific requirements entering Core;
-- no domain-neutral claim relies only on renamed fields;
-- large physical movement is either unnecessary or supported by focused
-  compatibility tests;
-- docs and implementation traceability are updated;
-- all required validation passes.
+- article;
+- PDF;
+- syllabus page;
+- video;
+- worksheet;
+- static link.
 
-## Definition of done: candidate experiment
+These remain `SourceAsset`, `EvidenceUnit` or `ExternalLearningResource` unless wrapped in a genuine learning activity contract with objective, input, interaction, state, output and learning events.
 
-A candidate-runtime PR is complete only when:
+## 5. Three product loops
 
-- one real candidate implements `RuntimeExecutor` without redefining
-  Foundry contracts;
-- default configuration remains Legacy-only;
-- authoritative-first execution and failure isolation remain tested;
-- cancellation reaches model, tool and write boundaries;
-- candidate records are purpose-and-role separated and redacted;
-- checkpoint evidence has zero unexplained missing cases;
-- every behavioral, quality and operational difference is classified;
-- repeated-run evidence exposes provider variance;
-- no authority switch or Legacy deletion is included;
-- rollback is a revert of the candidate PR.
+### Learning Delivery Loop
 
-Passing these conditions permits review of the experiment. It does not
-automatically grant runtime authority.
+```text
+learner goal or teacher assignment
+→ compile authorized Context
+→ determine current learning need
+→ retrieve an eligible capability or resource
+→ parameterize / compose / adapt / generate when necessary
+→ deliver in Asset Stage
+→ capture operations, Attempts and completion state
+```
 
-## Review guidelines
+### Diagnosis and Teacher Governance Loop
 
-Treat these as blocking issues:
+```text
+LearnerAttempt
+→ DiagnosticObservationProposal
+→ confidence / risk / policy gate
+→ bounded automatic continuation or TeacherReview
+→ teacher correction, requirement, exclusion, override or feedback
+→ Retry / Transfer / Retention
+→ reviewed LearningOutcome
+```
 
-- Core types require CAIE, 9701, Chemistry, MgO or Standard Trainer.
-- Chemistry-specific code is declared domain-neutral only through naming.
-- A framework API becomes the de facto domain contract.
-- Product State is delegated to Agent memory or workflow state.
-- `sourceRefs` and `evidenceRefs` are merged or compared as raw
-  execution-local IDs.
-- provenance or delivery-policy validation is weakened.
-- an empty Eval selection exits successfully.
-- a subset Eval run is reported as complete coverage.
-- PRODUCT and AGENT_EVAL evidence share one physical namespace.
-- a persisted record changes shape without a schema-version or explicit
-  compatibility path.
-- a candidate starts before authoritative success.
-- a candidate timeout does not propagate cooperative cancellation.
-- a candidate runtime affects the authoritative product response.
-- candidate absence hides an authoritative infrastructure failure.
-- operational differences are automatically accepted.
-- a candidate improvement is mislabeled as regression solely because it
-  differs from a failing Legacy run.
-- a Legacy implementation is deleted without accepted parity, an
-  authority decision and deletion authority.
-- model output directly creates TeacherReview, LearningOutcome or a
-  published Component.
-- a PR claims candidate parity, full-suite validation, pilot validation or
-  production readiness without corresponding evidence.
+### Capability Supply and Optimization Loop
+
+```text
+no-match / repeated failure / improvement request
+→ inspect Registry
+→ use existing asset
+→ parameterize
+→ compose
+→ adapt
+→ generate only when necessary
+→ runtime, event, safety, rights and accessibility checks
+→ teacher or expert confirmation
+→ make exact version available
+→ real delivery
+→ asset / routing / learning-strategy optimization
+```
+
+The third loop serves learning orchestration. It is not a standalone CMS or editorial product.
+
+## 6. Product surfaces
+
+### Learner Workspace
+
+- conversational and teacher-assigned Task entry;
+- current goal, due state and next step;
+- Chat / Guidance;
+- Active Asset Stage;
+- Evidence and citations where required;
+- text, structured, image and interactive Attempts;
+- pause, reset, resume and retry;
+- waiting/review states;
+- progress, prior Attempts and Outcomes.
+
+### Teacher Workspace
+
+Primary areas:
+
+```text
+Assign
++ Monitor and Intervene
++ Learning Evidence
++ Improve
+```
+
+Teachers can:
+
+- assign learners, goals, deadline and completion policy;
+- define allowed, required and excluded capabilities;
+- inspect capability candidates, selection rationale and exact runtime version;
+- inspect events, Attempts, Evidence and Diagnosis Proposals;
+- confirm, correct, partially accept, reject or escalate;
+- override the next activity;
+- change language, modality, support intensity or sequence;
+- create linked Retry, Transfer and Retention activities;
+- request an asset adaptation or routing-policy improvement.
+
+### Capability Workshop
+
+A secondary, need-driven surface for:
+
+- parameterization and composition;
+- connecting a reviewed external capability;
+- natural-language asset adaptation;
+- generation of a new Web learning asset;
+- runtime preview;
+- concise callable-contract correction;
+- checks and teacher/expert confirmation;
+- version availability, disable, successor and rollback;
+- evidence-driven asset/routing/strategy improvement.
+
+Capability Workshop is not a generic CMS.
+
+### Engineering / Evaluation
+
+- workflow, checkpoint, replay, cancellation and recovery inspection;
+- Product State inspection;
+- Context and Evidence traces;
+- Capability Registry candidates, exclusions and selection;
+- ActivityPlan, exact asset runtime and learning events;
+- provider, latency, cost and failure evidence;
+- authorization and tenant isolation;
+- product, retrieval, orchestration, pedagogy and security Eval.
+
+Engineering cannot create TeacherReview or LearningOutcome on behalf of an authorized human.
+
+## 7. Current requirement namespaces
+
+All implementation work maps to current IDs:
+
+```text
+REL-*
+LEARN-* / TEACH-* / OUTCOME-*
+CTX-*
+EVID-*
+CAP-*
+DATA-*
+EVAL-* / SEC-*
+OPS-*
+```
+
+`COMP-*` is superseded. Work whose only purpose is satisfying the former `COMP-01`–`COMP-20` must be removed or repurposed.
+
+## 8. Capability resolution and runtime
+
+Resolution priority:
+
+```text
+1. verified eligible existing capability
+2. parameterized existing capability
+3. composition of eligible capabilities
+4. reviewed adaptation of an internal or external capability
+5. generated ComponentAsset proposal
+6. explicit no-match and teacher escalation
+```
+
+The resolver records:
+
+- candidate versions;
+- eligibility checks;
+- exclusions and reasons;
+- teacher requirements and prohibitions;
+- selected exact version;
+- parameterization or composition;
+- fallback or no-match decision.
+
+A first-match SQL query is not Capability Resolution.
+
+Asset Stage validates authorization, eligibility, exact version, dependencies and input contract before launch. It records state transitions, learner operations, support exposure, learning events, Attempt boundary, completion, abandonment and failure.
+
+Runtime completion is not a Diagnosis or LearningOutcome.
+
+## 9. Canonical Product State
+
+Persist formal records for at least:
+
+- `User`, `Institution`, `InstitutionMembership`, `Course`, `Subject`, `Enrollment`;
+- `LearningTask`, `LearningEpisode`, `ConversationEvent`;
+- `SourceAsset`, `SourceAssetVersion`, rights and delivery decisions;
+- `EvidenceUnit` and derivatives;
+- `LearnerAttempt`;
+- `DiagnosticObservationProposal`;
+- append-only `TeacherReview` and successor/conflict history;
+- Retry, Transfer and Retention activity lineage;
+- `LearningOutcome` and invalidation/supersession;
+- `LearningCapability`, `CapabilityVersion`;
+- `ComponentAsset`, immutable `ComponentAssetVersion`;
+- capability candidate, exclusion and selection records;
+- `TeacherAssignment`, capability requirement and exclusion;
+- `ActivityPlan`, `RuntimeDelivery`, `LearningEvent`;
+- capability gap, adaptation/generation and evaluation proposals;
+- authorized confirmation, availability, disable and rollback decisions;
+- asset, routing and learning-strategy optimization proposals.
+
+Canonical writes require server-side authorization, transactions and idempotency. Workflow replay or resume must not duplicate Product State.
+
+## 10. Evidence and capability boundaries
+
+```text
+Evidence Retrieval
+= find trustworthy information or material
+
+Capability Resolution
+= decide which callable learning behavior should run
+
+Component Asset Runtime
+= execute that behavior and return learning events
+```
+
+These may share infrastructure but never share meaning.
+
+External resources require a reviewed adapter to participate in orchestration. A link, iframe or provider completion event is not native Component Asset execution and cannot directly create Diagnosis, TeacherReview or LearningOutcome.
+
+## 11. Technology and Build / Adopt / Partner
+
+Current direction:
+
+- Next.js and React;
+- LangGraph JS;
+- PostgreSQL canonical Product State;
+- separate checkpoint namespace/role;
+- Drizzle migrations;
+- Zod boundaries;
+- mature managed authentication;
+- database-enforced tenant isolation;
+- mature hybrid retrieval with multilingual and multimodal support;
+- managed Object Storage;
+- approved provider adapters;
+- OpenTelemetry-compatible observability;
+- mature Eval infrastructure where useful.
+
+Do not hand-build commodity authentication, organization membership foundations, object storage, vector plumbing, workflow execution or observability without a documented Build / Adopt / Partner reason.
+
+Foundry owns product semantics; providers and frameworks do not.
+
+## 12. Explicit prohibited scope
+
+Do not build or expand:
+
+- article or page authoring;
+- generic block editor;
+- giant manual Component metadata forms;
+- CMS-style field/block editorial comments;
+- independent content publication backend;
+- editorial calendar or arbitrary content-type system;
+- content catalogue or marketplace as the product center;
+- manual metadata entry that can be inferred and proposed;
+- infrastructure unrelated to a current orchestration requirement;
+- compatibility work whose only purpose is preserving the superseded CMS contract.
+
+Retain versioning, checks, confirmation, availability, disable and rollback only where they protect callable learning behavior, source rights, runtime safety or institutional authority.
+
+## 13. Current implementation handling
+
+PR #22 is the umbrella Draft targeting `main`. Child PRs target `rewrite/full-framework` and must remain independently reviewable and revertible.
+
+Preserve valid existing work in:
+
+- Next.js/LangGraph/PostgreSQL foundations;
+- workflow replay, interrupt, recovery and cancellation;
+- Context and Evidence;
+- source intake and multimodal lineage;
+- Diagnosis Proposal and TeacherReview;
+- Capability Registry and selection evidence;
+- exact runtime versioning and events;
+- Retry, Transfer, Retention and Outcome;
+- tenant/security enforcement;
+- version disable and rollback;
+- Engineering inspection and Eval.
+
+Remove or repurpose code whose only purpose is:
+
+- generic Component CMS authoring;
+- field/block editorial workflow;
+- content publication administration;
+- former `COMP-*` completeness.
+
+Do not delete reusable runtime, safety, lineage or governance behavior merely because it was originally implemented under the wrong label.
+
+## 14. Work-package contract
+
+Every assignment states:
+
+- current requirement IDs;
+- user-visible result;
+- exact base SHA and branch;
+- files or responsibility boundary;
+- Product State impact;
+- authorization and tenant boundary;
+- runtime/provider/failure behavior;
+- prohibited CMS and Legacy scope;
+- required tests and real browser/user-path evidence;
+- explicit non-goals;
+- evidence required for Engineering PM review.
+
+Do not send an uncontrolled “build everything before review” instruction.
+
+## 15. Review rejection conditions
+
+Reject work when:
+
+- no current requirement is mapped;
+- a user action is replaced by a seed, fixture, direct database write or hidden script;
+- authorization exists only in UI code;
+- Evidence Retrieval, Capability Resolution and Asset Runtime are conflated;
+- capability selection is an unexplained first-match lookup;
+- generated/adapted assets become available without checks and authorized confirmation;
+- runtime events or completion fabricate Diagnosis or Outcome;
+- exact-version, event or review lineage is absent;
+- workflow replay duplicates canonical records;
+- provider unavailability is presented as success;
+- browser/runtime evidence does not support the claim;
+- CMS-only or Legacy-only infrastructure is introduced;
+- completion language exceeds evidence.
+
+## 16. Required validation
+
+For relevant work packages, run and retain:
+
+- lockfile installation;
+- lint and type check;
+- unit/application tests;
+- PostgreSQL migration and integration tests;
+- checkpoint, interrupt/resume, replay, idempotency and cancellation tests;
+- authentication and cross-tenant denial tests;
+- Context isolation and contamination tests;
+- Evidence hybrid/multilingual/multimodal and citation tests;
+- Capability Registry candidate/exclusion/no-match tests;
+- Asset Stage input/state/event/failure tests;
+- teacher assignment, requirement, exclusion and override tests;
+- complete Learning Loop browser E2E;
+- one real gap-driven adapt/generate/check/confirm/register/deliver E2E;
+- asset/routing/strategy optimization evidence;
+- security and adversarial tests;
+- production-like preview verification where applicable;
+- zero Legacy/CMS-only target import scan.
+
+No old test count or prior audit verdict is current acceptance.
+
+## 17. Reporting and acceptance
+
+Implementation reports include exact commit, diff, commands, database evidence, browser path, failures, shortcuts and non-claims.
+
+Reports to the Product Owner focus on:
+
+- what learners can do;
+- what teachers can assign, inspect or change;
+- which capabilities are matched, adapted, generated and run;
+- which complete online journeys pass;
+- which user-visible defects remain;
+- which genuine product decision is required.
+
+Current Doc 12 requirements are reset to `NOT_REVIEWED`. Do not claim Showcase, preview, Pilot, production or cutover acceptance without the required evidence and explicit Product Owner decision.

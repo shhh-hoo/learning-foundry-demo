@@ -1,7 +1,12 @@
 node_modules/
+.next/
 dist/
 dist-corpus/
 coverage/
+playwright-report/
+test-results/
+artifacts/playwright/
+evals/results/
 *.tsbuildinfo
 .DS_Store
 .env
@@ -11,4 +16,4 @@ coverage/
 .local-data/
 .runtime-parity-results/
 private-sources/
-demo-recording/frames/
+.vercel/
