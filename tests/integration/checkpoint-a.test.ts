@@ -15,13 +15,14 @@ import {
 } from "@/application/commands";
 import { compileAndPersistContext } from "@/application/context-service";
 import { getActor } from "@/application/actor";
+import { authenticateSyntheticPrincipal, issueAuthSession, verifyAndRotateAuthSession } from "@/application/auth-session";
 import { getAuthorizedEvidenceCatalog, getFoundryWorkspace, getStaleResumingRuns, getTaskDetail, getTeacherWorkspace } from "@/application/queries";
 import { retrieveEvidence } from "@/application/retrieval";
 import { resumeWorkflow, startWorkflow, WorkflowProcessCrashForTests } from "@/application/workflow-service";
 import { claimWorkflowResume, finalizeWorkflowResumeClaim, RESUME_LEASE_MS } from "@/application/workflow-resume-lease";
 import { closeDb, getDb, getSql } from "@/db/client";
 import { SEED } from "@/db/ids";
-import { conversationEvents, courseEnrollments, courses, evidenceUnits, idempotencyKeys, institutionMemberships, learningOutcomes, libraryItems, retryAttempts, scheduleItems, sourceRecords, teacherReviews, users, workflowRuns } from "@/db/schema";
+import { authSessions, conversationEvents, courseEnrollments, courses, evidenceUnits, idempotencyKeys, institutionMemberships, learningOutcomes, libraryItems, retryAttempts, scheduleItems, sourceRecords, teacherReviews, users, workflowRuns } from "@/db/schema";
 import type { Actor } from "@/domain/model";
 import { DomainInvariantError } from "@/domain/invariants";
 import { closeWorkflowCheckpointer, getWorkflowCheckpointer } from "@/workflows/checkpointer";
@@ -340,7 +341,7 @@ describe.sequential("Checkpoint A PostgreSQL integration", () => {
   });
 
   it("replays learner and Foundry Events by exact ID after node/checkpoint failures", async () => {
-    const checkpoint = getWorkflowCheckpointer();
+    const checkpoint = getWorkflowCheckpointer(learner.institutionId);
     const learnerFixture = randomUUID();
     const learnerKey = `learner-node-fault:${learnerFixture}`;
     const learnerMessage = `Learner node fault ${learnerFixture}`;
@@ -353,7 +354,7 @@ describe.sequential("Checkpoint A PostgreSQL integration", () => {
       },
     });
     const learnerState = { actor: learner, taskId: SEED.task, episodeId: SEED.episode, courseId: SEED.course, message: learnerMessage, requestedAction: "EXPLAIN" as const, idempotencyKey: learnerKey };
-    const learnerThread = `learner-node-fault:${randomUUID()}`;
+    const learnerThread = `${learner.institutionId}:learner-node-fault:${randomUUID()}`;
     await expect(learnerFaultGraph.invoke(learnerState, { configurable: { thread_id: learnerThread }, recursionLimit: 50 })).rejects.toThrow("INJECTED_AFTER_LEARNER_EVENT");
     expect(committedLearnerId).not.toBe("");
     expect(await getDb().select().from(conversationEvents).where(and(eq(conversationEvents.taskId, SEED.task), eq(conversationEvents.actorType, "LEARNER")))).toHaveLength(beforeLearner.length + 1);
@@ -374,7 +375,7 @@ describe.sequential("Checkpoint A PostgreSQL integration", () => {
       },
     });
     const foundryState = { actor: learner, taskId: SEED.task, episodeId: SEED.episode, courseId: SEED.course, message: `Foundry node fault ${foundryFixture}`, requestedAction: "EXPLAIN" as const, idempotencyKey: foundryKey };
-    const foundryThread = `foundry-node-fault:${randomUUID()}`;
+    const foundryThread = `${learner.institutionId}:foundry-node-fault:${randomUUID()}`;
     await expect(foundryFaultGraph.invoke(foundryState, { configurable: { thread_id: foundryThread }, recursionLimit: 50 })).rejects.toThrow("INJECTED_AFTER_FOUNDRY_EVENT");
     expect(committedFoundryId).not.toBe("");
     expect(await getDb().select().from(conversationEvents).where(and(eq(conversationEvents.taskId, SEED.task), eq(conversationEvents.actorType, "FOUNDRY")))).toHaveLength(beforeFoundry.length + 1);
@@ -417,7 +418,7 @@ describe.sequential("Checkpoint A PostgreSQL integration", () => {
 
   it("records request abort and deadline honestly and stops before later canonical writes", async () => {
     const abortFixture = randomUUID();
-    const abortThread = `abort-control:${abortFixture}`;
+    const abortThread = `${learner.institutionId}:abort-control:${abortFixture}`;
     const abortKey = `abort-control:${abortFixture}`;
     const abortController = new AbortController();
     await expect(startWorkflow({
@@ -434,7 +435,7 @@ describe.sequential("Checkpoint A PostgreSQL integration", () => {
     expect(await getDb().select().from(idempotencyKeys).where(and(eq(idempotencyKeys.commandType, "APPEND_CONVERSATION_EVENT"), eq(idempotencyKeys.key, `${abortKey}:conversation:foundry`)))).toEqual([]);
 
     const deadlineFixture = randomUUID();
-    const deadlineThread = `deadline-control:${deadlineFixture}`;
+    const deadlineThread = `${learner.institutionId}:deadline-control:${deadlineFixture}`;
     const deadlineKey = `deadline-control:${deadlineFixture}`;
     await expect(startWorkflow({
       kind: "LEARNER_TASK",
@@ -490,6 +491,52 @@ describe.sequential("Checkpoint A PostgreSQL integration", () => {
     expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
     expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
     await expect(resumeWorkflow(teacher, started.threadId, payload("replay"))).rejects.toBeInstanceOf(DomainInvariantError);
+  });
+
+  it("preserves an interrupted workflow across session expiry and safe reauthentication", async () => {
+    const fixture = randomUUID();
+    const attempt = await captureAttempt(learner, {
+      taskId: SEED.task,
+      episodeId: SEED.episode,
+      prompt: `Session-expiry resume ${fixture}`,
+      response: "The saved interrupt must survive a required reauthentication.",
+      structuredInput: {},
+      idempotencyKey: `session-expiry-attempt:${fixture}`,
+    });
+    const observation = await persistUnavailableObservation({ attemptId: attempt.id, reason: "OPS-06 reauthentication fixture" });
+    const started = await startWorkflow({ kind: "TEACHER_REVIEW", actor: learner, state: { observationId: observation.id } });
+
+    const principal = await authenticateSyntheticPrincipal({ userId: teacher.userId, activeInstitutionId: teacher.institutionId });
+    const expiredSession = await issueAuthSession(principal);
+    await getDb().update(authSessions).set({ expiresAt: new Date(Date.now() - 1_000) }).where(eq(authSessions.id, expiredSession.sessionId));
+    const expiredReference = {
+      sessionId: expiredSession.sessionId,
+      sessionVersion: expiredSession.sessionVersion,
+      userId: expiredSession.userId,
+      issuer: expiredSession.issuer,
+      subject: expiredSession.subject,
+      activeInstitutionId: expiredSession.activeInstitutionId,
+    };
+    await expect(verifyAndRotateAuthSession(expiredReference)).rejects.toMatchObject({ code: "SESSION_REAUTH_REQUIRED" });
+
+    const replacementSession = await issueAuthSession(principal);
+    const verified = await verifyAndRotateAuthSession({
+      sessionId: replacementSession.sessionId,
+      sessionVersion: replacementSession.sessionVersion,
+      userId: replacementSession.userId,
+      issuer: replacementSession.issuer,
+      subject: replacementSession.subject,
+      activeInstitutionId: replacementSession.activeInstitutionId,
+    });
+    const reauthenticatedTeacher = await getActor(verified.userId, verified.activeInstitutionId, principal.authMethod, verified.sessionId);
+    const resumed = await resumeWorkflow(reauthenticatedTeacher, started.threadId, {
+      expectedVersion: started.expectedVersion,
+      decision: "ACCEPT",
+      teachingSupport: "Resume only after the replacement session is verified.",
+      idempotencyKey: `session-expiry-review:${fixture}`,
+    });
+    expect(resumed.status).toBe("COMPLETED");
+    expect(await getDb().select().from(teacherReviews).where(eq(teacherReviews.observationId, observation.id))).toHaveLength(1);
   });
 
   it("permits only one canonical Review across concurrent workflow handoffs", async () => {

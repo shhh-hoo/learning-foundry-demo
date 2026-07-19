@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { createComponentCandidate } from "@/application/commands";
-import { requireApiActor } from "@/application/identity";
+import { withApiActor } from "@/application/identity";
 import { errorResponse } from "@/application/http";
 
 const Candidate = z.object({
@@ -14,6 +14,6 @@ const Candidate = z.object({
 
 export async function POST(request: Request) {
   try {
-    return Response.json(await createComponentCandidate(await requireApiActor(), Candidate.parse(await request.json())), { status: 201 });
+    return await withApiActor(async (actor) => Response.json(await createComponentCandidate(actor, Candidate.parse(await request.json())), { status: 201 }));
   } catch (error) { return errorResponse(error); }
 }

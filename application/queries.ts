@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, lte, or, sql } from "drizzle-orm";
-import { getCheckpointSql, getDb, getSql } from "@/db/client";
+import { getDb, getSql, getTenantCheckpointSql } from "@/db/client";
 import {
   componentVersions,
   components,
@@ -466,7 +466,7 @@ export async function getEngineeringWorkspace(actor: Actor) {
     .orderBy(desc(componentDeliveries.createdAt)).limit(50);
   let checkpointCounts: Array<Record<string, unknown>> = [];
   try {
-    checkpointCounts = await getCheckpointSql()<Array<Record<string, unknown>>>`
+    checkpointCounts = await getTenantCheckpointSql(actor.institutionId)<Array<Record<string, unknown>>>`
       SELECT 'checkpoints' AS table_name, count(*)::int AS count FROM langgraph_checkpoint.checkpoints
       UNION ALL SELECT 'checkpoint_writes', count(*)::int FROM langgraph_checkpoint.checkpoint_writes
       UNION ALL SELECT 'checkpoint_blobs', count(*)::int FROM langgraph_checkpoint.checkpoint_blobs

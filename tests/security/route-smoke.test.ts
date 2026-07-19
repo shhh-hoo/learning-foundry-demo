@@ -5,7 +5,7 @@ describe("four product surfaces", () => {
   it.each(["learner", "teacher", "foundry", "engineering"])("exports an authenticated Server Component page for /%s", async (surface) => {
     const page = await readFile(new URL(`../../app/${surface}/page.tsx`, import.meta.url), "utf8");
     expect(page).toMatch(/export default async function/);
-    expect(page).toMatch(/requireWorkspaceActor\(/);
+    expect(page).toMatch(/withWorkspaceActor\(/);
     expect(page).toMatch(/get(?:Learner|Teacher|Foundry|Engineering)Workspace/);
   });
 

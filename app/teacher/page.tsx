@@ -1,5 +1,5 @@
 import Image from "next/image";
-import { requireWorkspaceActor } from "@/application/identity";
+import { withWorkspaceActor } from "@/application/identity";
 import { getTeacherWorkspace } from "@/application/queries";
 import { CandidateForm, ComponentDeliveryForm, RetryForm, RetryResultReviewForm, ReviewForm, SourceRightsForm } from "@/components/ClientActions";
 import { Badge, Card, Empty, SurfaceHeader } from "@/components/ui";
@@ -7,7 +7,7 @@ import { Badge, Card, Empty, SurfaceHeader } from "@/components/ui";
 export const dynamic = "force-dynamic";
 
 export default async function TeacherPage() {
-  const actor = await requireWorkspaceActor(["TEACHER", "ADMIN"], "Teacher Workspace");
+  return withWorkspaceActor(["TEACHER", "ADMIN"], "Teacher Workspace", async (actor) => {
   const workspace = await getTeacherWorkspace(actor);
   return <>
     <SurfaceHeader eyebrow="Teacher Workspace" title="Inspect, correct and resume" description="Every Review is an authenticated human command over a course-scoped Attempt and Observation." />
@@ -31,4 +31,5 @@ export default async function TeacherPage() {
     <div className="workspace-grid"><Card eyebrow="Reviewed capability signals" title="Course-scoped failure codes">{workspace.patterns.map((pattern) => <p key={String(pattern.pattern)}><strong>{String(pattern.pattern)}</strong> · {String(pattern.count)} reviewed capability observations · {String(pattern.learners)} learners</p>)}{workspace.patterns.length === 0 ? <Empty>No reviewed CAPABILITY observation with a failure code is available. Unavailable, unreviewed and null-code observations are not aggregated.</Empty> : null}</Card><Card eyebrow="Retry results" title="Human Review before Outcome">{workspace.pendingWorkflows.filter((run) => run.interruptType === "RETRY_RESULT_REVIEW_REQUIRED").map((run) => <RetryResultReviewForm key={run.id} threadId={run.threadId} expectedVersion={run.interruptVersion}/>)}{workspace.pendingWorkflows.every((run) => run.interruptType !== "RETRY_RESULT_REVIEW_REQUIRED") ? <Empty>No retry result is waiting for Review.</Empty> : null}</Card></div>
     <Card eyebrow="Source governance" title="Uploaded learning-material rights and ingestion">{workspace.sourceReviews.map(({ source, asset, task }) => <article className="evidence-card" key={source.id}><strong>{source.title}</strong><p>{task.title} · {asset.originalName}</p><div className="header-actions"><Badge tone={asset.ingestionStatus === "EXTRACTED" ? "good" : asset.ingestionStatus === "FAILED" ? "bad" : "warn"}>Ingestion · {asset.ingestionStatus}</Badge><Badge tone={source.rightsAuthorizationStatus === "APPROVED" ? "good" : source.rightsAuthorizationStatus === "DENIED" ? "bad" : "warn"}>Rights · {source.rightsAuthorizationStatus}</Badge></div><a href={`/api/files/${asset.id}`} target="_blank" rel="noreferrer">Inspect original upload</a>{asset.mediaType.startsWith("image/") ? <><div className="metric-grid"><div><small>Model-derived visible-content transcription</small><p>{asset.extractionText ?? "Unavailable"}</p></div><div><small>Separate model interpretation</small><p>{asset.interpretation ?? "Unavailable"}</p><Badge tone={asset.interpretationStatus === "AVAILABLE" ? "good" : "warn"}>{asset.interpretationStatus}</Badge></div></div><small>The original image remains the cited Source. Rights approval can materialize its transcription as Evidence; interpretation is excluded.</small></> : <p>{asset.failureMessage ?? asset.extractionText?.slice(0, 500) ?? "No extracted content is available."}</p>}{source.rightsAuthorizationStatus === "REVIEW_REQUIRED" ? <SourceRightsForm sourceId={source.id} currentRights={source.rights}/> : <small>Terminal authenticated human rights decision recorded.</small>}</article>)}{workspace.sourceReviews.length === 0 ? <Empty>No uploaded course material is awaiting or carrying a rights decision.</Empty> : null}</Card>
   </>;
+  });
 }

@@ -1,4 +1,4 @@
-import { requireWorkspaceActor } from "@/application/identity";
+import { withWorkspaceActor } from "@/application/identity";
 import { getFoundryWorkspace } from "@/application/queries";
 import { CandidateForm, ComponentEvaluationButton, ComponentVersionForm, PublicationReviewForm, RollbackForm } from "@/components/ClientActions";
 import { Badge, Card, Empty, SurfaceHeader } from "@/components/ui";
@@ -10,7 +10,7 @@ function record(value: unknown): Record<string, unknown> {
 }
 
 export default async function FoundryPage() {
-  const actor = await requireWorkspaceActor(["EXPERT", "ADMIN"], "Foundry Studio");
+  return withWorkspaceActor(["EXPERT", "ADMIN"], "Foundry Studio", async (actor) => {
   const workspace = await getFoundryWorkspace(actor);
   const evidenceOptions = workspace.evidenceOptions.map(({ evidence, source }) => ({ id: evidence.id, title: evidence.title, locator: evidence.locator, sourceTitle: source.title }));
   const componentGroups = [...workspace.candidates.reduce((groups, row) => {
@@ -56,4 +56,5 @@ export default async function FoundryPage() {
     })}{componentGroups.length === 0 ? <Empty>No Component Draft exists. A current reviewed capability signal may create the first version.</Empty> : null}</div>
     <Card eyebrow="Immutable governance history" title="Publication and rollback decisions">{workspace.decisions.map(({ decision }) => <p key={decision.id}><Badge tone={decision.action === "APPROVE" ? "good" : decision.action === "REJECT" ? "bad" : "info"}>{decision.action}</Badge> {decision.rationale} · {decision.createdAt.toLocaleString()} · version {decision.componentVersionId}</p>)}{workspace.decisions.length === 0 ? <Empty>No expert publication or rollback decision has been recorded.</Empty> : null}</Card>
   </>;
+  });
 }

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import Image from "next/image";
-import { requireWorkspaceActor } from "@/application/identity";
+import { withWorkspaceActor } from "@/application/identity";
 import { getAuthorizedEvidenceCatalog, getLearnerCapabilitiesForCourse, getLearnerWorkspace, getTaskDetail } from "@/application/queries";
 import { AttemptForm, CloseTaskButton, CreateTaskForm, ImageAttemptForm, MaterialUploadForm, MessageForm, RetryAttemptForm } from "@/components/ClientActions";
 import { Badge, Card, Empty, SurfaceHeader, Timeline } from "@/components/ui";
@@ -8,7 +8,7 @@ import { Badge, Card, Empty, SurfaceHeader, Timeline } from "@/components/ui";
 export const dynamic = "force-dynamic";
 
 export default async function LearnerPage({ searchParams }: { searchParams: Promise<{ task?: string }> }) {
-  const actor = await requireWorkspaceActor(["LEARNER", "ADMIN"], "Learner Workspace");
+  return withWorkspaceActor(["LEARNER", "ADMIN"], "Learner Workspace", async (actor) => {
   const workspace = await getLearnerWorkspace(actor);
   const requested = (await searchParams).task;
   const activeTask = workspace.tasks.find((task) => task.id === requested) ?? workspace.tasks[0];
@@ -43,4 +43,5 @@ export default async function LearnerPage({ searchParams }: { searchParams: Prom
       </> : <Card><Empty>Select or create a Learning Task.</Empty></Card>}</div>
     </div>
   </>;
+  });
 }

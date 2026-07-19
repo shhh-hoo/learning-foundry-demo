@@ -37,6 +37,36 @@ export const users = product.table("users", {
   createdAt: createdAt(),
 });
 
+/** Immutable external subject bindings used only by the authentication boundary. */
+export const authIdentities = product.table(
+  "auth_identities",
+  {
+    id: id(),
+    issuer: text("issuer").notNull(),
+    subject: text("subject").notNull(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    active: boolean("active").default(true).notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [uniqueIndex("auth_identities_issuer_subject_uq").on(table.issuer, table.subject)],
+);
+
+/** Server-authoritative sessions. The signed browser token is only a reference to this record. */
+export const authSessions = product.table("auth_sessions", {
+  id: uuid("id").primaryKey(),
+  identityId: uuid("identity_id").notNull().references(() => authIdentities.id, { onDelete: "cascade" }),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  institutionId: uuid("institution_id").notNull().references(() => institutions.id, { onDelete: "cascade" }),
+  version: integer("version").default(1).notNull(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  lastVerifiedAt: timestamp("last_verified_at", { withTimezone: true }).defaultNow().notNull(),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  createdAt: createdAt(),
+}, (table) => [
+  index("auth_sessions_user_idx").on(table.userId, table.expiresAt),
+  check("auth_session_version_ck", sql`${table.version} > 0`),
+]);
+
 export const institutionMemberships = product.table(
   "institution_memberships",
   {
@@ -523,6 +553,23 @@ export const evalRuns = operational.table("eval_runs", {
   results: jsonb("results").$type<Array<Record<string, unknown>>>().notNull(),
   createdAt: createdAt(),
 });
+
+/** Redacted authentication, authorization and service-activity audit events. */
+export const securityEvents = operational.table("security_events", {
+  id: id(),
+  institutionId: uuid("institution_id").references(() => institutions.id),
+  actorUserId: uuid("actor_user_id").references(() => users.id),
+  sessionId: uuid("session_id").references(() => authSessions.id),
+  eventClass: text("event_class").notNull(),
+  eventCode: text("event_code").notNull(),
+  principal: text("principal"),
+  purpose: text("purpose"),
+  detail: jsonb("detail").$type<Record<string, string | number | boolean | null>>().default({}).notNull(),
+  createdAt: createdAt(),
+}, (table) => [
+  index("security_events_scope_idx").on(table.institutionId, table.createdAt),
+  check("security_event_class_ck", sql`${table.eventClass} IN ('AUTHENTICATION','AUTHORIZATION','SERVICE')`),
+]);
 
 export const governanceEvents = product.table("governance_events", {
   id: id(),

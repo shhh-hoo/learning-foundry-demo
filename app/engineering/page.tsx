@@ -1,4 +1,4 @@
-import { requireWorkspaceActor } from "@/application/identity";
+import { withWorkspaceActor } from "@/application/identity";
 import { getEngineeringWorkspace } from "@/application/queries";
 import { RunFrameworkContractChecksButton } from "@/components/ClientActions";
 import { Badge, Card, Empty, SurfaceHeader } from "@/components/ui";
@@ -7,7 +7,7 @@ import { WORKFLOW_CATALOG } from "@/workflows/catalog";
 export const dynamic = "force-dynamic";
 
 export default async function EngineeringPage() {
-  const actor = await requireWorkspaceActor(["ENGINEER", "ADMIN"], "Engineering Workspace");
+  return withWorkspaceActor(["ENGINEER", "ADMIN"], "Engineering Workspace", async (actor) => {
   const workspace = await getEngineeringWorkspace(actor);
   return <>
     <SurfaceHeader eyebrow="Engineering / Inspection" title="Inspect what actually ran" description="Operational workflow, retrieval and framework/core contract-check records are physically separate from canonical Product State." actions={<RunFrameworkContractChecksButton/>}/>
@@ -26,4 +26,5 @@ export default async function EngineeringPage() {
     </Card>
     <Card eyebrow="Checkpoint store" title="LangGraph physical state">{workspace.checkpointCounts.map((row) => <p key={String(row.table_name)}>{String(row.table_name)}: {String(row.count)} {row.status ? `· ${String(row.status)}` : ""}</p>)}</Card>
   </>;
+  });
 }

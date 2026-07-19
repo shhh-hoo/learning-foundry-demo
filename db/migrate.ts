@@ -1,12 +1,14 @@
 import { resolve } from "node:path";
+import postgres from "postgres";
+import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
-import { closeDb, getDb } from "@/db/client";
+import { getMigrationDatabaseUrl } from "@/db/client";
 
-await migrate(getDb(), {
+const sql = postgres(getMigrationDatabaseUrl(), { max: 1, prepare: false });
+await migrate(drizzle(sql), {
   migrationsFolder: resolve("db/migrations"),
   migrationsSchema: "foundry_product",
   migrationsTable: "__drizzle_migrations",
 });
-
-await closeDb();
+await sql.end();
 console.log("Product State migrations applied to foundry_product.");

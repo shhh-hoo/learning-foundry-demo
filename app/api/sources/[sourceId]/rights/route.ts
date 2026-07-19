@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { requireApiActor } from "@/application/identity";
+import { withApiActor } from "@/application/identity";
 import { errorResponse } from "@/application/http";
 import { reviewSourceRights } from "@/application/file-intake";
 
@@ -11,9 +11,10 @@ const RightsDecision = z.object({
 
 export async function POST(request: Request, context: { params: Promise<{ sourceId: string }> }) {
   try {
-    const actor = await requireApiActor();
-    const { sourceId } = await context.params;
-    return Response.json(await reviewSourceRights(actor, { sourceId, ...RightsDecision.parse(await request.json()) }));
+    return await withApiActor(async (actor) => {
+      const { sourceId } = await context.params;
+      return Response.json(await reviewSourceRights(actor, { sourceId, ...RightsDecision.parse(await request.json()) }));
+    });
   } catch (error) {
     return errorResponse(error);
   }

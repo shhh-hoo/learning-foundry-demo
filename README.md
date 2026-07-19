@@ -54,9 +54,54 @@ two boundaries enforce pre/post deadline guards but cannot cooperatively stop an
 already in-flight wrapper call. They must not be reported as cooperatively
 cancelled; the workflow still stops before subsequent canonical writes.
 
-External telemetry, product/pedagogy/learning-effectiveness Eval, managed object storage, production ANN/vector infrastructure, and a production authentication provider remain unavailable or not configured. No public preview is authorized.
+External telemetry, product/pedagogy/learning-effectiveness Eval, managed object storage, production ANN/vector infrastructure, and a live production identity-provider configuration remain unavailable or not configured. No public preview is authorized.
 
-Managed database roles and RLS (or an equivalent database-enforced tenant policy) are **NOT_CONFIGURED**. Application authorization remains mandatory, but is not a claim of database-level tenant enforcement. Background or automatic recovery for a crashed `RESUMING` workflow is **NOT_IMPLEMENTED**. On request, an authorized actor may reclaim an expired resume lease using the current interrupt version; fresh leases remain protected from concurrent resume. This bounded reclaim path grants no preview or production authorization. Missing database-enforced tenant policy and missing automatic recovery remain public-preview blockers.
+The unmerged RW-02 Draft adds a generic production OIDC contract, DB-backed
+session rotation/revocation, transaction-local tenant context, forced RLS for
+every cataloged Product State and operational table, institution-prefixed
+checkpoint enforcement, and least-privilege auth/product/checkpoint/worker
+roles. Local automated, direct-database, and HTTPS OIDC-simulator evidence is
+recorded in `docs/RW-02-EVIDENCE.md`. It is not live-provider, managed-database,
+preview, human, production, or Product Owner acceptance evidence.
+
+Production OIDC requires `AUTH_OIDC_ISSUER`, `AUTH_OIDC_CLIENT_ID`,
+`AUTH_OIDC_CLIENT_SECRET`, `AUTH_SECRET`, and an operator-provisioned immutable
+issuer+subject binding. Production database separation requires
+`PRODUCT_DATABASE_URL`, `CHECKPOINT_DATABASE_URL`, `AUTH_DATABASE_URL`,
+`WORKER_DATABASE_URL`, `MIGRATION_DATABASE_URL`, and
+`CHECKPOINT_MIGRATION_DATABASE_URL`, each using its documented distinct login
+role or target. Production runtime pools merge an exact group-role startup
+setting into those URLs and fail if the login lacks the matching grant; owner
+migration URLs are not reused by application pools. Each operator-provisioned
+application login must be LOGIN, NOINHERIT, NOSUPERUSER, NOBYPASSRLS,
+non-owning, and a direct member of exactly one matching runtime group; startup
+must still SET that exact group role. The mutation guard resolves PostgreSQL
+role/session membership from the catalogs. When `role=none`, a non-owner caller
+with zero or multiple runtime authorities fails closed. An explicit runtime
+group selected at connection startup is honored; that path therefore relies on
+the operator provisioning each login with exactly one direct runtime-group
+membership.
+The migration creates NOLOGIN group roles; it does not create credentials or
+grant a deploy environment access.
+
+These controls remain **DRAFT / NOT DEPLOYED / NOT LIVE-CONFIGURED** until a
+separate authorized deployment provisions the roles, applies the migrations,
+configures an approved provider, and supplies evidence. Background or automatic
+recovery for a crashed `RESUMING` workflow is **NOT_IMPLEMENTED**. On request,
+an authorized actor may reclaim an expired resume lease using the current
+interrupt version; fresh leases remain protected from concurrent resume. This
+bounded reclaim path and the RW-02 Draft grant no preview or production
+authorization.
+
+RW-02 is an **internal implementation checkpoint, not production-ready tenant
+isolation**. Its catalog-backed role resolution and tenant probes cover the
+enumerated local PostgreSQL paths only. Managed-database ownership, login
+provisioning, role-chain configuration, deployment/session behavior and any
+unexamined privileged bypass remain deferred to authorized operational and
+security review. In particular, the explicit `SET ROLE` path does not
+independently re-count the session login's other memberships, so the documented
+one-group login constraint is a deployment assumption, not a locally proven
+managed-environment guarantee. Local tests do not approve those assumptions.
 
 Dependency audit status: Next.js 16.2.10 currently installs nested PostCSS 8.4.31, which remains affected by moderate advisory `GHSA-qx2v-qp2m-jg93`. A package override was tested and removed because Next continued to resolve its pinned nested version and npm correctly marked the forced tree invalid. The other current moderate findings are in the `drizzle-kit` / `@esbuild-kit` / `esbuild` development-tooling chain; npm's proposed remediation is an incompatible downgrade and is not applied. There are currently no high or critical audit findings. The runtime PostCSS advisory remains an explicit preview blocker pending a compatible upstream resolution.
 

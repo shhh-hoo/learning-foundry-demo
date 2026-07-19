@@ -10,13 +10,19 @@ declare module "next-auth" {
       image?: string | null;
       activeInstitutionId: string;
       authMethod: string;
+      authIssuer: string;
+      authSubject: string;
       sessionId: string;
+      sessionVersion: number;
     };
   }
 
   interface User {
     activeInstitutionId: string;
     authMethod: string;
+    authIssuer: string;
+    authSubject: string;
+    identityId: string;
   }
 }
 
@@ -25,6 +31,10 @@ declare module "next-auth/jwt" {
     userId?: string;
     activeInstitutionId?: string;
     authMethod?: string;
+    authIssuer?: string;
+    authSubject?: string;
     sessionId?: string;
+    sessionVersion?: number;
+    authValid?: boolean;
   }
 }
