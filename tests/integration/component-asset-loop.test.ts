@@ -6,6 +6,8 @@ import {
   createTeacherReview,
   decidePublication,
   deliverActiveComponentSupport,
+  emergencyDisableComponent,
+  recordComponentDeprecation,
   rollbackComponent,
   updateComponentVersion,
 } from "@/application/commands";
@@ -18,6 +20,9 @@ import {
   capabilities,
   capabilityVersions,
   componentDeliveries,
+  componentDeprecationDecisions,
+  componentDisableDecisions,
+  componentDraftRevisions,
   componentEvaluations,
   componentVersions,
   components,
@@ -199,6 +204,34 @@ describe.sequential("Complete governed Component Asset Loop", () => {
     expect(activeSuccessor.title).toBe("Unit-ledger teaching support · concise");
     const successorDelivery = await deliverActiveComponentSupport(teacher, { observationId: signalObservationIds[0], idempotencyKey: `delivery-successor:${randomUUID()}` });
     expect(successorDelivery.componentVersionId).toBe(successorTwo.componentVersionId);
+    const revisionsBeforeHistoricalEdit = await getDb().select().from(componentDraftRevisions)
+      .where(eq(componentDraftRevisions.componentId, component.id))
+      .orderBy(componentDraftRevisions.revisionNumber);
+    const latestBeforeHistoricalEdit = revisionsBeforeHistoricalEdit.at(-1)!;
+    const [historicalSourceVersion] = await getDb().select().from(componentVersions).where(eq(componentVersions.id, successor.componentVersionId));
+    const [successorTwoShell] = await getDb().select().from(componentVersions).where(eq(componentVersions.id, successorTwo.componentVersionId));
+    const nonLatestEdit = await updateComponentVersion(expert, {
+      componentId: component.id,
+      componentVersionId: successor.componentVersionId,
+      title: "Unit-ledger teaching support · historical-source branch",
+      purpose: "Prove a non-latest immutable published source allocates the next global revision without rewriting prior history.",
+      content: { ...content, scaffoldHint: "Start from the historical exact version, then author a new global revision." },
+      idempotencyKey: `non-latest-successor:${randomUUID()}`,
+    });
+    const [nonLatestShell] = await getDb().select().from(componentVersions).where(eq(componentVersions.id, nonLatestEdit.componentVersionId));
+    const [nonLatestRevision] = await getDb().select().from(componentDraftRevisions).where(eq(componentDraftRevisions.id, nonLatestShell.draftRevisionId));
+    expect(nonLatestRevision).toMatchObject({
+      revisionNumber: latestBeforeHistoricalEdit.revisionNumber + 1,
+      predecessorRevisionId: historicalSourceVersion.draftRevisionId,
+      derivedFromVersionId: successor.componentVersionId,
+    });
+    const historicalBranches = await getDb().select().from(componentDraftRevisions)
+      .where(eq(componentDraftRevisions.predecessorRevisionId, historicalSourceVersion.draftRevisionId));
+    expect(new Set(historicalBranches.map(({ id }) => id))).toEqual(new Set([successorTwoShell.draftRevisionId, nonLatestRevision.id]));
+    expect((await getDb().select().from(componentDraftRevisions).where(eq(componentDraftRevisions.id, historicalSourceVersion.draftRevisionId)))[0]).toMatchObject({
+      lifecycleState: "APPROVED",
+      contentHash: historicalSourceVersion.contentHash,
+    });
     await expect(getSql().unsafe(`UPDATE foundry_product.component_versions SET content_hash = 'forged' WHERE id = '${successor.componentVersionId}'`)).rejects.toThrow(/immutable/);
     await expect(getSql().unsafe(`UPDATE foundry_product.components SET active_version_id = '${successor.componentVersionId}' WHERE id = '${component.id}'`)).rejects.toThrow(/governed publication or rollback/);
 
@@ -300,5 +333,97 @@ describe.sequential("Complete governed Component Asset Loop", () => {
       repeated_attempt_count: 1,
     }));
     expect(withCurrentSignal.candidateSources.some((source) => historicalObservationIds.includes(String(source.observation_id)))).toBe(false);
+  });
+
+  it("records replay-safe exact maintenance decisions without rewriting version or delivery history", async () => {
+    const [component] = await getDb().select().from(components).where(eq(components.capabilityId, capabilityId)).limit(1);
+    const publishedVersions = await getDb().select().from(componentVersions)
+      .where(and(eq(componentVersions.componentId, component.id), eq(componentVersions.status, "PUBLISHED")));
+    const successor = publishedVersions.find((candidate) => publishedVersions.some((prior) => prior.id === candidate.successorOfVersionId));
+    const predecessor = successor && publishedVersions.find((candidate) => candidate.id === successor.successorOfVersionId);
+    expect(predecessor).toBeTruthy();
+    expect(successor).toBeTruthy();
+
+    if (component.activeVersionId !== predecessor!.id) {
+      await rollbackComponent(expert, {
+        componentId: component.id,
+        targetVersionId: predecessor!.id,
+        expectedActiveVersionId: component.activeVersionId!,
+        rationale: "Set the exact historical predecessor active for the bounded maintenance exercise.",
+        idempotencyKey: `maintenance-setup:${randomUUID()}`,
+      });
+    }
+
+    const versionsBefore = await getDb().select().from(componentVersions)
+      .where(eq(componentVersions.componentId, component.id))
+      .orderBy(componentVersions.createdAt, componentVersions.id);
+    const deliveriesBefore = await getDb().select().from(componentDeliveries)
+      .where(eq(componentDeliveries.componentId, component.id))
+      .orderBy(componentDeliveries.createdAt, componentDeliveries.id);
+
+    await expect(recordComponentDeprecation(learner, {
+      componentId: component.id,
+      componentVersionId: predecessor!.id,
+      successorVersionId: successor!.id,
+      action: "DEPRECATE",
+      migrationGuidance: "Use the exact governed published successor.",
+      reason: "The successor is the maintained future-delivery version.",
+      idempotencyKey: `learner-maintenance-denied:${randomUUID()}`,
+    })).rejects.toMatchObject({ code: "FORBIDDEN_ROLE" });
+
+    const deprecationInput = {
+      componentId: component.id,
+      componentVersionId: predecessor!.id,
+      successorVersionId: successor!.id,
+      action: "DEPRECATE" as const,
+      migrationGuidance: "Use the exact governed published successor.",
+      reason: "The successor is the maintained future-delivery version.",
+      idempotencyKey: `deprecate:${randomUUID()}`,
+    };
+    const deprecation = await recordComponentDeprecation(expert, deprecationInput);
+    expect(deprecation).toMatchObject({ targetVersionId: predecessor!.id, activeStatusChanged: true, status: "DEPRECATED", replayed: false });
+    await expect(recordComponentDeprecation(expert, deprecationInput)).resolves.toMatchObject({ decisionId: deprecation.decisionId, replayed: true });
+    expect(await getDb().select().from(componentDeprecationDecisions).where(eq(componentDeprecationDecisions.id, deprecation.decisionId))).toHaveLength(1);
+    await expect(deliverActiveComponentSupport(teacher, {
+      observationId: signalObservationIds.at(-1)!,
+      idempotencyKey: `delivery-deprecated:${randomUUID()}`,
+    })).rejects.toMatchObject({ code: "COMPONENT_SUPPORT_UNAVAILABLE" });
+
+    await rollbackComponent(expert, {
+      componentId: component.id,
+      targetVersionId: successor!.id,
+      expectedActiveVersionId: predecessor!.id,
+      rationale: "Move future delivery to the exact maintained successor.",
+      idempotencyKey: `maintenance-successor:${randomUUID()}`,
+    });
+    await expect(rollbackComponent(expert, {
+      componentId: component.id,
+      targetVersionId: predecessor!.id,
+      expectedActiveVersionId: successor!.id,
+      rationale: "A deprecated exact version must remain excluded from rollback targets.",
+      idempotencyKey: `rollback-deprecated-denied:${randomUUID()}`,
+    })).rejects.toMatchObject({ code: "ROLLBACK_TARGET_INELIGIBLE" });
+
+    const disableInput = {
+      componentId: component.id,
+      componentVersionId: successor!.id,
+      reason: "Emergency disable this exact active version after bounded review.",
+      idempotencyKey: `disable:${randomUUID()}`,
+    };
+    const disabled = await emergencyDisableComponent(expert, disableInput);
+    expect(disabled).toMatchObject({ targetVersionId: successor!.id, activeStatusChanged: true, status: "EMERGENCY_DISABLED", replayed: false });
+    await expect(emergencyDisableComponent(expert, disableInput)).resolves.toMatchObject({ decisionId: disabled.decisionId, replayed: true });
+    expect(await getDb().select().from(componentDisableDecisions).where(eq(componentDisableDecisions.id, disabled.decisionId))).toHaveLength(1);
+    await expect(deliverActiveComponentSupport(teacher, {
+      observationId: signalObservationIds.at(-1)!,
+      idempotencyKey: `delivery-disabled:${randomUUID()}`,
+    })).rejects.toMatchObject({ code: "COMPONENT_SUPPORT_UNAVAILABLE" });
+
+    expect(await getDb().select().from(componentVersions)
+      .where(eq(componentVersions.componentId, component.id))
+      .orderBy(componentVersions.createdAt, componentVersions.id)).toEqual(versionsBefore);
+    expect(await getDb().select().from(componentDeliveries)
+      .where(eq(componentDeliveries.componentId, component.id))
+      .orderBy(componentDeliveries.createdAt, componentDeliveries.id)).toEqual(deliveriesBefore);
   });
 });

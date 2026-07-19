@@ -18,6 +18,8 @@
     "test:integration:rerun": "npm run test:integration && npm run test:integration",
     "test:tenant-db": "node --import tsx scripts/test-tenant-enforcement.ts",
     "test:rw03-db": "node --import tsx scripts/test-rw03-canonical-db.ts",
+    "test:rw04-db": "node --import tsx scripts/test-rw04-lifecycle-db.ts",
+    "test:rw04-upgrade": "node --import tsx scripts/rehearse-rw04-topological-upgrade.ts",
     "test:migration-upgrade": "node --import tsx scripts/rehearse-component-upgrade.ts",
     "test:e2e:setup": "node --import tsx scripts/setup-e2e.ts",
     "test:e2e": "npm run test:e2e:setup && playwright test",

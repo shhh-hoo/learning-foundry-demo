@@ -11,6 +11,7 @@ import {
   capabilities,
   capabilityVersions,
   componentEvaluations,
+  componentDraftRevisions,
   componentVersions,
   components,
   courses,
@@ -227,10 +228,18 @@ export async function runComponentEvaluation(actor: Actor, componentVersionId: s
       eq(componentEvaluations.componentVersionId, locked.id),
       eq(componentEvaluations.inputHash, evaluationInputHash),
     )).limit(1);
-    if (existing) return { record: existing, replayed: true };
+    if (existing) {
+      if (existing.draftRevisionId !== locked.draftRevisionId || existing.contentHash !== locked.contentHash) {
+        throw new DomainInvariantError("Component evaluation replay is stale for the current DraftRevision", "COMPONENT_EVALUATION_STALE");
+      }
+      await tx.update(componentDraftRevisions).set({ lifecycleState: "READY_FOR_REVIEW" })
+        .where(and(eq(componentDraftRevisions.id, locked.draftRevisionId), eq(componentDraftRevisions.lifecycleState, "DRAFT")));
+      return { record: existing, replayed: true };
+    }
     const [record] = await tx.insert(componentEvaluations).values({
       id: evaluationId,
       componentVersionId: locked.id,
+      draftRevisionId: locked.draftRevisionId,
       institutionId: actor.institutionId,
       courseId: row.component.courseId,
       evaluatorKey: COMPONENT_EVALUATOR_KEY,
@@ -253,6 +262,12 @@ export async function runComponentEvaluation(actor: Actor, componentVersionId: s
       sourceObservationIds,
       sourceReviewIds,
     }).where(and(eq(componentVersions.id, locked.id), eq(componentVersions.status, "DRAFT")));
+    // A completed versioned evaluation is reviewable even when its gates are
+    // BLOCKED; the system result remains on ComponentEvaluationRun and an
+    // authorized human may reject it. CHECK_FAILED is reserved for an actual
+    // failed contract-check execution, not an evaluated negative result.
+    await tx.update(componentDraftRevisions).set({ lifecycleState: "READY_FOR_REVIEW" })
+      .where(and(eq(componentDraftRevisions.id, locked.draftRevisionId), eq(componentDraftRevisions.lifecycleState, "DRAFT")));
     await tx.insert(governanceEvents).values({
       institutionId: actor.institutionId,
       actorUserId: actor.userId,

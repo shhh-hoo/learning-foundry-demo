@@ -601,13 +601,17 @@ export const components = product.table("components", {
   activeVersionId: uuid("active_version_id"),
   createdBy: uuid("created_by").notNull().references(() => users.id),
   createdAt: createdAt(),
-}, (table) => [uniqueIndex("components_institution_key_uq").on(table.institutionId, table.key)]);
+}, (table) => [
+  uniqueIndex("components_institution_key_uq").on(table.institutionId, table.key),
+  check("component_lifecycle_status_ck", sql`${table.status} IN ('CANDIDATE','PUBLISHED','REJECTED','DEPRECATED','RETIRED','EMERGENCY_DISABLED')`),
+]);
 
 export const componentVersions = product.table("component_versions", {
   id: id(),
   componentId: uuid("component_id").notNull().references(() => components.id, { onDelete: "cascade" }),
   version: text("version").notNull(),
   successorOfVersionId: uuid("successor_of_version_id").references((): AnyPgColumn => componentVersions.id),
+  draftRevisionId: uuid("draft_revision_id").notNull().references((): AnyPgColumn => componentDraftRevisions.id),
   contract: jsonb("contract").$type<Record<string, unknown>>().notNull(),
   content: jsonb("content").$type<Record<string, unknown>>().notNull(),
   sourceObservationIds: uuid("source_observation_ids").array().notNull(),
@@ -615,17 +619,133 @@ export const componentVersions = product.table("component_versions", {
   validation: jsonb("validation").$type<Record<string, unknown>>().notNull(),
   evalResult: jsonb("eval_result").$type<Record<string, unknown>>(),
   status: text("status").default("DRAFT").notNull(),
+  publicationScope: text("publication_scope"),
+  publishedBy: uuid("published_by").references(() => users.id),
+  publishedAt: timestamp("published_at", { withTimezone: true }),
+  publicationDecisionId: uuid("publication_decision_id").references((): AnyPgColumn => publicationDecisions.id),
   contentHash: text("content_hash").notNull(),
   createdBy: uuid("created_by").notNull().references(() => users.id),
   createdAt: createdAt(),
 }, (table) => [
   uniqueIndex("component_versions_uq").on(table.componentId, table.version),
   check("component_version_status_ck", sql`${table.status} IN ('DRAFT','PUBLISHED','REJECTED')`),
+  check("component_version_publication_scope_ck", sql`${table.publicationScope} IS NULL OR ${table.publicationScope}='PRIVATE_INTERNAL'`),
+  check("component_version_publication_fact_ck", sql`(${table.status}='PUBLISHED' AND ${table.publicationScope}='PRIVATE_INTERNAL' AND ${table.publishedBy} IS NOT NULL AND ${table.publishedAt} IS NOT NULL AND ${table.publicationDecisionId} IS NOT NULL) OR (${table.status}<>'PUBLISHED' AND ${table.publicationScope} IS NULL AND ${table.publishedBy} IS NULL AND ${table.publishedAt} IS NULL AND ${table.publicationDecisionId} IS NULL)`),
+]);
+
+/** Class A: immutable authored state. Editing appends a successor revision. */
+export const componentDraftRevisions = product.table("component_draft_revisions", {
+  id: id(),
+  institutionId: uuid("institution_id").notNull().references(() => institutions.id),
+  courseId: uuid("course_id").notNull().references(() => courses.id),
+  componentId: uuid("component_id").notNull().references(() => components.id),
+  revisionNumber: integer("revision_number").notNull(),
+  predecessorRevisionId: uuid("predecessor_revision_id").references((): AnyPgColumn => componentDraftRevisions.id),
+  derivedFromVersionId: uuid("derived_from_version_id").references(() => componentVersions.id),
+  contract: jsonb("contract").$type<Record<string, unknown>>().notNull(),
+  content: jsonb("content").$type<Record<string, unknown>>().notNull(),
+  contentHash: text("content_hash").notNull(),
+  sourceObservationIds: uuid("source_observation_ids").array().notNull(),
+  sourceReviewIds: uuid("source_review_ids").array().notNull(),
+  sourceAssetVersionIds: uuid("source_asset_version_ids").array().notNull(),
+  evidenceUnitIds: uuid("evidence_unit_ids").array().notNull(),
+  contextItemIds: uuid("context_item_ids").array().notNull(),
+  lifecycleState: text("lifecycle_state").default("DRAFT").notNull(),
+  createdBy: uuid("created_by").notNull().references(() => users.id),
+  changeReason: text("change_reason").notNull(),
+  createdAt: createdAt(),
+}, (table) => [
+  uniqueIndex("component_draft_revision_number_uq").on(table.componentId, table.revisionNumber),
+  check("component_draft_revision_number_ck", sql`${table.revisionNumber} > 0`),
+  check("component_draft_revision_state_ck", sql`${table.lifecycleState} IN ('DRAFT','CHECK_FAILED','READY_FOR_REVIEW','IN_REVIEW','CHANGES_REQUESTED','APPROVED','REJECTED','WITHDRAWN')`),
+]);
+
+/** Class A: exact assignment of an immutable revision to an eligible human. */
+export const componentReviewAssignments = product.table("component_review_assignments", {
+  id: id(),
+  institutionId: uuid("institution_id").notNull().references(() => institutions.id),
+  courseId: uuid("course_id").notNull().references(() => courses.id),
+  componentId: uuid("component_id").notNull().references(() => components.id),
+  draftRevisionId: uuid("draft_revision_id").notNull().references(() => componentDraftRevisions.id),
+  revisionContentHash: text("revision_content_hash").notNull(),
+  assignedBy: uuid("assigned_by").notNull().references(() => users.id),
+  reviewerId: uuid("reviewer_id").notNull().references(() => users.id),
+  reviewScope: jsonb("review_scope").$type<Record<string, unknown>>().notNull(),
+  conflictState: text("conflict_state").notNull(),
+  status: text("status").default("ASSIGNED").notNull(),
+  assignedAt: timestamp("assigned_at", { withTimezone: true }).defaultNow().notNull(),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+}, (table) => [
+  check("component_review_assignment_conflict_ck", sql`${table.conflictState} IN ('DECLARED_NONE','DISCLOSED','UNRESOLVED_PRIVATE_COMPATIBILITY','MIGRATED_COMPATIBILITY')`),
+  check("component_review_assignment_status_ck", sql`${table.status} IN ('ASSIGNED','COMPLETED','CANCELLED')`),
+  check("component_review_assignment_completion_ck", sql`(${table.status}='COMPLETED' AND ${table.completedAt} IS NOT NULL) OR (${table.status}<>'COMPLETED' AND ${table.completedAt} IS NULL)`),
+]);
+
+/** Class A: append-only field/block discussion, replies and resolutions. */
+export const componentReviewComments = product.table("component_review_comments", {
+  id: id(),
+  institutionId: uuid("institution_id").notNull().references(() => institutions.id),
+  courseId: uuid("course_id").notNull().references(() => courses.id),
+  componentId: uuid("component_id").notNull().references(() => components.id),
+  draftRevisionId: uuid("draft_revision_id").notNull().references(() => componentDraftRevisions.id),
+  assignmentId: uuid("assignment_id").notNull().references(() => componentReviewAssignments.id),
+  revisionContentHash: text("revision_content_hash").notNull(),
+  authorId: uuid("author_id").notNull().references(() => users.id),
+  commentKind: text("comment_kind").notNull(),
+  targetKind: text("target_kind").notNull(),
+  targetRef: text("target_ref"),
+  parentCommentId: uuid("parent_comment_id").references((): AnyPgColumn => componentReviewComments.id),
+  body: text("body").notNull(),
+  createdAt: createdAt(),
+}, (table) => [
+  check("component_review_comment_kind_ck", sql`${table.commentKind} IN ('COMMENT','REPLY','RESOLUTION')`),
+  check("component_review_comment_target_ck", sql`${table.targetKind} IN ('GENERAL','FIELD','BLOCK')`),
+  check("component_review_comment_body_ck", sql`length(trim(${table.body})) > 0`),
+]);
+
+/** Class A: requested correction and its one deterministic successor response. */
+export const componentChangeRequests = product.table("component_change_requests", {
+  id: id(),
+  institutionId: uuid("institution_id").notNull().references(() => institutions.id),
+  courseId: uuid("course_id").notNull().references(() => courses.id),
+  componentId: uuid("component_id").notNull().references(() => components.id),
+  draftRevisionId: uuid("draft_revision_id").notNull().references(() => componentDraftRevisions.id),
+  assignmentId: uuid("assignment_id").notNull().references(() => componentReviewAssignments.id),
+  revisionContentHash: text("revision_content_hash").notNull(),
+  requestedBy: uuid("requested_by").notNull().references(() => users.id),
+  reason: text("reason").notNull(),
+  status: text("status").default("OPEN").notNull(),
+  successorRevisionId: uuid("successor_revision_id").references(() => componentDraftRevisions.id),
+  respondedBy: uuid("responded_by").references(() => users.id),
+  respondedAt: timestamp("responded_at", { withTimezone: true }),
+  idempotencyKey: text("idempotency_key").notNull().unique(),
+  createdAt: createdAt(),
+}, (table) => [check("component_change_request_status_ck", sql`${table.status} IN ('OPEN','RESPONDED','WITHDRAWN')`)]);
+
+/** Class A: append-only human result for one assignment and exact revision hash. */
+export const componentReviewDecisions = product.table("component_review_decisions", {
+  id: id(),
+  institutionId: uuid("institution_id").notNull().references(() => institutions.id),
+  courseId: uuid("course_id").notNull().references(() => courses.id),
+  componentId: uuid("component_id").notNull().references(() => components.id),
+  draftRevisionId: uuid("draft_revision_id").notNull().references(() => componentDraftRevisions.id),
+  assignmentId: uuid("assignment_id").notNull().references(() => componentReviewAssignments.id),
+  revisionContentHash: text("revision_content_hash").notNull(),
+  reviewerId: uuid("reviewer_id").notNull().references(() => users.id),
+  action: text("action").notNull(),
+  reason: text("reason").notNull(),
+  actorProvenance: jsonb("actor_provenance").$type<{ userId: string; institutionId: string; roles: string[]; authMethod: string; sessionId: string; authenticatedAt: string }>().notNull(),
+  idempotencyKey: text("idempotency_key").notNull().unique(),
+  createdAt: createdAt(),
+}, (table) => [
+  uniqueIndex("component_review_decision_assignment_uq").on(table.assignmentId),
+  check("component_review_decision_action_ck", sql`${table.action} IN ('APPROVE','REJECT','CHANGES_REQUESTED')`),
 ]);
 
 export const componentEvaluations = product.table("component_evaluations", {
   id: id(),
   componentVersionId: uuid("component_version_id").notNull().references(() => componentVersions.id),
+  draftRevisionId: uuid("draft_revision_id").notNull().references(() => componentDraftRevisions.id),
   institutionId: uuid("institution_id").notNull().references(() => institutions.id),
   courseId: uuid("course_id").notNull().references(() => courses.id),
   evaluatorKey: text("evaluator_key").notNull(),
@@ -651,6 +771,9 @@ export const componentEvaluations = product.table("component_evaluations", {
 export const publicationDecisions = product.table("publication_decisions", {
   id: id(),
   componentVersionId: uuid("component_version_id").notNull().references(() => componentVersions.id),
+  draftRevisionId: uuid("draft_revision_id").notNull().references(() => componentDraftRevisions.id),
+  reviewDecisionId: uuid("review_decision_id").references(() => componentReviewDecisions.id),
+  revisionContentHash: text("revision_content_hash").notNull(),
   evaluationId: uuid("evaluation_id").references(() => componentEvaluations.id),
   previousActiveVersionId: uuid("previous_active_version_id").references(() => componentVersions.id),
   expertId: uuid("expert_id").notNull().references(() => users.id),
@@ -666,6 +789,53 @@ export const publicationDecisions = product.table("publication_decisions", {
   check("publication_action_ck", sql`${table.action} IN ('APPROVE','REJECT','ROLLBACK')`),
   check("publication_provenance_ck", sql`length(${table.actorProvenance}->>'userId') > 0 AND length(${table.actorProvenance}->>'institutionId') > 0 AND length(${table.actorProvenance}->>'authMethod') > 0 AND (${table.actorProvenance}->>'authMethod') NOT LIKE 'migrated-%'`),
 ]);
+
+export const componentDeprecationDecisions = product.table("component_deprecation_decisions", {
+  id: id(),
+  institutionId: uuid("institution_id").notNull().references(() => institutions.id),
+  courseId: uuid("course_id").notNull().references(() => courses.id),
+  componentId: uuid("component_id").notNull().references(() => components.id),
+  componentVersionId: uuid("component_version_id").notNull().references(() => componentVersions.id),
+  successorVersionId: uuid("successor_version_id").references(() => componentVersions.id),
+  action: text("action").notNull(),
+  migrationGuidance: text("migration_guidance").notNull(),
+  actorUserId: uuid("actor_user_id").notNull().references(() => users.id),
+  reason: text("reason").notNull(),
+  actorProvenance: jsonb("actor_provenance").$type<Record<string, unknown>>().notNull(),
+  idempotencyKey: text("idempotency_key").notNull().unique(),
+  createdAt: createdAt(),
+}, (table) => [
+  check("component_deprecation_action_ck", sql`${table.action} IN ('DEPRECATE','RETIRE')`),
+  check("component_deprecation_successor_ck", sql`(${table.action}='DEPRECATE' AND ${table.successorVersionId} IS NOT NULL) OR (${table.action}='RETIRE' AND ${table.successorVersionId} IS NULL)`),
+]);
+
+export const componentDisableDecisions = product.table("component_disable_decisions", {
+  id: id(),
+  institutionId: uuid("institution_id").notNull().references(() => institutions.id),
+  courseId: uuid("course_id").notNull().references(() => courses.id),
+  componentId: uuid("component_id").notNull().references(() => components.id),
+  componentVersionId: uuid("component_version_id").notNull().references(() => componentVersions.id),
+  action: text("action").notNull(),
+  actorUserId: uuid("actor_user_id").notNull().references(() => users.id),
+  reason: text("reason").notNull(),
+  actorProvenance: jsonb("actor_provenance").$type<Record<string, unknown>>().notNull(),
+  idempotencyKey: text("idempotency_key").notNull().unique(),
+  createdAt: createdAt(),
+}, (table) => [check("component_disable_action_ck", sql`${table.action} = 'EMERGENCY_DISABLE'`)]);
+
+export const componentRollbackDecisions = product.table("component_rollback_decisions", {
+  id: id(),
+  institutionId: uuid("institution_id").notNull().references(() => institutions.id),
+  courseId: uuid("course_id").notNull().references(() => courses.id),
+  componentId: uuid("component_id").notNull().references(() => components.id),
+  previousVersionId: uuid("previous_version_id").notNull().references(() => componentVersions.id),
+  targetVersionId: uuid("target_version_id").notNull().references(() => componentVersions.id),
+  actorUserId: uuid("actor_user_id").notNull().references(() => users.id),
+  reason: text("reason").notNull(),
+  actorProvenance: jsonb("actor_provenance").$type<Record<string, unknown>>().notNull(),
+  idempotencyKey: text("idempotency_key").notNull().unique(),
+  createdAt: createdAt(),
+}, (table) => [check("component_rollback_changes_version_ck", sql`${table.previousVersionId} <> ${table.targetVersionId}`)]);
 
 export const componentDeliveries = product.table("component_deliveries", {
   id: id(),
