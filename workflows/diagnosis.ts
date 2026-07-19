@@ -4,6 +4,7 @@ import { ActorSchema } from "@/domain/model";
 import { captureAttempt, persistDiagnosticObservation, persistUnavailableObservation } from "@/application/commands";
 import { executePersistedCapability } from "@/application/capabilities";
 import { prepareAttemptForDiagnosis } from "@/application/attempt-interpreter";
+import { compileAuthorizedContext } from "@/application/context-service";
 
 export const DiagnosisState = new StateSchema({
   actor: ActorSchema,
@@ -21,6 +22,9 @@ export const DiagnosisState = new StateSchema({
   attemptStructuredInput: z.record(z.string(), z.unknown()).optional(),
   preparationStatus: z.string().optional(),
   preparationReason: z.string().optional(),
+  contextCompilationId: z.string().uuid().optional(),
+  contextSnapshotHash: z.string().optional(),
+  contextCompilerVersion: z.string().optional(),
   sourceRefs: z.array(z.record(z.string(), z.string())).default([]),
   idempotencyKey: z.string().min(8),
   attemptId: z.string().uuid().optional(),
@@ -29,6 +33,7 @@ export const DiagnosisState = new StateSchema({
 });
 
 export type DiagnosisGraphDependencies = {
+  compileContext: typeof compileAuthorizedContext;
   prepareAttempt: typeof prepareAttemptForDiagnosis;
   captureAttempt: typeof captureAttempt;
   executeCapability: typeof executePersistedCapability;
@@ -37,6 +42,7 @@ export type DiagnosisGraphDependencies = {
 };
 
 const defaultDependencies: DiagnosisGraphDependencies = {
+  compileContext: compileAuthorizedContext,
   prepareAttempt: prepareAttemptForDiagnosis,
   captureAttempt,
   executeCapability: executePersistedCapability,
@@ -46,6 +52,18 @@ const defaultDependencies: DiagnosisGraphDependencies = {
 
 export function buildDiagnosisGraph(checkpointer?: BaseCheckpointSaver, dependencies: DiagnosisGraphDependencies = defaultDependencies) {
   return new StateGraph(DiagnosisState)
+    .addNode("compile_context", async (state) => {
+      const compiled = await dependencies.compileContext(state.actor, {
+        taskId: state.taskId,
+        episodeId: state.episodeId,
+        consumer: "DIAGNOSIS",
+      });
+      return {
+        contextCompilationId: compiled.id,
+        contextSnapshotHash: compiled.snapshotHash,
+        contextCompilerVersion: compiled.compilerVersion,
+      };
+    })
     .addNode("prepare_attempt", async (state) => {
       const preparation = await dependencies.prepareAttempt({
         actor: state.actor,
@@ -75,7 +93,14 @@ export function buildDiagnosisGraph(checkpointer?: BaseCheckpointSaver, dependen
         fileAssetId: state.fileAssetId,
         prompt: state.prompt,
         response: state.response,
-        structuredInput: state.attemptStructuredInput ?? { responseType: "NATURAL_ATTEMPT", interpretation: { status: "INVALID", diagnosticClaim: false } },
+        structuredInput: {
+          ...(state.attemptStructuredInput ?? { responseType: "NATURAL_ATTEMPT", interpretation: { status: "INVALID", diagnosticClaim: false } }),
+          contextSnapshot: {
+            id: state.contextCompilationId,
+            hash: state.contextSnapshotHash,
+            compilerVersion: state.contextCompilerVersion,
+          },
+        },
         sourceRefs: state.sourceRefs,
         idempotencyKey: state.idempotencyKey,
       });
@@ -91,7 +116,8 @@ export function buildDiagnosisGraph(checkpointer?: BaseCheckpointSaver, dependen
       const observation = await dependencies.persistObservation({ attemptId: state.attemptId, capabilityVersionId: execution.version.id, capabilityId: execution.capability.id, result: execution.result });
       return { observationId: observation.id, diagnosisStatus: "AVAILABLE" as const };
     })
-    .addEdge(START, "prepare_attempt")
+    .addEdge(START, "compile_context")
+    .addEdge("compile_context", "prepare_attempt")
     .addEdge("prepare_attempt", "capture_attempt")
     .addEdge("capture_attempt", "execute_capability")
     .addEdge("execute_capability", END)

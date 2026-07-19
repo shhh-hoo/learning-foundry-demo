@@ -23,6 +23,12 @@ const capabilityId = "50000000-0000-4000-8000-000000000001";
 const capabilityVersionId = "50000000-0000-4000-8000-000000000011";
 const attemptId = "90000000-0000-4000-8000-000000000001";
 const observationId = "90000000-0000-4000-8000-000000000002";
+const contextCompilationId = "90000000-0000-4000-8000-000000000003";
+const compileContext = vi.fn(async () => ({
+  id: contextCompilationId,
+  snapshotHash: "sha256:diagnosis-context",
+  compilerVersion: "3.0.0",
+}) as never);
 const activity = {
   publicKey: "chemistry-molar-concentration",
   name: "Molar concentration",
@@ -122,6 +128,7 @@ describe("bounded natural Attempt preparation", () => {
     const persist = vi.fn(async () => ({ id: observationId }));
     const unavailable = vi.fn(async () => ({ id: observationId }));
     const graph = buildDiagnosisGraph(undefined, {
+      compileContext,
       prepareAttempt: (input: Parameters<typeof prepareAttemptForDiagnosis>[0]) => prepareAttemptForDiagnosis(input, prepDependencies),
       captureAttempt: capture,
       executeCapability: execute,
@@ -138,7 +145,13 @@ describe("bounded natural Attempt preparation", () => {
     });
 
     expect(invoke).toHaveBeenCalledTimes(1);
+    expect(compileContext).toHaveBeenCalledWith(actor, { taskId, episodeId, consumer: "DIAGNOSIS" });
     expect(capture).toHaveBeenCalledTimes(1);
+    expect(capture).toHaveBeenCalledWith(actor, expect.objectContaining({
+      structuredInput: expect.objectContaining({
+        contextSnapshot: { id: contextCompilationId, hash: "sha256:diagnosis-context", compilerVersion: "3.0.0" },
+      }),
+    }));
     expect(execute).toHaveBeenCalledTimes(1);
     expect(persist).toHaveBeenCalledTimes(1);
     expect(unavailable).not.toHaveBeenCalled();
@@ -208,6 +221,7 @@ describe("bounded natural Attempt preparation", () => {
     const capture = vi.fn(async () => ({ id: attemptId }));
     const unavailable = vi.fn(async () => ({ id: observationId }));
     const graph = buildDiagnosisGraph(undefined, {
+      compileContext,
       prepareAttempt: (input: Parameters<typeof prepareAttemptForDiagnosis>[0]) => prepareAttemptForDiagnosis(input, prepDependencies),
       captureAttempt: capture,
       executeCapability: vi.fn(),

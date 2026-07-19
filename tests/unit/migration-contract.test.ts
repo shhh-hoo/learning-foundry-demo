@@ -25,7 +25,7 @@ describe("fresh migration contract", () => {
   it("keeps the clean rewrite history and adds governed Asset Loop enforcement", async () => {
     const directory = new URL("../../db/migrations/", import.meta.url);
     const migrations = (await readdir(directory)).filter((name) => name.endsWith(".sql"));
-    expect(migrations).toEqual(["0000_full_framework.sql", "0001_full_framework.sql", "0002_recoverable_resume_claims.sql", "0003_production_auth_tenant_enforcement.sql", "0004_canonical_identity_context_evidence.sql"]);
+    expect(migrations).toEqual(["0000_full_framework.sql", "0001_full_framework.sql", "0002_recoverable_resume_claims.sql", "0003_production_auth_tenant_enforcement.sql", "0004_canonical_identity_context_evidence.sql", "0005_authoritative_context_compiler.sql"]);
     const migration = await readFile(new URL("../../db/migrations/0000_full_framework.sql", import.meta.url), "utf8");
     const assetMigration = await readFile(new URL("../../db/migrations/0001_full_framework.sql", import.meta.url), "utf8");
     expect(migration).not.toMatch(/migrated-legacy-record|legacy-review|legacy-outcome|legacy-publication|HUMAN_COMMAND/);
@@ -41,6 +41,29 @@ describe("fresh migration contract", () => {
     expect(assetMigration).toContain("PRE_EVAL_DRAFT_QUARANTINED");
     expect(assetMigration).toContain("Component versions must begin as governed Drafts");
     expect(assetMigration).toContain("Components must begin as governed Candidates without an active version");
+  });
+
+  it("upgrades Context snapshots additively and preserves historical rows", async () => {
+    const migration = await readFile(new URL("../../db/migrations/0005_authoritative_context_compiler.sql", import.meta.url), "utf8");
+    expect(migration).toContain('ADD COLUMN "input_hash" text');
+    expect(migration).toContain('ADD COLUMN "snapshot_hash" text');
+    expect(migration).toContain("'LEGACY_COMPATIBILITY'");
+    expect(migration).toContain('"candidate_items" = "selected_items" || "excluded_items"');
+    expect(migration).toContain('CREATE UNIQUE INDEX "context_compilation_replay_uq"');
+    expect(migration).toContain('CREATE OR REPLACE FUNCTION "foundry_private"."context_items_in_tenant"');
+    expect(migration).toContain("WHEN 'CONTEXT_ITEM'");
+    expect(migration).toContain("WHEN 'CONTEXT_CARRYOVER_RELATION'");
+    expect(migration).toContain("WHEN 'SOURCE_ASSET_VERSION'");
+    expect(migration).toContain("WHEN 'EVIDENCE_DERIVATIVE'");
+    expect(migration).toContain("item->>'kind' IN ('EVENT','ATTEMPT')");
+    expect(migration).toContain('CREATE TRIGGER "cap01_context_compilation_lineage_guard"');
+    expect(migration).toContain('NOT foundry_private.context_items_in_tenant(NEW.candidate_items,tenant_id)');
+    expect(migration).toContain("NOT foundry_private.uuid_array_in_tenant(NEW.referenced_prior_task_ids,'TASK',tenant_id)");
+    expect(migration).toContain('candidate decisions are incomplete or duplicated');
+    expect(migration).toContain('CREATE TRIGGER "cap01_context_snapshot_immutable"');
+    expect(migration).toContain('BEFORE UPDATE ON "foundry_product"."context_compilations"');
+    expect(migration).not.toContain('BEFORE UPDATE OR DELETE ON "foundry_product"."context_compilations"');
+    expect(migration).not.toMatch(/DROP TABLE|TRUNCATE|DELETE FROM/);
   });
 
   it("adds forward-compatible recoverable resume claims without rewriting prior migrations", async () => {
