@@ -94,8 +94,10 @@ describe("A2a product-honesty surfaces", () => {
   it("prepares natural Attempts inside LangGraph before canonical capture", async () => {
     const diagnosis = await readFile(new URL("../../workflows/diagnosis.ts", import.meta.url), "utf8");
     const interpreter = await readFile(new URL("../../application/attempt-interpreter.ts", import.meta.url), "utf8");
+    expect(diagnosis).toContain('.addNode("compile_context"');
     expect(diagnosis).toContain('.addNode("prepare_attempt"');
-    expect(diagnosis).toContain('.addEdge(START, "prepare_attempt")');
+    expect(diagnosis).toContain('.addEdge(START, "compile_context")');
+    expect(diagnosis).toContain('.addEdge("compile_context", "prepare_attempt")');
     expect(diagnosis).toContain('.addEdge("prepare_attempt", "capture_attempt")');
     expect(interpreter).toContain("maxRetries: 0");
     expect(interpreter).toContain('callType: "ATTEMPT_INTERPRETATION"');

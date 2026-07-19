@@ -391,16 +391,27 @@ export const contextCompilations = product.table("context_compilations", {
   id: id(),
   taskId: uuid("task_id").notNull().references(() => learningTasks.id, { onDelete: "cascade" }),
   episodeId: uuid("episode_id").notNull().references(() => learningEpisodes.id, { onDelete: "cascade" }),
+  consumer: text("consumer").notNull(),
   compilerVersion: text("compiler_version").notNull(),
+  contextPolicyVersion: text("context_policy_version").notNull(),
+  inputHash: text("input_hash").notNull(),
+  snapshotHash: text("snapshot_hash").notNull(),
   tokenBudget: integer("token_budget").notNull(),
   modalityBudget: jsonb("modality_budget").$type<Record<string, number>>().notNull(),
   tokenizer: text("tokenizer").notNull(),
   selectedTokenCount: integer("selected_token_count").notNull(),
   modalityUsage: jsonb("modality_usage").$type<Record<string, number>>().notNull(),
+  candidateItems: jsonb("candidate_items").$type<Array<Record<string, unknown>>>().notNull(),
   selectedItems: jsonb("selected_items").$type<Array<Record<string, unknown>>>().notNull(),
   excludedItems: jsonb("excluded_items").$type<Array<Record<string, unknown>>>().notNull(),
+  provenanceRefs: jsonb("provenance_refs").$type<Array<Record<string, unknown>>>().notNull(),
+  referencedPriorTaskIds: jsonb("referenced_prior_task_ids").$type<string[]>().notNull(),
   createdAt: createdAt(),
-});
+}, (table) => [
+  uniqueIndex("context_compilation_replay_uq").on(table.taskId, table.episodeId, table.consumer, table.compilerVersion, table.inputHash),
+  check("context_compilation_consumer_ck", sql`${table.consumer} IN ('LEGACY_COMPATIBILITY','EVIDENCE_RETRIEVAL','DIAGNOSIS','CAPABILITY_RESOLUTION','RUNTIME_ORCHESTRATION')`),
+  check("context_compilation_hash_ck", sql`length(${table.inputHash}) > 0 AND length(${table.snapshotHash}) > 0`),
+]);
 
 /** Class B: persisted Task/Episode-scoped Context assertion, not source truth. */
 export const contextItems = product.table(
