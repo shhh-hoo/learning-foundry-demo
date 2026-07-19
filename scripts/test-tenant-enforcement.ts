@@ -197,6 +197,7 @@ const observationB = randomUUID();
 const reviewB = randomUUID();
 const retryB = randomUUID();
 const componentB = randomUUID();
+const componentDraftRevisionB = randomUUID();
 const componentVersionB = randomUUID();
 const libraryFixtureA = randomUUID();
 const scheduleFixtureA = randomUUID();
@@ -371,10 +372,20 @@ try {
          jsonb_build_object('observationId', ${observationB}::text, 'reviewId', ${reviewB}::text), ${learnerB}::uuid)
     `;
     await transaction`
-      INSERT INTO foundry_product.component_versions
-        (id, component_id, version, contract, content, source_observation_ids, source_review_ids, validation, content_hash, created_by)
+      INSERT INTO foundry_product.component_draft_revisions
+        (id,institution_id,course_id,component_id,revision_number,contract,content,content_hash,source_observation_ids,source_review_ids,
+         source_asset_version_ids,evidence_unit_ids,context_item_ids,lifecycle_state,created_by,change_reason)
       VALUES
-        (${componentVersionB}::uuid, ${componentB}::uuid, '0.0.1', '{}'::jsonb, '{}'::jsonb, ARRAY[${observationB}::uuid], ARRAY[${reviewB}::uuid], '{}'::jsonb, ${`hash-${componentVersionB}`}, ${learnerB}::uuid)
+        (${componentDraftRevisionB}::uuid,${tenantB}::uuid,${courseB}::uuid,${componentB}::uuid,1,'{}'::jsonb,'{}'::jsonb,
+         ${`hash-${componentVersionB}`},ARRAY[${observationB}::uuid],ARRAY[${reviewB}::uuid],'{}'::uuid[],'{}'::uuid[],'{}'::uuid[],
+         'DRAFT',${learnerB}::uuid,'Tenant harness exact RW-04 compatibility revision')
+    `;
+    await transaction`
+      INSERT INTO foundry_product.component_versions
+        (id, component_id, version, draft_revision_id, contract, content, source_observation_ids, source_review_ids, validation, content_hash, created_by)
+      VALUES
+        (${componentVersionB}::uuid, ${componentB}::uuid, '0.0.1', ${componentDraftRevisionB}::uuid, '{}'::jsonb, '{}'::jsonb,
+         ARRAY[${observationB}::uuid], ARRAY[${reviewB}::uuid], '{}'::jsonb, ${`hash-${componentVersionB}`}, ${learnerB}::uuid)
     `;
   });
   const [tenantARetry] = await product<Array<{ id: string }>>`SELECT id FROM foundry_product.retry_attempts ORDER BY created_at LIMIT 1`;
@@ -944,7 +955,9 @@ try {
     FROM foundry_private.writable_lineage_catalog
     WHERE NOT (schema_name='foundry_product' AND table_name=ANY(ARRAY[
       'learner_profiles','learner_strategy_versions','source_assets','source_asset_versions',
-      'source_processing_attempts','evidence_derivatives','context_items','context_carryover_relations'
+      'source_processing_attempts','evidence_derivatives','context_items','context_carryover_relations',
+      'component_draft_revisions','component_review_assignments','component_review_comments','component_change_requests',
+      'component_review_decisions','component_deprecation_decisions','component_disable_decisions','component_rollback_decisions'
     ]::text[]))
     ORDER BY schema_name, table_name
   `;
@@ -1043,24 +1056,9 @@ try {
     await product`DELETE FROM foundry_product.schedule_items WHERE id=${scheduleFixtureA}::uuid`;
     await product`DELETE FROM foundry_product.transfer_activities WHERE id=${transferFixtureA}::uuid`;
     await product`DELETE FROM foundry_product.retention_reviews WHERE id=${retentionFixtureA}::uuid`;
-    await product`DELETE FROM foundry_product.component_versions WHERE id=${componentVersionB}::uuid`;
-    await product`DELETE FROM foundry_product.components WHERE id=${componentB}::uuid`;
-    await product`DELETE FROM foundry_product.retry_attempts WHERE id=${retryB}::uuid`;
-    await product`DELETE FROM foundry_product.teacher_reviews WHERE id=${reviewB}::uuid`;
-    await product`DELETE FROM foundry_product.diagnostic_observations WHERE id=${observationB}::uuid`;
-    await product`DELETE FROM foundry_product.learner_attempts WHERE id=${attemptB}::uuid`;
-    await product`DELETE FROM foundry_product.evidence_derivatives WHERE evidence_unit_id=${evidenceB}::uuid`;
-    await product`DELETE FROM foundry_product.file_assets WHERE id=${fileB}::uuid`;
-    await product`DELETE FROM foundry_product.evidence_units WHERE id=${evidenceB}::uuid`;
-    await product`DELETE FROM foundry_product.source_records WHERE id=${sourceB}::uuid`;
-    await product`DELETE FROM foundry_product.source_assets WHERE institution_id=${tenantB}::uuid`;
-    await product`DELETE FROM foundry_product.learning_episodes WHERE id=${episodeB}::uuid`;
-    await product`DELETE FROM foundry_product.learning_tasks WHERE id IN (${taskB}::uuid, ${attemptedTaskIds[0]}::uuid, ${attemptedTaskIds[1]}::uuid)`;
-    await product`DELETE FROM foundry_product.courses WHERE id=${courseB}::uuid`;
-    await product`DELETE FROM foundry_product.subjects WHERE id=${subjectB}::uuid`;
-    await product`DELETE FROM foundry_product.institution_memberships WHERE user_id=${learnerB}::uuid AND institution_id=${tenantB}::uuid`;
-    await product`DELETE FROM foundry_product.users WHERE id=${learnerB}::uuid`;
-    await product`DELETE FROM foundry_product.institutions WHERE id=${tenantB}::uuid`;
+    // Tenant-B setup now includes immutable Class A RW-04 authored history.
+    // This harness is guarded to disposable databases, so preserve that exact
+    // chain rather than disabling guards or deleting canonical facts.
     await cleanupHarnessLoginRoles();
   } finally {
     await product.end();

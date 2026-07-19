@@ -224,7 +224,7 @@ try {
       (SELECT count(*)::int FROM foundry_private.writable_lineage_catalog i JOIN guarded g ON g.nspname=i.schema_name AND g.relname=i.table_name) AS guard_count,
       (SELECT count(*)::int FROM foundry_private.writable_lineage_catalog WHERE schema_name='foundry_product' AND table_name=ANY(${newWritableTables.map((key) => key.split(".")[1])}::text[])) AS rw03_direct_count
   `;
-  if (!inventory || inventory.catalog_count !== 37 || inventory.grant_count !== 37 || inventory.guard_count !== 37 || inventory.rw03_direct_count !== 8) {
+  if (!inventory || inventory.catalog_count !== 45 || inventory.grant_count !== 45 || inventory.guard_count !== 45 || inventory.rw03_direct_count !== 8) {
     throw new Error(`RW-03 writable inventory mismatch: ${JSON.stringify(inventory)}`);
   }
 
@@ -243,7 +243,7 @@ try {
   if (positiveCounts.length !== 8 || positiveCounts.some((row) => row.present !== 1) || !autoDerivativeA) {
     throw new Error(`RW-03 same-tenant positives incomplete: ${JSON.stringify(positiveCounts)}`);
   }
-  process.stdout.write(`${JSON.stringify({ status: "PASS", catalog: 37, actualWritable: 37, guarded: 37, sameTenantPositive: 8, crossTenantDenied: 8, lifecyclePositive: 1, immutableRewriteDenied: 6, exactContextLineage: true })}\n`);
+  process.stdout.write(`${JSON.stringify({ status: "PASS", catalog: 45, actualWritable: 45, guarded: 45, rw03DirectTables: 8, sameTenantPositive: 8, crossTenantDenied: 8, lifecyclePositive: 1, immutableRewriteDenied: 6, exactContextLineage: true })}\n`);
 } finally {
   await db.end();
 }
