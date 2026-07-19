@@ -1,13 +1,14 @@
 # RW-04 evidence — canonical review and Component lifecycle foundation
 
-Status: **PM ACCEPTED FOR DRAFT REVIEW — UNCOMMITTED — UNMERGED — NOT PRODUCT OWNER ACCEPTED — NOT PRODUCTION READY**
+Status: **PM ACCEPTED FOR DRAFT REVIEW — UNMERGED — NOT PRODUCT OWNER ACCEPTED — NOT PRODUCTION READY**
 
 ## Authority and exact boundary
 
 - Implementation base: `learning-foundry-demo@b981f88cf2bf93fc9d1c0b1e7cdf34ef6c74984d`.
+- Implementation checkpoint: `learning-foundry-demo@9040fbe34d6c5de96a859af6cbea5e42d4578e4a`.
 - Current product/architecture authority and 113-row ledger binding: `learning-foundry-docs@c77132314e385308c9a49fd0b5af5ed720d420a3`.
 - Package contract: `docs/RW-04-PACKAGE.md`.
-- This evidence binds an uncommitted local diff only. An exact implementation checkpoint SHA can be added only after independent PM acceptance and commit.
+- This evidence binds exact implementation checkpoint `learning-foundry-demo@9040fbe34d6c5de96a859af6cbea5e42d4578e4a`, PM accepted for Draft review only; it remains unmerged, not Product Owner accepted, and not production ready.
 
 ## Requirement-scoped implementation evidence
 

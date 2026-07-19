@@ -1,6 +1,6 @@
 # RW-04 package contract — canonical review and Component lifecycle foundation
 
-Status: **PM ACCEPTED FOR DRAFT REVIEW — UNCOMMITTED — UNMERGED — NOT PRODUCT OWNER ACCEPTED — NOT PRODUCTION READY**
+Status: **PM ACCEPTED FOR DRAFT REVIEW — UNMERGED — NOT PRODUCT OWNER ACCEPTED — NOT PRODUCTION READY**
 
 ## Authority and stack
 
