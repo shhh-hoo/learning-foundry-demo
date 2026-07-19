@@ -9,6 +9,7 @@ import {
   real,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
   type AnyPgColumn,
@@ -109,11 +110,59 @@ export const courseEnrollments = product.table(
   (table) => [primaryKey({ columns: [table.institutionId, table.courseId, table.userId, table.role] })],
 );
 
+/** Class A: one stable learner identity inside an institution. */
+export const learnerProfiles = product.table(
+  "learner_profiles",
+  {
+    id: id(),
+    institutionId: uuid("institution_id").notNull().references(() => institutions.id, { onDelete: "cascade" }),
+    learnerId: uuid("learner_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    createdBy: uuid("created_by").notNull().references(() => users.id),
+    createdAt: createdAt(),
+  },
+  (table) => [uniqueIndex("learner_profiles_institution_learner_uq").on(table.institutionId, table.learnerId)],
+);
+
+/** Class B: immutable, temporal assessment/context strategies for a LearnerProfile. */
+export const learnerStrategyVersions = product.table(
+  "learner_strategy_versions",
+  {
+    id: id(),
+    institutionId: uuid("institution_id").notNull().references(() => institutions.id, { onDelete: "cascade" }),
+    learnerProfileId: uuid("learner_profile_id").notNull().references(() => learnerProfiles.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    status: text("status").default("ACTIVE").notNull(),
+    strategy: jsonb("strategy").$type<Record<string, unknown>>().notNull(),
+    provenance: jsonb("provenance").$type<Record<string, unknown>>().notNull(),
+    ruleVersion: text("rule_version").notNull(),
+    confidence: real("confidence"),
+    reviewStatus: text("review_status").default("UNREVIEWED").notNull(),
+    sourceRecordId: uuid("source_record_id").references((): AnyPgColumn => sourceRecords.id),
+    actorUserId: uuid("actor_user_id").notNull().references(() => users.id),
+    effectiveFrom: timestamp("effective_from", { withTimezone: true }).notNull(),
+    effectiveUntil: timestamp("effective_until", { withTimezone: true }),
+    invalidatedAt: timestamp("invalidated_at", { withTimezone: true }),
+    invalidationReason: text("invalidation_reason"),
+    supersedesVersionId: uuid("supersedes_version_id").references((): AnyPgColumn => learnerStrategyVersions.id),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    index("learner_strategy_profile_kind_idx").on(table.learnerProfileId, table.kind, table.effectiveFrom),
+    check("learner_strategy_status_ck", sql`${table.status} IN ('ACTIVE','STALE','SUPERSEDED','INVALIDATED')`),
+    check("learner_strategy_confidence_ck", sql`${table.confidence} IS NULL OR (${table.confidence} >= 0 AND ${table.confidence} <= 1)`),
+    check("learner_strategy_interval_ck", sql`${table.effectiveUntil} IS NULL OR ${table.effectiveUntil} > ${table.effectiveFrom}`),
+    check("learner_strategy_provenance_ck", sql`jsonb_typeof(${table.provenance}) = 'object' AND ${table.provenance} <> '{}'::jsonb`),
+    check("learner_strategy_predecessor_ck", sql`${table.supersedesVersionId} IS NULL OR ${table.supersedesVersionId} <> ${table.id}`),
+  ],
+);
+
 export const learningTasks = product.table("learning_tasks", {
   id: id(),
   institutionId: uuid("institution_id").notNull().references(() => institutions.id),
   courseId: uuid("course_id").notNull().references(() => courses.id),
   learnerId: uuid("learner_id").notNull().references(() => users.id),
+  // DEFAULT NULL keeps the legacy insert shape optional; the DB trigger fills it before NOT NULL is checked.
+  learnerProfileId: uuid("learner_profile_id").notNull().default(sql`NULL`).references(() => learnerProfiles.id),
   title: text("title").notNull(),
   goal: text("goal").notNull(),
   status: text("status").default("OPEN").notNull(),
@@ -145,6 +194,56 @@ export const conversationEvents = product.table("conversation_events", {
   createdAt: createdAt(),
 }, (table) => [index("conversation_events_episode_idx").on(table.episodeId, table.createdAt)]);
 
+/** Class A: stable source identity, separate from immutable versions and derivatives. */
+export const sourceAssets = product.table(
+  "source_assets",
+  {
+    id: id(),
+    institutionId: uuid("institution_id").references(() => institutions.id, { onDelete: "cascade" }),
+    courseId: uuid("course_id").references(() => courses.id),
+    stableKey: text("stable_key").notNull(),
+    sourceType: text("source_type").notNull(),
+    originalLanguage: text("original_language"),
+    ownerUserId: uuid("owner_user_id").references(() => users.id),
+    createdBy: uuid("created_by").references(() => users.id),
+    createdAt: createdAt(),
+  },
+  (table) => [unique("source_assets_scope_key_uq").on(table.institutionId, table.stableKey).nullsNotDistinct()],
+);
+
+/** Class A: immutable bytes/hash/storage and rights/provenance snapshot. */
+export const sourceAssetVersions = product.table(
+  "source_asset_versions",
+  {
+    id: id(),
+    sourceAssetId: uuid("source_asset_id").notNull().references(() => sourceAssets.id, { onDelete: "cascade" }),
+    institutionId: uuid("institution_id").references(() => institutions.id, { onDelete: "cascade" }),
+    versionKey: text("version_key").notNull(),
+    contentHash: text("content_hash").notNull(),
+    storageKey: text("storage_key"),
+    stableLocator: text("stable_locator"),
+    mediaType: text("media_type"),
+    byteSize: integer("byte_size"),
+    provenance: jsonb("provenance").$type<Record<string, unknown>>().notNull(),
+    rightsBasis: text("rights_basis").notNull(),
+    rightsStatus: text("rights_status").notNull(),
+    accessScope: text("access_scope").notNull(),
+    effectiveFrom: timestamp("effective_from", { withTimezone: true }),
+    effectiveUntil: timestamp("effective_until", { withTimezone: true }),
+    supersedesVersionId: uuid("supersedes_version_id").references((): AnyPgColumn => sourceAssetVersions.id),
+    createdBy: uuid("created_by").references(() => users.id),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex("source_asset_versions_asset_version_uq").on(table.sourceAssetId, table.versionKey),
+    check("source_asset_version_locator_ck", sql`${table.storageKey} IS NOT NULL OR ${table.stableLocator} IS NOT NULL`),
+    check("source_asset_version_size_ck", sql`${table.byteSize} IS NULL OR ${table.byteSize} > 0`),
+    check("source_asset_version_interval_ck", sql`${table.effectiveUntil} IS NULL OR ${table.effectiveFrom} IS NULL OR ${table.effectiveUntil} > ${table.effectiveFrom}`),
+    check("source_asset_version_provenance_ck", sql`jsonb_typeof(${table.provenance}) = 'object' AND ${table.provenance} <> '{}'::jsonb`),
+    check("source_asset_version_predecessor_ck", sql`${table.supersedesVersionId} IS NULL OR ${table.supersedesVersionId} <> ${table.id}`),
+  ],
+);
+
 export const sourceRecords = product.table("source_records", {
   id: id(),
   institutionId: uuid("institution_id").references(() => institutions.id),
@@ -159,6 +258,9 @@ export const sourceRecords = product.table("source_records", {
   distributionScope: text("distribution_scope").notNull(),
   allowedPurposes: jsonb("allowed_purposes").$type<string[]>().notNull(),
   contentHash: text("content_hash").notNull(),
+  // DEFAULT NULL keeps the legacy insert shape optional; the DB trigger fills it before NOT NULL is checked.
+  sourceAssetId: uuid("source_asset_id").notNull().default(sql`NULL`).references(() => sourceAssets.id),
+  sourceAssetVersionId: uuid("source_asset_version_id").notNull().default(sql`NULL`).references(() => sourceAssetVersions.id),
   active: boolean("active").default(true).notNull(),
   createdAt: createdAt(),
 }, (table) => [
@@ -173,6 +275,8 @@ export const fileAssets = product.table("file_assets", {
   taskId: uuid("task_id").references(() => learningTasks.id, { onDelete: "cascade" }),
   ownerUserId: uuid("owner_user_id").notNull().references(() => users.id),
   sourceId: uuid("source_id").references(() => sourceRecords.id),
+  sourceAssetId: uuid("source_asset_id").notNull().default(sql`NULL`).references(() => sourceAssets.id),
+  sourceAssetVersionId: uuid("source_asset_version_id").notNull().default(sql`NULL`).references(() => sourceAssetVersions.id),
   purpose: text("purpose").notNull(),
   storageKey: text("storage_key").notNull().unique(),
   originalName: text("original_name").notNull(),
@@ -201,6 +305,7 @@ export const fileAssets = product.table("file_assets", {
 export const evidenceUnits = product.table("evidence_units", {
   id: id(),
   sourceId: uuid("source_id").notNull().references(() => sourceRecords.id),
+  sourceAssetVersionId: uuid("source_asset_version_id").notNull().default(sql`NULL`).references(() => sourceAssetVersions.id),
   institutionId: uuid("institution_id").references(() => institutions.id),
   modality: text("modality").notNull(),
   locator: text("locator").notNull(),
@@ -221,6 +326,67 @@ export const evidenceUnits = product.table("evidence_units", {
   index("evidence_source_idx").on(table.sourceId),
 ]);
 
+/** Class C: retryable processing execution, never canonical source truth. */
+export const sourceProcessingAttempts = product.table(
+  "source_processing_attempts",
+  {
+    id: id(),
+    institutionId: uuid("institution_id").references(() => institutions.id, { onDelete: "cascade" }),
+    sourceAssetVersionId: uuid("source_asset_version_id").notNull().references(() => sourceAssetVersions.id, { onDelete: "cascade" }),
+    fileAssetId: uuid("file_asset_id").references(() => fileAssets.id),
+    operation: text("operation").notNull(),
+    processor: text("processor").notNull(),
+    processorVersion: text("processor_version").notNull(),
+    status: text("status").notNull(),
+    failureCode: text("failure_code"),
+    failureMessage: text("failure_message"),
+    retryOfAttemptId: uuid("retry_of_attempt_id").references((): AnyPgColumn => sourceProcessingAttempts.id),
+    actorUserId: uuid("actor_user_id").references(() => users.id),
+    idempotencyKey: text("idempotency_key").notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true }).defaultNow().notNull(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+  },
+  (table) => [
+    unique("source_processing_attempt_idempotency_uq").on(table.institutionId, table.operation, table.idempotencyKey).nullsNotDistinct(),
+    uniqueIndex("source_processing_attempt_active_file_uq").on(table.fileAssetId, table.operation).where(sql`${table.status} = 'STARTED' AND ${table.fileAssetId} IS NOT NULL`),
+    index("source_processing_attempt_version_idx").on(table.sourceAssetVersionId, table.startedAt),
+    check("source_processing_attempt_status_ck", sql`${table.status} IN ('STARTED','SUCCEEDED','FAILED','CANCELLED')`),
+    check("source_processing_attempt_terminal_ck", sql`(${table.status} = 'STARTED' AND ${table.finishedAt} IS NULL) OR (${table.status} <> 'STARTED' AND ${table.finishedAt} IS NOT NULL)`),
+    check("source_processing_attempt_failure_ck", sql`${table.status} <> 'SUCCEEDED' OR (${table.failureCode} IS NULL AND ${table.failureMessage} IS NULL)`),
+    check("source_processing_attempt_retry_ck", sql`${table.retryOfAttemptId} IS NULL OR ${table.retryOfAttemptId} <> ${table.id}`),
+  ],
+);
+
+/** Class B: locatable, reviewable derivative tied to one exact source version. */
+export const evidenceDerivatives = product.table(
+  "evidence_derivatives",
+  {
+    id: id(),
+    institutionId: uuid("institution_id").references(() => institutions.id, { onDelete: "cascade" }),
+    sourceAssetVersionId: uuid("source_asset_version_id").notNull().references(() => sourceAssetVersions.id, { onDelete: "cascade" }),
+    evidenceUnitId: uuid("evidence_unit_id").references(() => evidenceUnits.id),
+    derivativeType: text("derivative_type").notNull(),
+    locator: text("locator").notNull(),
+    contentHash: text("content_hash").notNull(),
+    processor: text("processor").notNull(),
+    processorVersion: text("processor_version").notNull(),
+    provenance: jsonb("provenance").$type<Record<string, unknown>>().notNull(),
+    reviewStatus: text("review_status").default("UNREVIEWED").notNull(),
+    state: text("state").default("ACTIVE").notNull(),
+    invalidatedAt: timestamp("invalidated_at", { withTimezone: true }),
+    invalidationReason: text("invalidation_reason"),
+    successorId: uuid("successor_id").references((): AnyPgColumn => evidenceDerivatives.id),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex("evidence_derivative_lineage_uq").on(table.sourceAssetVersionId, table.derivativeType, table.locator, table.contentHash),
+    uniqueIndex("evidence_derivative_unit_uq").on(table.evidenceUnitId),
+    check("evidence_derivative_state_ck", sql`${table.state} IN ('ACTIVE','STALE','SUPERSEDED','INVALIDATED')`),
+    check("evidence_derivative_provenance_ck", sql`jsonb_typeof(${table.provenance}) = 'object' AND ${table.provenance} <> '{}'::jsonb`),
+    check("evidence_derivative_successor_ck", sql`${table.successorId} IS NULL OR ${table.successorId} <> ${table.id}`),
+  ],
+);
+
 export const contextCompilations = product.table("context_compilations", {
   id: id(),
   taskId: uuid("task_id").notNull().references(() => learningTasks.id, { onDelete: "cascade" }),
@@ -235,6 +401,72 @@ export const contextCompilations = product.table("context_compilations", {
   excludedItems: jsonb("excluded_items").$type<Array<Record<string, unknown>>>().notNull(),
   createdAt: createdAt(),
 });
+
+/** Class B: persisted Task/Episode-scoped Context assertion, not source truth. */
+export const contextItems = product.table(
+  "context_items",
+  {
+    id: id(),
+    institutionId: uuid("institution_id").notNull().references(() => institutions.id, { onDelete: "cascade" }),
+    learnerProfileId: uuid("learner_profile_id").notNull().references(() => learnerProfiles.id, { onDelete: "cascade" }),
+    courseId: uuid("course_id").notNull().references(() => courses.id),
+    taskId: uuid("task_id").notNull().references(() => learningTasks.id, { onDelete: "cascade" }),
+    episodeId: uuid("episode_id").references(() => learningEpisodes.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    scope: text("scope").notNull(),
+    state: text("state").default("ACTIVE").notNull(),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+    provenance: jsonb("provenance").$type<Record<string, unknown>>().notNull(),
+    ruleVersion: text("rule_version").notNull(),
+    confidence: real("confidence"),
+    reviewStatus: text("review_status").default("UNREVIEWED").notNull(),
+    sourceRecordId: uuid("source_record_id").references(() => sourceRecords.id),
+    sourceAssetVersionId: uuid("source_asset_version_id").references(() => sourceAssetVersions.id),
+    evidenceUnitId: uuid("evidence_unit_id").references(() => evidenceUnits.id),
+    evidenceDerivativeId: uuid("evidence_derivative_id").references(() => evidenceDerivatives.id),
+    actorUserId: uuid("actor_user_id").references(() => users.id),
+    validFrom: timestamp("valid_from", { withTimezone: true }).defaultNow().notNull(),
+    validUntil: timestamp("valid_until", { withTimezone: true }),
+    invalidatedAt: timestamp("invalidated_at", { withTimezone: true }),
+    invalidationReason: text("invalidation_reason"),
+    successorId: uuid("successor_id").references((): AnyPgColumn => contextItems.id),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    index("context_items_task_episode_idx").on(table.taskId, table.episodeId, table.state),
+    check("context_item_scope_ck", sql`${table.scope} IN ('PROFILE','WORKSPACE','TASK','EPISODE')`),
+    check("context_item_state_ck", sql`${table.state} IN ('ACTIVE','STALE','SUPERSEDED','PROMOTED','INVALIDATED')`),
+    check("context_item_interval_ck", sql`${table.validUntil} IS NULL OR ${table.validUntil} > ${table.validFrom}`),
+    check("context_item_confidence_ck", sql`${table.confidence} IS NULL OR (${table.confidence} >= 0 AND ${table.confidence} <= 1)`),
+    check("context_item_episode_scope_ck", sql`${table.scope} <> 'EPISODE' OR ${table.episodeId} IS NOT NULL`),
+    check("context_item_provenance_ck", sql`jsonb_typeof(${table.provenance}) = 'object' AND ${table.provenance} <> '{}'::jsonb`),
+    check("context_item_successor_ck", sql`${table.successorId} IS NULL OR ${table.successorId} <> ${table.id}`),
+  ],
+);
+
+/** Class A relationship permitting one explicit, typed cross-Task carryover. */
+export const contextCarryoverRelations = product.table(
+  "context_carryover_relations",
+  {
+    id: id(),
+    institutionId: uuid("institution_id").notNull().references(() => institutions.id, { onDelete: "cascade" }),
+    sourceTaskId: uuid("source_task_id").notNull().references(() => learningTasks.id, { onDelete: "cascade" }),
+    sourceContextItemId: uuid("source_context_item_id").notNull().references(() => contextItems.id, { onDelete: "cascade" }),
+    targetTaskId: uuid("target_task_id").notNull().references(() => learningTasks.id, { onDelete: "cascade" }),
+    relationType: text("relation_type").notNull(),
+    actorUserId: uuid("actor_user_id").references(() => users.id),
+    policyKey: text("policy_key"),
+    policyVersion: text("policy_version"),
+    reason: text("reason").notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex("context_carryover_exact_uq").on(table.sourceContextItemId, table.targetTaskId, table.relationType),
+    check("context_carryover_type_ck", sql`${table.relationType} IN ('EXPLICIT_REFERENCE','LINKED_RETRY','LINKED_TRANSFER','LINKED_RETENTION','PROMOTED_ARTIFACT','TEACHER_ASSIGNMENT','CURRICULUM_CONTINUITY')`),
+    check("context_carryover_cross_task_ck", sql`${table.sourceTaskId} <> ${table.targetTaskId}`),
+    check("context_carryover_authority_ck", sql`${table.actorUserId} IS NOT NULL OR (${table.policyKey} IS NOT NULL AND ${table.policyVersion} IS NOT NULL)`),
+  ],
+);
 
 export const capabilities = product.table("capabilities", {
   id: id(),

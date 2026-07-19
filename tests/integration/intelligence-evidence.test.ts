@@ -2,13 +2,13 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { getActor } from "@/application/actor";
-import { authorizeFileRead, reviewSourceRights, uploadImageAttempt, uploadLearningMaterial } from "@/application/file-intake";
+import { authorizeFileRead, retryFailedSourceStorage, reviewSourceRights, uploadImageAttempt, uploadLearningMaterial } from "@/application/file-intake";
 import { setIntelligenceProvidersForTests, type VisionProvider } from "@/application/intelligence-providers";
 import { getTeacherWorkspace } from "@/application/queries";
 import { retrieveEvidence } from "@/application/retrieval";
 import { closeDb, getDb } from "@/db/client";
 import { SEED } from "@/db/ids";
-import { courseEnrollments, evidenceUnits, fileAssets, governanceEvents, idempotencyKeys, institutionMemberships, learnerAttempts, sourceRecords, users } from "@/db/schema";
+import { courseEnrollments, evidenceDerivatives, evidenceUnits, fileAssets, governanceEvents, idempotencyKeys, institutionMemberships, learnerAttempts, sourceAssetVersions, sourceProcessingAttempts, sourceRecords, users } from "@/db/schema";
 import type { Actor } from "@/domain/model";
 import { setFileStorageForTests, type FileStorage } from "@/infrastructure/file-storage";
 import { closeWorkflowCheckpointer } from "@/workflows/checkpointer";
@@ -16,7 +16,29 @@ import { minimalPng, simplePdf } from "@/tests/helpers/files";
 
 class MemoryStorage implements FileStorage {
   readonly objects = new Map<string, Uint8Array>();
-  async put(input: { key: string; bytes: Uint8Array }) { this.objects.set(input.key, input.bytes.slice()); return { storageKey: input.key, byteSize: input.bytes.byteLength }; }
+  failNextPut = false;
+  private putGate: { started: () => void; release: Promise<void> } | null = null;
+
+  holdNextPut() {
+    let markStarted!: () => void;
+    let release!: () => void;
+    const started = new Promise<void>((resolve) => { markStarted = resolve; });
+    const released = new Promise<void>((resolve) => { release = resolve; });
+    this.putGate = { started: markStarted, release: released };
+    return { started, release };
+  }
+
+  async put(input: { key: string; bytes: Uint8Array }) {
+    if (this.failNextPut) { this.failNextPut = false; throw new Error("synthetic storage write failure"); }
+    if (this.putGate) {
+      const gate = this.putGate;
+      this.putGate = null;
+      gate.started();
+      await gate.release;
+    }
+    this.objects.set(input.key, input.bytes.slice());
+    return { storageKey: input.key, byteSize: input.bytes.byteLength };
+  }
   async read(key: string) { const value = this.objects.get(key); if (!value) throw new Error("missing object"); return value.slice(); }
   async delete(key: string) { this.objects.delete(key); }
 }
@@ -76,17 +98,90 @@ describe.sequential("Real intelligence and Evidence PostgreSQL integration", () 
     const beforeApproval = await retrieveEvidence({ actor: learner, taskId: SEED.task, query: phrase, purpose: "LEARNING" });
     expect(beforeApproval.hits.some((hit) => hit.sourceId === sourceBefore.id)).toBe(false);
 
-    const decision = await reviewSourceRights(teacher, { sourceId: sourceBefore.id, decision: "APPROVED", rights: "Institution course delivery approved by authenticated teacher.", idempotencyKey: `rights:${randomUUID()}` });
+    const rightsInput = { sourceId: sourceBefore.id, decision: "APPROVED" as const, rights: "Institution course delivery approved by authenticated teacher.", idempotencyKey: `rights:${randomUUID()}` };
+    const decision = await reviewSourceRights(teacher, rightsInput);
     expect(decision.evidenceCount).toBe(1);
+    const [sourceAfter] = await getDb().select().from(sourceRecords).where(eq(sourceRecords.id, sourceBefore.id));
+    const [fileAfter] = await getDb().select().from(fileAssets).where(eq(fileAssets.id, uploaded.fileAsset!.id));
+    const versions = await getDb().select().from(sourceAssetVersions).where(eq(sourceAssetVersions.sourceAssetId, sourceBefore.sourceAssetId));
+    const approvedVersion = versions.find((version) => version.id === sourceAfter.sourceAssetVersionId);
+    expect(versions).toHaveLength(2);
+    expect(sourceAfter.sourceAssetVersionId).not.toBe(sourceBefore.sourceAssetVersionId);
+    expect(fileAfter.sourceAssetVersionId).toBe(sourceAfter.sourceAssetVersionId);
+    expect(approvedVersion).toMatchObject({
+      supersedesVersionId: sourceBefore.sourceAssetVersionId,
+      rightsStatus: "APPROVED",
+      rightsBasis: rightsInput.rights,
+      contentHash: sourceBefore.contentHash,
+      storageKey: uploaded.fileAsset!.storageKey,
+    });
     const [evidence] = await getDb().select().from(evidenceUnits).where(eq(evidenceUnits.sourceId, sourceBefore.id));
-    expect(evidence).toMatchObject({ locator: "page:1", embeddingStatus: "AVAILABLE", embeddingModel: "test-real-vector-adapter" });
+    expect(evidence).toMatchObject({ locator: "page:1", embeddingStatus: "AVAILABLE", embeddingModel: "test-real-vector-adapter", sourceAssetVersionId: sourceAfter.sourceAssetVersionId });
     expect(evidence.content).toContain(phrase);
+    const [derivative] = await getDb().select().from(evidenceDerivatives).where(eq(evidenceDerivatives.evidenceUnitId, evidence.id));
+    expect(derivative).toMatchObject({ sourceAssetVersionId: sourceAfter.sourceAssetVersionId, locator: "page:1", contentHash: evidence.contentHash });
+    expect(await reviewSourceRights(teacher, rightsInput)).toMatchObject({ replayed: true, evidenceCount: 0 });
+    expect(await getDb().select().from(sourceAssetVersions).where(eq(sourceAssetVersions.sourceAssetId, sourceBefore.sourceAssetId))).toHaveLength(2);
 
     const retrieval = await retrieveEvidence({ actor: learner, taskId: SEED.task, query: phrase, purpose: "LEARNING" });
     expect(retrieval).toMatchObject({ retrievalMode: "POSTGRES_FTS_OPENAI_EXACT_VECTOR", embeddingStatus: "EXECUTED", rerankerStatus: "EXECUTED" });
     expect(retrieval.citations.some((citation) => citation.sourceId === sourceBefore.id && citation.locator === "page:1")).toBe(true);
     expect((await authorizeFileRead(learner, uploaded.fileAsset!.id)).bytes).toEqual(bytes);
     expect((await authorizeFileRead(teacher, uploaded.fileAsset!.id)).bytes).toEqual(bytes);
+  });
+
+  it("repairs only exact failed storage bytes with retry lineage and idempotent replay", async () => {
+    const title = `Storage repair ${randomUUID()}`;
+    const bytes = simplePdf(`storage repair ${randomUUID()}`);
+    storage.failNextPut = true;
+    await expect(uploadLearningMaterial(learner, {
+      taskId: SEED.task,
+      episodeId: SEED.episode,
+      title,
+      rights: "Requires teacher verification.",
+      bytes,
+      declaredMediaType: "application/pdf",
+      originalName: "storage-repair.pdf",
+      idempotencyKey: `storage-upload:${randomUUID()}`,
+    })).rejects.toThrow("synthetic storage write failure");
+    const [source] = await getDb().select().from(sourceRecords).where(eq(sourceRecords.title, title));
+    const [failedFile] = await getDb().select().from(fileAssets).where(eq(fileAssets.sourceId, source.id));
+    expect(failedFile).toMatchObject({ ingestionStatus: "FAILED", failureCode: "STORAGE_WRITE_FAILED", sourceAssetVersionId: source.sourceAssetVersionId });
+    expect(storage.objects.has(failedFile.storageKey)).toBe(false);
+
+    await expect(retryFailedSourceStorage(teacher, {
+      fileAssetId: failedFile.id,
+      bytes: new Uint8Array([...bytes, 0]),
+      idempotencyKey: `storage-repair-wrong:${randomUUID()}`,
+    })).rejects.toMatchObject({ code: "SOURCE_VERSION_HASH_MISMATCH" });
+    expect(await getDb().select().from(sourceProcessingAttempts).where(eq(sourceProcessingAttempts.fileAssetId, failedFile.id))).toHaveLength(0);
+
+    const failedRepairKey = `storage-repair-failed:${randomUUID()}`;
+    storage.failNextPut = true;
+    await expect(retryFailedSourceStorage(teacher, { fileAssetId: failedFile.id, bytes, idempotencyKey: failedRepairKey })).rejects.toThrow("synthetic storage write failure");
+    const [failedRepair] = await getDb().select().from(sourceProcessingAttempts).where(eq(sourceProcessingAttempts.idempotencyKey, failedRepairKey));
+    expect(failedRepair).toMatchObject({ status: "FAILED", failureCode: "STORAGE_REPAIR_FAILED", sourceAssetVersionId: source.sourceAssetVersionId });
+
+    const successKey = `storage-repair-success:${randomUUID()}`;
+    const losingKey = `storage-repair-competing:${randomUUID()}`;
+    const gate = storage.holdNextPut();
+    const winner = retryFailedSourceStorage(teacher, { fileAssetId: failedFile.id, bytes, idempotencyKey: successKey });
+    await gate.started;
+    await expect(retryFailedSourceStorage(teacher, { fileAssetId: failedFile.id, bytes, idempotencyKey: losingKey })).rejects.toMatchObject({ code: "STORAGE_REPAIR_IN_PROGRESS" });
+    expect(await getDb().select().from(sourceProcessingAttempts).where(eq(sourceProcessingAttempts.idempotencyKey, losingKey))).toHaveLength(0);
+    gate.release();
+    const repaired = await winner;
+    expect(repaired).toMatchObject({ status: "SUCCEEDED", replayed: false, sourceAssetVersionId: source.sourceAssetVersionId });
+    const [successfulRepair] = await getDb().select().from(sourceProcessingAttempts).where(eq(sourceProcessingAttempts.id, repaired.attemptId));
+    expect(successfulRepair).toMatchObject({ status: "SUCCEEDED", retryOfAttemptId: failedRepair.id, sourceAssetVersionId: source.sourceAssetVersionId });
+    const [fileAfter] = await getDb().select().from(fileAssets).where(eq(fileAssets.id, failedFile.id));
+    expect(fileAfter).toMatchObject({ ingestionStatus: "STORED", failureCode: null, failureMessage: null, sourceAssetVersionId: source.sourceAssetVersionId });
+    expect(storage.objects.get(failedFile.storageKey)).toEqual(bytes);
+    expect(await retryFailedSourceStorage(teacher, { fileAssetId: failedFile.id, bytes, idempotencyKey: successKey })).toMatchObject({
+      attemptId: repaired.attemptId,
+      status: "SUCCEEDED",
+      replayed: true,
+    });
   });
 
   it("keeps denied rights and failed ingestion out of Evidence", async () => {
