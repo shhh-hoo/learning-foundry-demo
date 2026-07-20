@@ -217,6 +217,9 @@ const attemptedCapabilityResolutionId = randomUUID();
 const attemptedCapabilityResolutionHash = `tenant-harness-denied-${attemptedCapabilityResolutionId}`;
 const attemptedActivityPlanProposalId = randomUUID();
 const attemptedActivityPlanProposalHash = `tenant-harness-denied-${attemptedActivityPlanProposalId}`;
+const attemptedActivityPlanId = randomUUID();
+const attemptedRuntimeDeliveryId = randomUUID();
+const attemptedLearningEventId = randomUUID();
 const attemptedCheckpointId = randomUUID();
 const attemptedCheckpointThread = `${tenantB}:tenant-harness-denied:${attemptedCheckpointId}`;
 const authSessionPositiveId = randomUUID();
@@ -702,6 +705,69 @@ try {
     if (inserted.count !== 1) throw new Error("ActivityPlanProposal probe requires one visible tenant-A fixture");
   }, /CAP-03 ActivityPlanProposal Task\/Episode tenant lineage mismatch/);
   directlyProbedWritableTables.add("foundry_product.activity_plan_proposals");
+
+  await expectRoleTransactionDenied("ActivityPlan insert with tenant B Task", product, RUNTIME_DATABASE_ROLES.product, tenantA, async (transaction) => {
+    const inserted = await transaction`
+      INSERT INTO foundry_product.activity_plans
+        (id, institution_id, course_id, task_id, episode_id, activity_plan_proposal_id,
+         context_compilation_id, diagnostic_observation_id, capability_resolution_id,
+         capability_id, capability_version_id, capability_version_content_hash,
+         runtime_contract_hash, implementation_key, runtime_kind, stage_order,
+         stage_snapshot, runtime_contract, evidence_provenance, input_hash, created_by)
+      SELECT
+        ${attemptedActivityPlanId}::uuid, institution_id, course_id, ${taskB}::uuid, ${episodeB}::uuid,
+        activity_plan_proposal_id, context_compilation_id, diagnostic_observation_id,
+        capability_resolution_id, capability_id, capability_version_id,
+        capability_version_content_hash, runtime_contract_hash, implementation_key,
+        runtime_kind, stage_order, stage_snapshot, runtime_contract, evidence_provenance,
+        ${`tenant-harness-denied-${attemptedActivityPlanId}`}, created_by
+      FROM foundry_product.activity_plans
+      ORDER BY created_at
+      LIMIT 1
+    `;
+    if (inserted.count !== 1) throw new Error("ActivityPlan probe requires one visible tenant-A fixture");
+  }, /CAP-04 ActivityPlan exact READY lineage mismatch/);
+  directlyProbedWritableTables.add("foundry_product.activity_plans");
+
+  await expectRoleTransactionDenied("RuntimeDelivery insert with tenant B Task", product, RUNTIME_DATABASE_ROLES.product, tenantA, async (transaction) => {
+    const inserted = await transaction`
+      INSERT INTO foundry_product.runtime_deliveries
+        (id, institution_id, course_id, task_id, episode_id, learner_id, activity_plan_id,
+         capability_id, capability_version_id, capability_version_content_hash,
+         runtime_contract_hash, implementation_key, runtime_kind, request_hash,
+         idempotency_key, status, deadline_ms)
+      SELECT
+        ${attemptedRuntimeDeliveryId}::uuid, institution_id, course_id, ${taskB}::uuid, ${episodeB}::uuid,
+        learner_id, activity_plan_id, capability_id, capability_version_id,
+        capability_version_content_hash, runtime_contract_hash, implementation_key,
+        runtime_kind, ${`tenant-harness-denied-${attemptedRuntimeDeliveryId}`},
+        ${`tenant-harness-denied-${attemptedRuntimeDeliveryId}`}, 'PENDING', deadline_ms
+      FROM foundry_product.runtime_deliveries
+      ORDER BY started_at
+      LIMIT 1
+    `;
+    if (inserted.count !== 1) throw new Error("RuntimeDelivery probe requires one visible tenant-A fixture");
+  }, /RuntimeDelivery ActivityPlan\/exact-version lineage mismatch/);
+  directlyProbedWritableTables.add("foundry_product.runtime_deliveries");
+
+  await expectRoleTransactionDenied("LearningEvent insert with tenant B Task", product, RUNTIME_DATABASE_ROLES.product, tenantA, async (transaction) => {
+    const inserted = await transaction`
+      INSERT INTO foundry_product.learning_events
+        (id, institution_id, course_id, task_id, episode_id, activity_plan_id,
+         runtime_delivery_id, sequence, event_key, event_type, actor_type,
+         actor_user_id, payload, evidence_refs)
+      SELECT
+        ${attemptedLearningEventId}::uuid, institution_id, course_id, ${taskB}::uuid, ${episodeB}::uuid,
+        activity_plan_id, runtime_delivery_id, sequence,
+        ${`tenant-harness-denied-${attemptedLearningEventId}`}, event_type, actor_type,
+        actor_user_id, payload, evidence_refs
+      FROM foundry_product.learning_events
+      ORDER BY created_at
+      LIMIT 1
+    `;
+    if (inserted.count !== 1) throw new Error("LearningEvent probe requires one visible tenant-A fixture");
+  }, /LearningEvent delivery\/actor lineage mismatch/);
+  directlyProbedWritableTables.add("foundry_product.learning_events");
 
   await expectRoleTransactionDenied("LearningTask insert with tenant B course", product, RUNTIME_DATABASE_ROLES.product, tenantA, async (transaction) => {
     await transaction`

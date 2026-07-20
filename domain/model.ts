@@ -48,6 +48,7 @@ export const WorkflowKind = z.enum([
   "LEARNER_TASK",
   "EXPLANATION",
   "DIAGNOSIS",
+  "ASSET_RUNTIME",
   "TEACHER_REVIEW",
   "RETRY_OUTCOME",
   "COMPONENT_LIFECYCLE",

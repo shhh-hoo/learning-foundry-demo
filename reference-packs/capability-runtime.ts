@@ -1,4 +1,33 @@
 import { buildChemistryLearnerInput, CHEMISTRY_CAPABILITIES, executeChemistryCapability, type LearnerCapabilityDescriptor } from "@/reference-packs/chemistry/capabilities";
+import { assertExecutionActive, type ExecutionControl } from "@/application/execution-control";
+
+export type AssetRuntimeAdapter = {
+  implementationKey: string;
+  runtimeKind: "TRUSTED_DETERMINISTIC_ADAPTER";
+  replaySafe: true;
+  execute(input: unknown, control?: ExecutionControl): Promise<Record<string, unknown>>;
+};
+
+const ASSET_RUNTIME_ADAPTERS = new Map<string, AssetRuntimeAdapter>(CHEMISTRY_CAPABILITIES.map((capability) => [
+  capability.implementationKey,
+  {
+    implementationKey: capability.implementationKey,
+    runtimeKind: "TRUSTED_DETERMINISTIC_ADAPTER" as const,
+    replaySafe: true as const,
+    async execute(input: unknown, control?: ExecutionControl) {
+      assertExecutionActive(control);
+      const output = executeChemistryCapability(capability.implementationKey, input);
+      assertExecutionActive(control);
+      return output as unknown as Record<string, unknown>;
+    },
+  },
+]));
+
+export function getAssetRuntimeAdapter(implementationKey: string, runtimeKind: string): AssetRuntimeAdapter | null {
+  const adapter = ASSET_RUNTIME_ADAPTERS.get(implementationKey);
+  if (!adapter || adapter.runtimeKind !== runtimeKind || !adapter.replaySafe) return null;
+  return adapter;
+}
 
 export function executeReferencePackCapability(implementationKey: string, input: unknown) {
   if (implementationKey.startsWith("chemistry.")) return executeChemistryCapability(implementationKey, input);

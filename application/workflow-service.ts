@@ -12,6 +12,7 @@ import { getWorkflowCheckpointer } from "@/workflows/checkpointer";
 import { buildLearnerTaskGraph } from "@/workflows/learner-task";
 import { buildExplanationGraph } from "@/workflows/explanation";
 import { buildDiagnosisGraph } from "@/workflows/diagnosis";
+import { buildAssetRuntimeGraph } from "@/workflows/asset-runtime";
 import { buildTeacherReviewGraph } from "@/workflows/teacher-review";
 import { buildRetryOutcomeGraph } from "@/workflows/retry-outcome";
 import { buildComponentLifecycleGraph } from "@/workflows/component-lifecycle";
@@ -26,7 +27,7 @@ import {
 import { claimWorkflowResume, finalizeWorkflowResumeClaim } from "@/application/workflow-resume-lease";
 import type { LearnerTaskFaultHooks } from "@/workflows/learner-task";
 
-type WorkflowKind = "LEARNER_TASK" | "EXPLANATION" | "DIAGNOSIS" | "TEACHER_REVIEW" | "RETRY_OUTCOME" | "COMPONENT_LIFECYCLE";
+type WorkflowKind = "LEARNER_TASK" | "EXPLANATION" | "DIAGNOSIS" | "ASSET_RUNTIME" | "TEACHER_REVIEW" | "RETRY_OUTCOME" | "COMPONENT_LIFECYCLE";
 
 type GraphConfig = { configurable: { thread_id: string }; recursionLimit: number; signal?: AbortSignal };
 type InvokableGraph = { invoke(input: unknown, config: GraphConfig): Promise<unknown> };
@@ -94,6 +95,18 @@ const DiagnosisWorkflowStart = z.object({
   idempotencyKey: z.string().min(8),
 }).strict();
 
+const AssetRuntimeWorkflowStart = z.object({
+  taskId: z.string().uuid(),
+  episodeId: z.string().uuid(),
+  activityPlanProposalId: z.string().uuid(),
+  prompt: z.string().min(1).max(4_000),
+  response: z.string().min(1).max(20_000),
+  structuredInput: z.record(z.string(), z.unknown()),
+  modality: z.enum(["TEXT", "STRUCTURED", "MULTIMODAL"]).default("STRUCTURED"),
+  idempotencyKey: z.string().min(8).max(240),
+  deadlineMs: z.number().int().positive().max(120_000).default(30_000),
+}).strict();
+
 const TeacherReviewWorkflowStart = z.object({ observationId: z.string().uuid() }).strict();
 const ComponentLifecycleWorkflowStart = z.object({
   componentId: z.string().uuid(),
@@ -133,6 +146,14 @@ async function authorizeWorkflowStart(input: {
   if (input.kind === "DIAGNOSIS") {
     requireRole(input.actor, ["LEARNER", "ADMIN"]);
     const parsed = DiagnosisWorkflowStart.parse(input.state);
+    const scope = await requireTaskEpisodeScope(input.actor, { taskId: parsed.taskId, episodeId: parsed.episodeId, learnerOriginated: true });
+    assertWorkflowBinding("Task", input.taskId, scope.task.id);
+    assertWorkflowBinding("Episode", input.episodeId, scope.episode.id);
+    return { state: parsed, taskId: scope.task.id, episodeId: scope.episode.id };
+  }
+  if (input.kind === "ASSET_RUNTIME") {
+    requireRole(input.actor, ["LEARNER", "ADMIN"]);
+    const parsed = AssetRuntimeWorkflowStart.parse(input.state);
     const scope = await requireTaskEpisodeScope(input.actor, { taskId: parsed.taskId, episodeId: parsed.episodeId, learnerOriginated: true });
     assertWorkflowBinding("Task", input.taskId, scope.task.id);
     assertWorkflowBinding("Episode", input.episodeId, scope.episode.id);
@@ -206,6 +227,7 @@ function graphFor(kind: WorkflowKind, institutionId: string, testFaults?: Workfl
   if (kind === "LEARNER_TASK") return buildLearnerTaskGraph(checkpointer, testFaults) as unknown as InvokableGraph;
   if (kind === "EXPLANATION") return buildExplanationGraph(checkpointer, testFaults?.explanation) as unknown as InvokableGraph;
   if (kind === "DIAGNOSIS") return buildDiagnosisGraph(checkpointer) as unknown as InvokableGraph;
+  if (kind === "ASSET_RUNTIME") return buildAssetRuntimeGraph(checkpointer) as unknown as InvokableGraph;
   if (kind === "TEACHER_REVIEW") return buildTeacherReviewGraph(checkpointer) as unknown as InvokableGraph;
   if (kind === "RETRY_OUTCOME") return buildRetryOutcomeGraph(checkpointer) as unknown as InvokableGraph;
   return buildComponentLifecycleGraph(checkpointer) as unknown as InvokableGraph;
@@ -259,7 +281,7 @@ export async function startWorkflow(input: { kind: WorkflowKind; actor: Actor; s
 
 function extractProductLinks(result: unknown): Record<string, string> {
   const state = result as Record<string, unknown>;
-  const keys = ["taskId", "episodeId", "attemptId", "observationId", "capabilityResolutionId", "selectedCapabilityVersionId", "reviewId", "retryId", "outcomeId", "componentId", "componentVersionId", "evaluationId", "decisionId"];
+  const keys = ["taskId", "episodeId", "activityPlanId", "runtimeDeliveryId", "attemptId", "observationId", "capabilityResolutionId", "selectedCapabilityVersionId", "reviewId", "retryId", "outcomeId", "componentId", "componentVersionId", "evaluationId", "decisionId"];
   return Object.fromEntries(keys.flatMap((key) => typeof state?.[key] === "string" ? [[key, state[key] as string]] : []));
 }
 
