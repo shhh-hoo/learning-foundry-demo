@@ -7,7 +7,7 @@ const institutionSlug = "checkpoint-showcase";
 const password = process.env.E2E_SHOWCASE_PASSWORD ?? "";
 const accounts = {
   learner: { email: "learner@showcase.invalid", route: "/learner", heading: "Learn from a governed evidence chain" },
-  teacher: { email: "teacher@showcase.invalid", route: "/teacher", heading: "Inspect, correct and resume" },
+  teacher: { email: "teacher@showcase.invalid", route: "/teacher", heading: "Assign, inspect and intervene" },
   expert: { email: "expert@showcase.invalid", route: "/foundry", heading: "Author, evaluate, publish, reuse and roll back Components" },
   engineer: { email: "engineer@showcase.invalid", route: "/engineering", heading: "Inspect what actually ran" },
 } as const;

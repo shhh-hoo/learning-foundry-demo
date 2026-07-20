@@ -1,7 +1,7 @@
 import Image from "next/image";
 import { withWorkspaceActor } from "@/application/identity";
 import { getTeacherWorkspace } from "@/application/queries";
-import { CandidateForm, ComponentDeliveryForm, RetryForm, RetryResultReviewForm, ReviewForm, SourceRightsForm } from "@/components/ClientActions";
+import { CandidateForm, ComponentDeliveryForm, RetryForm, RetryResultReviewForm, ReviewForm, SourceRightsForm, TeacherAssignmentForm, TeacherInterventionForm, type TeacherCapabilityOption } from "@/components/ClientActions";
 import { Badge, Card, Empty, SurfaceHeader } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
@@ -9,9 +9,51 @@ export const dynamic = "force-dynamic";
 export default async function TeacherPage() {
   return withWorkspaceActor(["TEACHER", "ADMIN"], "Teacher Workspace", async (actor) => {
   const workspace = await getTeacherWorkspace(actor);
+  const assignmentCourses = workspace.assignmentCourses.map((row) => ({ id: String(row.id), code: String(row.code), name: String(row.name) }));
+  const assignmentLearners = workspace.assignmentLearners.map((row) => ({ id: String(row.id), courseId: String(row.course_id), name: String(row.name) }));
+  const assignmentCapabilities: TeacherCapabilityOption[] = workspace.assignmentCapabilities.map((row) => ({ id: String(row.id), courseId: String(row.course_id), key: String(row.key), name: String(row.name) }));
+  const teacherCommandCourseIds = new Set(assignmentCourses.map((course) => course.id));
   return <>
-    <SurfaceHeader eyebrow="Teacher Workspace" title="Inspect, correct and resume" description="Every Review is an authenticated human command over a course-scoped Attempt and Observation." />
+    <SurfaceHeader eyebrow="Teacher Workspace" title="Assign, inspect and intervene" description="Teacher commands are authenticated, course-scoped and distinct from system proposals." />
     <div className="showcase-banner"><Badge tone="warn">Synthetic showcase data</Badge> CAPABILITY_UNAVAILABLE observations are review-required states, not automated Diagnoses.</div>
+    <div className="workspace-grid">
+      <Card eyebrow="CAP-05 · Teacher only" title="Assign a learner Task">
+        {workspace.teacherCommandEnabled && assignmentCourses.length ? <TeacherAssignmentForm courses={assignmentCourses} learners={assignmentLearners} capabilities={assignmentCapabilities}/> : <Empty>Assignment commands require current institution and course TEACHER authority. Admin visibility does not confer this human command.</Empty>}
+      </Card>
+      <Card eyebrow="Immutable assignment audit" title="Your recent assignments">
+        {workspace.assignments.map((row) => <article className="evidence-card" key={String(row.id)}><strong>{String(row.title)} · {String(row.learner_name)}</strong><p>{String(row.goal)}</p><small>{String(row.status)} · {new Date(String(row.created_at)).toLocaleString()} · Task {String(row.task_id)}</small><details><summary>Instructions, completion and actor provenance</summary><pre>{JSON.stringify({ instructions: row.instructions, completionRule: row.completion_rule, dueAt: row.due_at, actorProvenance: row.actor_provenance }, null, 2)}</pre></details></article>)}
+        {workspace.assignments.length === 0 ? <Empty>No TeacherAssignment has been recorded by this teacher.</Empty> : null}
+      </Card>
+    </div>
+    <Card eyebrow="Exact completed runtime trail" title="RuntimeDelivery, Attempt, ordered LearningEvents and planning lineage">
+      <div className="showcase-banner"><Badge tone="warn">Not human validation</Badge> Automated and seeded records remain distinguishable from authenticated teacher actions.</div>
+      <div className="stack">{workspace.runtimeInspections.map((row) => {
+        const deliveryId = String(row.runtime_delivery_id);
+        const courseCapabilities = assignmentCapabilities.filter((capability) => capability.courseId === String(row.course_id));
+        const events = Array.isArray(row.learning_events) ? row.learning_events as Array<Record<string, unknown>> : [];
+        const interventions = Array.isArray(row.interventions) ? row.interventions as Array<Record<string, unknown>> : [];
+        const eligible = workspace.teacherCommandEnabled && teacherCommandCourseIds.has(String(row.course_id)) && Boolean(row.is_latest_delivery) && row.task_status === "OPEN" && row.episode_status === "ACTIVE" && !row.superseded_by_id;
+        return <article className="evidence-card" data-testid="teacher-runtime-inspection" key={deliveryId}>
+          <div className="header-actions"><strong>{String(row.task_title)} · {String(row.learner_name)}</strong><Badge tone={row.runtime_status === "SUCCEEDED" ? "good" : "warn"}>{String(row.runtime_status)}</Badge></div>
+          <div className="metric-grid"><div><small>Exact runtime</small><p>{String(row.capability_name)} · {String(row.capability_key)} · v{String(row.capability_version)}</p><small>Delivery {deliveryId}<br/>Version {String(row.capability_version_id)}</small></div><div><small>Runtime Attempt</small><p>{String(row.prompt)}</p><strong>{String(row.response)}</strong><small>Attempt {String(row.attempt_id)}</small></div><div><small>Current planning Diagnosis proposal</small><p>{String(row.diagnosis_summary)}</p><Badge tone="info">{String(row.diagnosis_status)}</Badge><small>Diagnosis {String(row.diagnosis_id)}</small></div></div>
+          <h3>Ordered LearningEvents</h3>
+          {events.map((event) => <div key={String(event.id)}><strong>{String(event.sequence)} · {String(event.eventType)}</strong><pre>{JSON.stringify({ payload: event.payload, evidenceRefs: event.evidenceRefs, actorType: event.actorType, actorUserId: event.actorUserId, createdAt: event.createdAt }, null, 2)}</pre></div>)}
+          {events.length === 0 ? <Empty>No ordered LearningEvent is attached; this trail is incomplete.</Empty> : null}
+          <details><summary>Exact Evidence and provenance lineage</summary><pre>{JSON.stringify({
+            runtime: { requestHash: row.request_hash, outputHash: row.output_hash, normalizedOutput: row.normalized_output, normalizedError: row.normalized_error, runtimeContractHash: row.runtime_contract_hash },
+            attempt: { sourceRefs: row.source_refs, assistanceProvenance: row.assistance_provenance, contentHash: row.attempt_content_hash },
+            activityPlan: { id: row.activity_plan_id, inputHash: row.activity_plan_input_hash, evidenceProvenance: row.evidence_provenance },
+            diagnosis: { id: row.diagnosis_id, inputLineage: row.diagnosis_input_lineage, outputLineage: row.diagnosis_output_lineage, structuredResult: row.diagnosis_result },
+            context: { id: row.context_compilation_id, snapshotHash: row.context_snapshot_hash },
+            resolution: { id: row.capability_resolution_id, decision: row.resolution_decision, rationale: row.selection_rationale },
+            exactVersion: { id: row.capability_version_id, contentHash: row.capability_version_content_hash },
+          }, null, 2)}</pre></details>
+          <h3>Explicit human interventions</h3>
+          {interventions.map((intervention) => <pre key={String(intervention.id)}>{JSON.stringify(intervention, null, 2)}</pre>)}
+          {eligible ? <TeacherInterventionForm runtimeDeliveryId={deliveryId} capabilities={courseCapabilities}/> : <small>New intervention unavailable: this requires current TEACHER authority and the latest terminal delivery on an open Task/active Episode with a current planning Diagnosis.</small>}
+        </article>;
+      })}{workspace.runtimeInspections.length === 0 ? <Empty>No terminal RuntimeDelivery with exact Attempt and planning lineage is available in an authorized course.</Empty> : null}</div>
+    </Card>
     <div className="stack">{workspace.queue.map((row) => {
       const observationId = String(row.observation_id);
       const reviewId = row.review_id ? String(row.review_id) : null;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 function useAction() {
@@ -183,6 +183,112 @@ export function SourceRightsForm({ sourceId, currentRights }: { sourceId: string
     <select value={decision} onChange={(event) => setDecision(event.target.value as "APPROVED" | "DENIED")}><option>APPROVED</option><option>DENIED</option></select>
     <input name="rights" required defaultValue={currentRights} aria-label="Final rights statement" />
     <button disabled={action.pending}>Record human rights decision</button><FormStatus value={action.message}/>
+  </form>;
+}
+
+type TeacherCourseOption = { id: string; code: string; name: string };
+type TeacherLearnerOption = { id: string; courseId: string; name: string };
+export type TeacherCapabilityOption = { id: string; courseId: string; key: string; name: string };
+
+export function TeacherAssignmentForm({
+  courses,
+  learners,
+  capabilities,
+}: {
+  courses: TeacherCourseOption[];
+  learners: TeacherLearnerOption[];
+  capabilities: TeacherCapabilityOption[];
+}) {
+  const action = useAction();
+  const inFlight = useRef(false);
+  const idempotencyKey = useRef(randomKey("teacher-assignment"));
+  const [submitting, setSubmitting] = useState(false);
+  const [courseId, setCourseId] = useState(courses[0]?.id ?? "");
+  const courseLearners = learners.filter((learner) => learner.courseId === courseId);
+  const courseCapabilities = capabilities.filter((capability) => capability.courseId === courseId);
+  return <form className="stack" data-testid="teacher-assignment-form" onSubmit={async (event) => {
+    event.preventDefault();
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setSubmitting(true);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    const selectedValues = (name: string) => form.getAll(name).map(String).filter(Boolean);
+    const dueAt = form.get("dueAt");
+    try {
+      await action.run("/api/teacher/assignments", {
+        courseId,
+        learnerId: form.get("learnerId"),
+        title: form.get("title"),
+        goal: form.get("goal"),
+        instructions: form.get("instructions"),
+        completionRule: form.get("completionRule"),
+        dueAt: dueAt ? new Date(String(dueAt)).toISOString() : undefined,
+        requiredCapabilityIds: selectedValues("requiredCapabilityIds"),
+        excludedCapabilityIds: selectedValues("excludedCapabilityIds"),
+        idempotencyKey: idempotencyKey.current,
+      });
+      idempotencyKey.current = randomKey("teacher-assignment");
+      formElement.reset();
+    } catch (error) {
+      action.setMessage(error instanceof Error ? error.message : "Unable to assign Task");
+    } finally {
+      inFlight.current = false;
+      setSubmitting(false);
+    }
+  }}>
+    <label>Course<select value={courseId} onChange={(event) => setCourseId(event.target.value)} required>{courses.map((course) => <option key={course.id} value={course.id}>{course.code} · {course.name}</option>)}</select></label>
+    <label>Learner<select name="learnerId" key={courseId} required defaultValue=""><option value="" disabled>Select enrolled learner</option>{courseLearners.map((learner) => <option key={learner.id} value={learner.id}>{learner.name}</option>)}</select></label>
+    <label>Task title<input name="title" required minLength={3}/></label>
+    <label>Goal<textarea name="goal" required minLength={5}/></label>
+    <label>Teacher instructions<textarea name="instructions" required minLength={5}/></label>
+    <label>Completion rule<textarea name="completionRule" required minLength={5}/></label>
+    <label>Due time (optional)<input name="dueAt" type="datetime-local"/></label>
+    <label>Required Capabilities (optional)<select name="requiredCapabilityIds" multiple>{courseCapabilities.map((capability) => <option key={capability.id} value={capability.id}>{capability.name} · {capability.key}</option>)}</select></label>
+    <label>Excluded Capabilities (optional)<select name="excludedCapabilityIds" multiple>{courseCapabilities.map((capability) => <option key={capability.id} value={capability.id}>{capability.name} · {capability.key}</option>)}</select></label>
+    <small>Use Cmd/Ctrl to select multiple. Required and excluded sets must not overlap.</small>
+    <button disabled={submitting || action.pending || !courseId || courseLearners.length === 0}>Assign canonical Task</button><FormStatus value={action.message}/>
+  </form>;
+}
+
+export function TeacherInterventionForm({
+  runtimeDeliveryId,
+  capabilities,
+}: {
+  runtimeDeliveryId: string;
+  capabilities: TeacherCapabilityOption[];
+}) {
+  const action = useAction();
+  const inFlight = useRef(false);
+  const idempotencyKey = useRef(randomKey("teacher-intervention"));
+  const [submitting, setSubmitting] = useState(false);
+  const [actionType, setActionType] = useState<"REQUIRE_CAPABILITY" | "EXCLUDE_CAPABILITY">("REQUIRE_CAPABILITY");
+  return <form className="stack compact" data-testid="teacher-intervention-form" onSubmit={async (event) => {
+    event.preventDefault();
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setSubmitting(true);
+    const form = new FormData(event.currentTarget);
+    try {
+      await action.run("/api/teacher/interventions", {
+        runtimeDeliveryId,
+        actionType,
+        capabilityId: form.get("teacherCapabilityChoice"),
+        reason: form.get("reason"),
+        idempotencyKey: idempotencyKey.current,
+      });
+      idempotencyKey.current = randomKey("teacher-intervention");
+    } catch (error) {
+      action.setMessage(error instanceof Error ? error.message : "Unable to record intervention");
+    } finally {
+      inFlight.current = false;
+      setSubmitting(false);
+    }
+  }}>
+    <label>Intervention<select value={actionType} onChange={(event) => setActionType(event.target.value as typeof actionType)}><option value="REQUIRE_CAPABILITY">Require Capability next cycle</option><option value="EXCLUDE_CAPABILITY">Exclude Capability next cycle</option></select></label>
+    <label>Capability<select name="teacherCapabilityChoice" required defaultValue=""><option value="" disabled>Select course Capability</option>{capabilities.map((capability) => <option key={capability.id} value={capability.id}>{capability.name} · {capability.key}</option>)}</select></label>
+    <label>Human reason<textarea name="reason" required minLength={5}/></label>
+    <button disabled={submitting || action.pending || capabilities.length === 0}>Record explicit intervention</button><FormStatus value={action.message}/>
   </form>;
 }
 

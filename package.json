@@ -20,6 +20,7 @@
     "test:rw03-db": "node --import tsx scripts/test-rw03-canonical-db.ts",
     "test:cap01-upgrade": "node --import tsx scripts/test-cap01-context-upgrade.ts",
     "test:cap02-upgrade": "node --import tsx scripts/test-cap02-resolution-upgrade.ts",
+    "test:cap05-upgrade": "node --import tsx scripts/test-cap05-upgrade.ts",
     "test:migration-upgrade": "node --import tsx scripts/rehearse-component-upgrade.ts",
     "test:e2e:setup": "node --import tsx scripts/setup-e2e.ts",
     "test:e2e": "npm run test:e2e:setup && playwright test",

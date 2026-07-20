@@ -64,6 +64,13 @@
       "when": 1784764800000,
       "tag": "0008_asset_stage_runtime",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1784851200000,
+      "tag": "0009_teacher_assignment_intervention",
+      "breakpoints": true
     }
   ]
 }
