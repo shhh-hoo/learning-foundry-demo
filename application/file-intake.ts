@@ -18,7 +18,7 @@ import {
   subjects,
 } from "@/db/schema";
 import { commandRequestHash } from "@/application/commands";
-import { requireTaskEpisodeScope } from "@/application/task-scope";
+import { requireWritableGeneralEpisode } from "@/application/task-scope";
 import { extractPdfPages } from "@/application/pdf-extraction";
 import { getEmbeddingProvider, getVisionProvider, type TokenUsage } from "@/application/intelligence-providers";
 import { getFileStorage } from "@/infrastructure/file-storage";
@@ -167,7 +167,7 @@ export async function uploadLearningMaterial(actor: Actor, input: UploadInput & 
   const control = currentExecutionControl();
   assertExecutionActive(control);
   requireRole(actor, ["LEARNER", "TEACHER", "ADMIN"]);
-  const scope = await requireTaskEpisodeScope(actor, { taskId: input.taskId, episodeId: input.episodeId, learnerOriginated: actor.roles.includes("LEARNER") });
+  const scope = await requireWritableGeneralEpisode(actor, { taskId: input.taskId, episodeId: input.episodeId, learnerOriginated: actor.roles.includes("LEARNER") });
   const upload = validateUpload({ bytes: input.bytes, declaredMediaType: input.declaredMediaType, originalName: input.originalName, purpose: "LEARNING_MATERIAL" });
   const fileAssetId = randomUUID();
   const sourceId = randomUUID();
@@ -431,7 +431,7 @@ export async function uploadImageAttempt(actor: Actor, input: UploadInput & { pr
   const control = currentExecutionControl();
   assertExecutionActive(control);
   requireRole(actor, ["LEARNER", "ADMIN"]);
-  const scope = await requireTaskEpisodeScope(actor, { taskId: input.taskId, episodeId: input.episodeId, learnerOriginated: true });
+  const scope = await requireWritableGeneralEpisode(actor, { taskId: input.taskId, episodeId: input.episodeId, learnerOriginated: true });
   const upload = validateUpload({ bytes: input.bytes, declaredMediaType: input.declaredMediaType, originalName: input.originalName, purpose: "LEARNER_ATTEMPT" });
   const fileAssetId = randomUUID();
   const reservation = await reserveUpload(actor, {

@@ -1,6 +1,7 @@
 import { and, desc, eq, inArray, lte, or, sql } from "drizzle-orm";
 import { getDb, getSql, getTenantCheckpointSql } from "@/db/client";
 import {
+  activityPlanProposals,
   componentVersions,
   components,
   componentDeliveries,
@@ -27,6 +28,8 @@ import {
   sourceRecords,
   subjects,
   teacherReviews,
+  transferActivities,
+  retentionReviews,
   workflowRuns,
 } from "@/db/schema";
 import type { Actor } from "@/domain/model";
@@ -87,7 +90,7 @@ export async function getLearnerWorkspace(actor: Actor) {
   const pendingWorkflows = taskIds.length ? await db.select().from(workflowRuns).where(and(
     eq(workflowRuns.institutionId, actor.institutionId),
     eq(workflowRuns.status, "INTERRUPTED"),
-    eq(workflowRuns.interruptType, "LEARNER_RETRY_REQUIRED"),
+    eq(workflowRuns.interruptType, "LEARNER_FOLLOWUP_REQUIRED"),
     inArray(workflowRuns.taskId, taskIds),
   )).orderBy(desc(workflowRuns.startedAt)) : [];
   const availableCourses = await db.select().from(courses).where(and(
@@ -106,6 +109,7 @@ export async function getLearnerCapabilitiesForCourse(actor: Actor, courseId: st
   const rows = await getDb().selectDistinct({
     courseId: courses.id,
     capabilityKey: capabilities.key,
+    capabilityVersionId: capabilityVersions.id,
     referencePackKey: capabilities.referencePackKey,
     versionStatus: capabilityVersions.status,
   }).from(courses)
@@ -118,7 +122,10 @@ export async function getLearnerCapabilitiesForCourse(actor: Actor, courseId: st
       inArray(courses.id, actor.courseIds.length ? actor.courseIds : ["00000000-0000-0000-0000-000000000000"]),
       eq(capabilityVersions.status, "ACTIVE"),
     ));
-  return learnerCapabilityDescriptorsForCourse(rows, courseId);
+  return learnerCapabilityDescriptorsForCourse(rows, courseId).map((descriptor) => ({
+    ...descriptor,
+    capabilityVersionId: rows.find((row) => row.capabilityKey === descriptor.publicKey)?.capabilityVersionId ?? "",
+  }));
 }
 
 export async function getAuthorizedEvidenceCatalog(actor: Actor, taskId: string) {
@@ -160,6 +167,31 @@ export async function getTaskDetail(actor: Actor, taskId: string) {
   const observations = attempts.length ? await db.select().from(diagnosticObservations).where(inArray(diagnosticObservations.attemptId, attempts.map((item) => item.id))) : [];
   const reviews = observations.length ? await db.select().from(teacherReviews).where(inArray(teacherReviews.observationId, observations.map((item) => item.id))) : [];
   const retries = attempts.length ? await db.select().from(retryAttempts).where(inArray(retryAttempts.originalAttemptId, attempts.map((item) => item.id))) : [];
+  const followupContracts = retries.length ? await db.select({
+    activityId: retryAttempts.id,
+    activityType: retryAttempts.activityType,
+    transferContractVersion: transferActivities.contractVersion,
+    transferDeclaration: transferActivities.declaration,
+    transferChangedDimensions: transferActivities.changedDimensions,
+    retentionContractVersion: retentionReviews.contractVersion,
+    retentionDueAt: retentionReviews.dueAt,
+    retentionDeclaredDelaySeconds: retentionReviews.declaredDelaySeconds,
+    retentionInterveningExposure: retentionReviews.interveningExposure,
+    retentionContentEquivalence: retentionReviews.contentEquivalence,
+    retentionAssistancePolicy: retentionReviews.assistancePolicy,
+  }).from(retryAttempts)
+    .leftJoin(transferActivities, eq(transferActivities.activityId, retryAttempts.id))
+    .leftJoin(retentionReviews, eq(retentionReviews.activityId, retryAttempts.id))
+    .where(inArray(retryAttempts.id, retries.map((retry) => retry.id))) : [];
+  const followupPlans = retries.length ? await db.select({
+    activityId: retryAttempts.id,
+    capabilityKey: capabilities.key,
+    capabilityId: capabilities.id,
+    capabilityVersionId: activityPlanProposals.selectedCapabilityVersionId,
+  }).from(retryAttempts)
+    .innerJoin(activityPlanProposals, eq(activityPlanProposals.id, retryAttempts.activityPlanProposalId))
+    .innerJoin(capabilities, eq(capabilities.id, activityPlanProposals.selectedCapabilityId))
+    .where(inArray(retryAttempts.id, retries.map((retry) => retry.id))) : [];
   const outcomes = await db.select().from(learningOutcomes).where(eq(learningOutcomes.taskId, taskId));
   const contexts = await db.select().from(contextCompilations).where(eq(contextCompilations.taskId, taskId)).orderBy(desc(contextCompilations.createdAt)).limit(10);
   const assets = await db.select().from(fileAssets).where(and(eq(fileAssets.taskId, taskId), eq(fileAssets.institutionId, actor.institutionId))).orderBy(desc(fileAssets.createdAt));
@@ -170,7 +202,7 @@ export async function getTaskDetail(actor: Actor, taskId: string) {
     .innerJoin(componentVersions, eq(componentVersions.id, componentDeliveries.componentVersionId))
     .where(and(eq(componentDeliveries.taskId, taskId), eq(componentDeliveries.institutionId, actor.institutionId)))
     .orderBy(desc(componentDeliveries.createdAt));
-  return { task, episodes, events, attempts, observations, reviews, retries, outcomes, contexts, assets, sources, componentSupport };
+  return { task, episodes, events, attempts, observations, reviews, retries, followupContracts, followupPlans, outcomes, contexts, assets, sources, componentSupport };
 }
 
 export async function getTeacherWorkspace(actor: Actor) {
@@ -184,10 +216,12 @@ export async function getTeacherWorkspace(actor: Actor) {
   const authorizedTaskIds = authorizedTasks.map((task) => task.id);
   const queue = await sql<Array<Record<string, unknown>>>`
     SELECT o.id AS observation_id, o.status, o.failure_code, o.summary, o.first_invalid_step,
-           a.id AS attempt_id, a.prompt, a.response, a.source_refs, a.capability_id, a.file_asset_id, o.capability_version_id, o.observation_source, o.structured_result,
+           a.id AS attempt_id, a.prompt, a.response, a.source_refs, a.capability_id, a.file_asset_id, a.modality,
+           o.capability_version_id, o.observation_source, o.structured_result,
+           capability.key AS capability_key, version.implementation_key,
            f.original_name AS file_name, f.media_type AS file_media_type, f.ingestion_status AS file_ingestion_status,
            f.interpretation_status AS file_interpretation_status, f.extraction_text AS file_extraction_text, f.interpretation AS file_interpretation,
-           t.id AS task_id, t.title AS task_title,
+           t.id AS task_id, t.course_id, t.title AS task_title,
            (SELECT e.id FROM foundry_product.learning_episodes e WHERE e.task_id = t.id ORDER BY e.sequence DESC LIMIT 1) AS episode_id,
            u.name AS learner_name,
            (SELECT count(*)::int FROM foundry_product.teacher_reviews r WHERE r.observation_id = o.id) AS review_count,
@@ -199,6 +233,8 @@ export async function getTeacherWorkspace(actor: Actor) {
     JOIN foundry_product.learner_attempts a ON a.id = o.attempt_id
     JOIN foundry_product.learning_tasks t ON t.id = a.task_id
     JOIN foundry_product.users u ON u.id = a.learner_id
+    LEFT JOIN foundry_product.capability_versions version ON version.id = o.capability_version_id
+    LEFT JOIN foundry_product.capabilities capability ON capability.id = version.capability_id
     LEFT JOIN foundry_product.file_assets f ON f.id = a.file_asset_id
     WHERE t.institution_id = ${actor.institutionId}
       AND t.course_id = ANY(${actor.courseIds}::uuid[])
@@ -227,14 +263,24 @@ export async function getTeacherWorkspace(actor: Actor) {
     GROUP BY o.failure_code
     ORDER BY count(*) DESC
   `;
-  const retries = await getDb().select({ retry: retryAttempts }).from(retryAttempts)
+  const retries = await getDb().select({
+    retry: retryAttempts,
+    task: learningTasks,
+    transfer: transferActivities,
+    retention: retentionReviews,
+    resultReview: teacherReviews,
+  }).from(retryAttempts)
     .innerJoin(learnerAttempts, eq(learnerAttempts.id, retryAttempts.originalAttemptId))
     .innerJoin(learningTasks, eq(learningTasks.id, learnerAttempts.taskId))
+    .leftJoin(transferActivities, eq(transferActivities.activityId, retryAttempts.id))
+    .leftJoin(retentionReviews, eq(retentionReviews.activityId, retryAttempts.id))
+    .leftJoin(teacherReviews, eq(teacherReviews.id, retryAttempts.resultReviewId))
     .where(and(eq(learningTasks.institutionId, actor.institutionId), inArray(learningTasks.courseId, actor.courseIds.length ? actor.courseIds : ["00000000-0000-0000-0000-000000000000"])))
     .orderBy(desc(retryAttempts.createdAt));
   const pendingWorkflows = authorizedTaskIds.length ? await getDb().select().from(workflowRuns).where(and(
     eq(workflowRuns.institutionId, actor.institutionId),
     eq(workflowRuns.status, "INTERRUPTED"),
+    eq(workflowRuns.interruptType, "FOLLOWUP_RESULT_REVIEW_REQUIRED"),
     inArray(workflowRuns.taskId, authorizedTaskIds),
   )).orderBy(desc(workflowRuns.startedAt)) : [];
   const sourceReviews = await getDb().select({ source: sourceRecords, asset: fileAssets, task: learningTasks })

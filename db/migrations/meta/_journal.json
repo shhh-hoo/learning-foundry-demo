@@ -71,6 +71,13 @@
       "when": 1784851200000,
       "tag": "0009_teacher_assignment_intervention",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1784937600000,
+      "tag": "0010_governed_followup",
+      "breakpoints": true
     }
   ]
 }

@@ -176,9 +176,19 @@ export const learningEpisodes = product.table("learning_episodes", {
   taskId: uuid("task_id").notNull().references(() => learningTasks.id, { onDelete: "cascade" }),
   sequence: integer("sequence").notNull(),
   status: text("status").default("ACTIVE").notNull(),
+  purpose: text("purpose").default("GENERAL").notNull(),
+  predecessorEpisodeId: uuid("predecessor_episode_id").references((): AnyPgColumn => learningEpisodes.id),
+  waitingReason: text("waiting_reason"),
+  recoveryState: jsonb("recovery_state").$type<Record<string, unknown>>().default({}).notNull(),
   startedAt: createdAt(),
   endedAt: timestamp("ended_at", { withTimezone: true }),
-}, (table) => [uniqueIndex("episodes_task_sequence_uq").on(table.taskId, table.sequence)]);
+}, (table) => [
+  uniqueIndex("episodes_task_sequence_uq").on(table.taskId, table.sequence),
+  uniqueIndex("episodes_predecessor_uq").on(table.predecessorEpisodeId).where(sql`${table.predecessorEpisodeId} IS NOT NULL`),
+  check("episode_purpose_ck", sql`${table.purpose} IN ('GENERAL','RETRY','TRANSFER','RETENTION')`),
+  check("episode_predecessor_ck", sql`${table.predecessorEpisodeId} IS NULL OR ${table.predecessorEpisodeId} <> ${table.id}`),
+  check("episode_recovery_json_ck", sql`jsonb_typeof(${table.recoveryState})='object'`),
+]);
 
 export const conversationEvents = product.table("conversation_events", {
   id: id(),
@@ -842,6 +852,11 @@ export const teacherReviews = product.table("teacher_reviews", {
   check("teacher_review_provenance_ck", sql`length(${table.actorProvenance}->>'userId') > 0 AND length(${table.actorProvenance}->>'institutionId') > 0 AND length(${table.actorProvenance}->>'authMethod') > 0 AND length(${table.actorProvenance}->>'sessionId') > 0 AND (${table.actorProvenance}->>'authMethod') NOT LIKE 'migrated-%'`),
 ]);
 
+/**
+ * Class A governed follow-up execution envelope. The physical table name is a
+ * retained legacy mapping; activityType preserves Retry/Transfer/Retention as
+ * distinct canonical records while all execution reuses the same orchestration.
+ */
 export const retryAttempts = product.table("retry_attempts", {
   id: id(),
   originalAttemptId: uuid("original_attempt_id").notNull().references(() => learnerAttempts.id),
@@ -850,32 +865,130 @@ export const retryAttempts = product.table("retry_attempts", {
   activityType: text("activity_type").notNull(),
   prompt: text("prompt").notNull(),
   status: text("status").default("ASSIGNED").notNull(),
+  institutionId: uuid("institution_id").references(() => institutions.id, { onDelete: "cascade" }),
+  courseId: uuid("course_id").references(() => courses.id),
+  taskId: uuid("task_id").references(() => learningTasks.id, { onDelete: "cascade" }),
+  sourceEpisodeId: uuid("source_episode_id").references(() => learningEpisodes.id),
+  targetEpisodeId: uuid("target_episode_id").references(() => learningEpisodes.id),
+  learnerId: uuid("learner_id").references(() => users.id),
+  contextItemId: uuid("context_item_id").references(() => contextItems.id),
+  activityPlanProposalId: uuid("activity_plan_proposal_id").references(() => activityPlanProposals.id),
+  activityPlanId: uuid("activity_plan_id").references(() => activityPlans.id),
+  runtimeDeliveryId: uuid("runtime_delivery_id").references(() => runtimeDeliveries.id),
   resultAttemptId: uuid("result_attempt_id").references(() => learnerAttempts.id),
   resultObservationId: uuid("result_observation_id").references(() => diagnosticObservations.id),
   resultReviewId: uuid("result_review_id").references(() => teacherReviews.id),
+  assignedAt: timestamp("assigned_at", { withTimezone: true }).defaultNow().notNull(),
   scheduledFor: timestamp("scheduled_for", { withTimezone: true }),
+  sourceLineage: jsonb("source_lineage").$type<Record<string, unknown>>(),
+  actorUserId: uuid("actor_user_id").references(() => users.id),
+  actorProvenance: jsonb("actor_provenance").$type<{ userId: string; institutionId: string; roles: string[]; authMethod: string; sessionId: string; authenticatedAt: string }>(),
+  idempotencyKey: text("idempotency_key"),
+  assignmentRequestHash: text("assignment_request_hash"),
+  latestTransitionEventId: uuid("latest_transition_event_id").references((): AnyPgColumn => governanceEvents.id),
+  cancellationState: jsonb("cancellation_state").$type<Record<string, unknown>>(),
+  failureState: jsonb("failure_state").$type<Record<string, unknown>>(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   createdAt: createdAt(),
 }, (table) => [
-  check("retry_activity_ck", sql`${table.activityType} = 'RETRY'`),
-  check("retry_status_ck", sql`${table.status} IN ('ASSIGNED','REVIEWED','ESCALATED')`),
+  uniqueIndex("governed_followup_target_episode_uq").on(table.targetEpisodeId).where(sql`${table.targetEpisodeId} IS NOT NULL`),
+  uniqueIndex("governed_followup_plan_proposal_uq").on(table.activityPlanProposalId).where(sql`${table.activityPlanProposalId} IS NOT NULL`),
+  uniqueIndex("governed_followup_plan_uq").on(table.activityPlanId).where(sql`${table.activityPlanId} IS NOT NULL`),
+  uniqueIndex("governed_followup_delivery_uq").on(table.runtimeDeliveryId).where(sql`${table.runtimeDeliveryId} IS NOT NULL`),
+  uniqueIndex("governed_followup_actor_key_uq").on(table.institutionId, table.actorUserId, table.idempotencyKey).where(sql`${table.idempotencyKey} IS NOT NULL`),
+  check("retry_activity_ck", sql`${table.activityType} IN ('RETRY','TRANSFER','RETENTION')`),
+  check("retry_status_ck", sql`${table.status} IN ('ASSIGNED','IN_PROGRESS','WAITING_FOR_REVIEW','REVIEWED','ESCALATED','CANCELLED','FAILED_RECOVERABLE','FAILED_FINAL')`),
+  check("governed_followup_json_ck", sql`
+    (${table.idempotencyKey} IS NULL AND ${table.institutionId} IS NULL AND ${table.courseId} IS NULL
+      AND ${table.taskId} IS NULL AND ${table.sourceEpisodeId} IS NULL AND ${table.targetEpisodeId} IS NULL
+      AND ${table.learnerId} IS NULL AND ${table.contextItemId} IS NULL
+      AND ${table.activityPlanProposalId} IS NULL AND ${table.activityPlanId} IS NULL
+      AND ${table.runtimeDeliveryId} IS NULL AND ${table.sourceLineage} IS NULL
+      AND ${table.actorUserId} IS NULL AND ${table.actorProvenance} IS NULL
+      AND ${table.assignmentRequestHash} IS NULL
+      AND ${table.latestTransitionEventId} IS NULL AND ${table.cancellationState} IS NULL
+      AND ${table.failureState} IS NULL)
+    OR (${table.idempotencyKey} IS NOT NULL AND ${table.institutionId} IS NOT NULL AND ${table.courseId} IS NOT NULL
+      AND ${table.taskId} IS NOT NULL AND ${table.sourceEpisodeId} IS NOT NULL AND ${table.targetEpisodeId} IS NOT NULL
+      AND ${table.learnerId} IS NOT NULL AND ${table.contextItemId} IS NOT NULL AND ${table.actorUserId} IS NOT NULL
+      AND ${table.assignmentRequestHash} IS NOT NULL AND length(btrim(${table.assignmentRequestHash}))>7
+      AND ${table.sourceLineage} IS NOT NULL AND jsonb_typeof(${table.sourceLineage})='object' AND ${table.sourceLineage}<>'{}'::jsonb
+      AND ${table.actorProvenance} IS NOT NULL AND jsonb_typeof(${table.actorProvenance})='object')
+  `),
+  check("governed_followup_terminal_fact_ck", sql`
+    (${table.status}<>'CANCELLED' OR (${table.cancellationState} IS NOT NULL
+      AND jsonb_typeof(${table.cancellationState})='object'
+      AND length(btrim(${table.cancellationState}->>'actorUserId'))>0
+      AND length(btrim(${table.cancellationState}->>'recordedAt'))>0
+      AND length(btrim(${table.cancellationState}->>'reason'))>0
+      AND jsonb_typeof(${table.cancellationState}->'externalWorkMayStillFinish')='boolean'))
+    AND (${table.status} NOT IN ('FAILED_RECOVERABLE','FAILED_FINAL') OR (${table.failureState} IS NOT NULL
+      AND jsonb_typeof(${table.failureState})='object'
+      AND length(btrim(${table.failureState}->>'actorUserId'))>0
+      AND length(btrim(${table.failureState}->>'recordedAt'))>0
+      AND length(btrim(${table.failureState}->>'reason'))>0
+      AND jsonb_typeof(${table.failureState}->'externalWorkMayStillFinish')='boolean'))
+  `),
+  check("governed_followup_result_ck", sql`
+    (${table.status} IN ('ASSIGNED','IN_PROGRESS','FAILED_RECOVERABLE','FAILED_FINAL','CANCELLED')
+      AND ${table.resultReviewId} IS NULL)
+    OR (${table.status}='WAITING_FOR_REVIEW' AND ${table.activityPlanId} IS NOT NULL AND ${table.runtimeDeliveryId} IS NOT NULL
+      AND ${table.resultAttemptId} IS NOT NULL AND ${table.resultObservationId} IS NOT NULL AND ${table.resultReviewId} IS NULL)
+    OR (${table.status} IN ('REVIEWED','ESCALATED') AND ${table.activityPlanId} IS NOT NULL AND ${table.runtimeDeliveryId} IS NOT NULL
+      AND ${table.resultAttemptId} IS NOT NULL AND ${table.resultObservationId} IS NOT NULL AND ${table.resultReviewId} IS NOT NULL)
+    OR (${table.idempotencyKey} IS NULL AND ${table.status} IN ('ASSIGNED','REVIEWED','ESCALATED'))
+  `),
 ]);
 
 export const transferActivities = product.table("transfer_activities", {
   id: id(),
-  retryId: uuid("retry_id").notNull().references(() => retryAttempts.id, { onDelete: "cascade" }).unique(),
+  activityId: uuid("retry_id").notNull().references(() => retryAttempts.id, { onDelete: "cascade" }).unique(),
   targetConcept: text("target_concept").notNull(),
-  evidenceUnitId: uuid("evidence_unit_id").notNull().references(() => evidenceUnits.id),
+  evidenceUnitId: uuid("evidence_unit_id").references(() => evidenceUnits.id),
+  contractVersion: text("contract_version").default("LEGACY_UNVERIFIED").notNull(),
+  declaration: jsonb("declaration").$type<Record<string, unknown>>().default({}).notNull(),
+  changedDimensions: jsonb("changed_dimensions").$type<string[]>().default([]).notNull(),
   createdAt: createdAt(),
-});
+}, (table) => [check("transfer_material_difference_ck", sql`
+  ${table.contractVersion}='LEGACY_UNVERIFIED' OR (${table.contractVersion}='CAP06_V1'
+  AND jsonb_typeof(${table.declaration})='object'
+  AND ${table.declaration}->>'evidenceLimit'='TARGET_AUTHENTICATED_TEACHER_DECLARATION_NOT_MACHINE_PROVEN'
+  AND jsonb_typeof(${table.declaration}->'source')='object'
+  AND jsonb_typeof(${table.declaration}->'target')='object'
+  AND jsonb_typeof(${table.changedDimensions})='array'
+  AND jsonb_array_length(${table.changedDimensions})>0
+  AND ${table.changedDimensions}<@'["context","representation","itemFamily","problemStructure"]'::jsonb
+  )
+`)]);
 
 export const retentionReviews = product.table("retention_reviews", {
   id: id(),
-  retryId: uuid("retry_id").notNull().references(() => retryAttempts.id, { onDelete: "cascade" }).unique(),
+  activityId: uuid("retry_id").notNull().references(() => retryAttempts.id, { onDelete: "cascade" }).unique(),
   dueAt: timestamp("due_at", { withTimezone: true }).notNull(),
-  evidenceUnitId: uuid("evidence_unit_id").notNull().references(() => evidenceUnits.id),
+  evidenceUnitId: uuid("evidence_unit_id").references(() => evidenceUnits.id),
+  contractVersion: text("contract_version").default("LEGACY_UNVERIFIED").notNull(),
+  declaredDelaySeconds: integer("declared_delay_seconds").default(0).notNull(),
+  interveningExposure: jsonb("intervening_exposure").$type<Record<string, unknown>>().default({}).notNull(),
+  contentEquivalence: jsonb("content_equivalence").$type<Record<string, unknown>>().default({}).notNull(),
+  assistancePolicy: jsonb("assistance_policy").$type<Record<string, unknown>>().default({}).notNull(),
+  completedInterveningExposure: jsonb("completed_intervening_exposure").$type<Record<string, unknown>>(),
+  exposureConfirmedAt: timestamp("exposure_confirmed_at", { withTimezone: true }),
+  exposureConfirmedBy: uuid("exposure_confirmed_by").references(() => users.id),
   completedAt: timestamp("completed_at", { withTimezone: true }),
   createdAt: createdAt(),
-});
+}, (table) => [check("retention_contract_ck", sql`
+  ${table.contractVersion}='LEGACY_UNVERIFIED' OR (${table.contractVersion}='CAP06_V1'
+  AND ${table.declaredDelaySeconds}>0
+  AND ${table.dueAt}>=${table.createdAt}+(${table.declaredDelaySeconds} * interval '1 second')
+  AND jsonb_typeof(${table.interveningExposure})='object'
+  AND jsonb_typeof(${table.contentEquivalence})='object'
+  AND jsonb_typeof(${table.assistancePolicy})='object'
+  AND ((${table.completedAt} IS NULL AND ${table.completedInterveningExposure} IS NULL
+      AND ${table.exposureConfirmedAt} IS NULL AND ${table.exposureConfirmedBy} IS NULL)
+    OR (${table.completedAt} IS NOT NULL AND jsonb_typeof(${table.completedInterveningExposure})='object'
+      AND ${table.exposureConfirmedAt} IS NOT NULL AND ${table.exposureConfirmedBy} IS NOT NULL))
+  )
+`)]);
 
 export const learningOutcomes = product.table("learning_outcomes", {
   id: id(),
@@ -1126,6 +1239,7 @@ export const idempotencyKeys = product.table("idempotency_keys", {
   commandType: text("command_type").notNull(),
   requestHash: text("request_hash").notNull(),
   resultId: uuid("result_id").notNull(),
+  actorUserId: uuid("actor_user_id").references(() => users.id),
   createdAt: createdAt(),
 }, (table) => [primaryKey({ columns: [table.institutionId, table.commandType, table.key] })]);
 

@@ -8,3 +8,15 @@ export function errorResponse(error: unknown): Response {
   console.error(error);
   return Response.json({ error: "Unexpected server error", code: "INTERNAL_ERROR" }, { status: 500 });
 }
+
+/** Call only after the protected database operation has returned and committed. */
+export function requireWorkflowHttpSuccess(result: unknown): void {
+  const workflow = result as { status?: unknown; failure?: unknown; failureCode?: unknown };
+  if (workflow.status !== "FAILED" && workflow.status !== "CANCELLED") return;
+  throw new DomainInvariantError(
+    typeof workflow.failure === "string" ? workflow.failure : "The governed workflow ended without a deliverable result",
+    typeof workflow.failureCode === "string"
+      ? workflow.failureCode
+      : workflow.status === "CANCELLED" ? "FOLLOWUP_CANCELLED" : "FOLLOWUP_FAILED",
+  );
+}

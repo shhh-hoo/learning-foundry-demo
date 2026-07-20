@@ -25,7 +25,7 @@ describe("fresh migration contract", () => {
   it("keeps the clean rewrite history and adds governed Asset Loop enforcement", async () => {
     const directory = new URL("../../db/migrations/", import.meta.url);
     const migrations = (await readdir(directory)).filter((name) => name.endsWith(".sql"));
-    expect(migrations).toEqual(["0000_full_framework.sql", "0001_full_framework.sql", "0002_recoverable_resume_claims.sql", "0003_production_auth_tenant_enforcement.sql", "0004_canonical_identity_context_evidence.sql", "0005_authoritative_context_compiler.sql", "0006_diagnosis_capability_resolution.sql", "0007_activity_planning.sql", "0008_asset_stage_runtime.sql", "0009_teacher_assignment_intervention.sql"]);
+    expect(migrations).toEqual(["0000_full_framework.sql", "0001_full_framework.sql", "0002_recoverable_resume_claims.sql", "0003_production_auth_tenant_enforcement.sql", "0004_canonical_identity_context_evidence.sql", "0005_authoritative_context_compiler.sql", "0006_diagnosis_capability_resolution.sql", "0007_activity_planning.sql", "0008_asset_stage_runtime.sql", "0009_teacher_assignment_intervention.sql", "0010_governed_followup.sql"]);
     const migration = await readFile(new URL("../../db/migrations/0000_full_framework.sql", import.meta.url), "utf8");
     const assetMigration = await readFile(new URL("../../db/migrations/0001_full_framework.sql", import.meta.url), "utf8");
     expect(migration).not.toMatch(/migrated-legacy-record|legacy-review|legacy-outcome|legacy-publication|HUMAN_COMMAND/);
@@ -41,6 +41,69 @@ describe("fresh migration contract", () => {
     expect(assetMigration).toContain("PRE_EVAL_DRAFT_QUARANTINED");
     expect(assetMigration).toContain("Component versions must begin as governed Drafts");
     expect(assetMigration).toContain("Components must begin as governed Candidates without an active version");
+  });
+
+  it("adds a typed, forward-only CAP-06 follow-up envelope without creating Outcome authority", async () => {
+    const migration = await readFile(new URL("../../db/migrations/0010_governed_followup.sql", import.meta.url), "utf8");
+    expect(migration).toContain("Governed follow-up status transition is not forward-authorized");
+    expect(migration).toContain("Cancellation fact is immutable");
+    expect(migration).toContain("Failure fact can be replaced only by a new governed failure transition");
+    expect(migration).toContain("(NEW.cancellation_state->>'recordedAt')::timestamptz<>(transition.payload->>'recordedAt')::timestamptz");
+    expect(migration).toContain("(NEW.failure_state->>'recordedAt')::timestamptz<>(transition.payload->>'recordedAt')::timestamptz");
+    expect(migration).toContain("Transfer changedDimensions must be the exact database-recomputed material difference");
+    expect(migration).toContain("NEW.due_at>=activity.assigned_at+(NEW.declared_delay_seconds * interval '1 second')");
+    expect(migration).toContain("NEW.created_at=activity.assigned_at");
+    expect(migration).toContain("GovernanceEvents cannot be deleted");
+    expect(migration).toContain("GovernanceEvents are append-only");
+    expect(migration).toContain('CREATE TRIGGER "cap06_episode_identity_guard" BEFORE INSERT OR UPDATE ON "foundry_product"."learning_episodes"');
+    expect(migration).toContain("Governed Episode predecessor must belong to the same Task");
+    expect(migration).toContain("Episode Task, sequence, purpose and predecessor are immutable");
+    expect(migration).toContain('CREATE TRIGGER "cap06_task_close_guard" BEFORE UPDATE ON "foundry_product"."learning_tasks"');
+    expect(migration).toContain("Learning Task cannot close while a governed follow-up is active");
+    expect(migration).toContain("A terminal Learning Task cannot be reopened");
+    expect(migration).toContain("A GENERAL Episode cannot be added while a governed follow-up is active");
+    expect(migration).toContain("Governed Episode must be atomically aligned with its exact follow-up activity");
+    expect(migration).toContain("Governed follow-up GovernanceEvent must be consumed by exact Product State in the same transaction");
+    expect(migration).toContain('CREATE OR REPLACE FUNCTION "foundry_private"."cap06_transition_actor_authorized"');
+    expect(migration).toContain("Governed follow-up transition actor lacks learner or course-teacher authority");
+    expect(migration).toContain("Legacy retry rows cannot acquire CAP-06 authority columns");
+    expect(migration).toContain("activity.idempotency_key IS NOT NULL AND activity.activity_type=episode.purpose AND activity.status='IN_PROGRESS'");
+    expect(migration).toContain("plan.id=p_activity_plan_id AND plan.id=delivery.activity_plan_id");
+    expect(migration).toContain("activity.activity_plan_proposal_id=plan.activity_plan_proposal_id");
+    expect(migration).toContain("activity.learner_id=NULLIF(current_setting('foundry.user_id',true),'')::uuid");
+    expect(migration).toContain("position('LEARNER' in COALESCE(current_setting('foundry.roles',true),''))>0");
+    expect(migration).toContain("delivery.learner_id=activity.learner_id");
+    expect(migration).toContain("plan.task_id=task.id AND plan.episode_id=episode.id");
+    expect(migration).toContain('ADD COLUMN "completed_intervening_exposure" jsonb');
+    expect(migration).toContain('ADD COLUMN "exposure_confirmed_at" timestamp with time zone');
+    expect(migration).toContain('ADD COLUMN "exposure_confirmed_by" uuid');
+    expect(migration).toContain("Retention declaration is immutable and actual exposure confirmation is set-once");
+    expect(migration).toContain("Legacy Transfer rows cannot acquire CAP-06 declaration authority");
+    expect(migration).toContain("Legacy Retention rows cannot acquire CAP-06 declaration authority");
+    expect(migration).toContain("Retention cannot begin before its persisted dueAt");
+    expect(migration).toContain("delivery.started_at>=activity.scheduled_for");
+    expect(migration).toContain("normalize(NEW.declaration->'source'->>dimension,NFKC)");
+    expect(migration).toContain("NEW.exposure_confirmed_at=NEW.completed_at AND NEW.exposure_confirmed_by=actor_id");
+    expect(migration).toContain('CREATE TRIGGER "cap06_learner_write_scope_guard" BEFORE INSERT OR UPDATE ON "foundry_product"."conversation_events"');
+    expect(migration).toContain('CREATE TRIGGER "cap06_learner_write_scope_guard" BEFORE INSERT OR UPDATE ON "foundry_product"."learner_attempts"');
+    expect(migration).toContain('CREATE TRIGGER "cap06_learner_write_scope_guard" BEFORE INSERT OR UPDATE ON "foundry_product"."file_assets"');
+    expect(migration).toContain("Learner write Task and Episode scope are immutable");
+    expect(migration).toContain("ConversationEvents are append-only; corrections require supersedes_event_id");
+    expect(migration).toContain("LearnerAttempt evidence is immutable");
+    expect(migration).toContain("FileAsset identity and Task scope are immutable");
+    expect(migration).toContain("Execution lineage may change only with its governed status transition");
+    expect(migration).toContain("CAP-06 governed follow-ups cannot create LearningOutcome");
+    expect(migration).toContain("LEGACY_RETRY_OUTCOME_RETIRED");
+    expect(migration).toContain("LEGACY_UNVERIFIED");
+    expect(migration).toContain("CAP-06 Transfer requires exactly its CAP06_V1 declaration and no Retention declaration");
+    expect(migration).toContain("CAP-06 Retention requires exactly its CAP06_V1 declaration and no Transfer declaration");
+    expect(migration).toContain("Governed follow-up idempotency reservation does not match actor/tenant/request/result identity");
+    expect(migration).toContain("Governed follow-up reservation must resolve to its exact governed activity at commit");
+    expect(migration).toContain("Terminal governed follow-up requires exact ContextItem invalidation provenance/reason/time");
+    expect(migration).toContain("Governed result TeacherReview author/provenance/transition/current course authority mismatch");
+    expect(migration).toContain("activity.status='REVIEWED' AND review.decision IN ('ACCEPT','CORRECT','SUPPLEMENT')");
+    expect(migration).toContain("activity.status='ESCALATED' AND review.decision='ESCALATE'");
+    expect(migration).not.toMatch(/INSERT INTO\s+"foundry_product"\."learning_outcomes"/i);
   });
 
   it("upgrades Context snapshots additively and preserves historical rows", async () => {

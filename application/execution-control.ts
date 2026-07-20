@@ -14,6 +14,14 @@ export type ExecutionControl = {
   deadlineAt: number;
 };
 
+export type ExecutionCompletionPolicy<T> = {
+  /**
+   * A caller may commit a returned result after cancellation only when that
+   * result proves the cancellation/timeout was persisted as terminal truth.
+   */
+  acceptStoppedResult?: (result: T) => boolean;
+};
+
 const executionScope = new AsyncLocalStorage<ExecutionControl>();
 
 function boundedDeadline(value: number | undefined): number {
@@ -57,11 +65,17 @@ export function operationalFailureStatus(error: unknown): "ABORTED" | "TIMED_OUT
   return executionStopStatus(error) ?? "FAILED";
 }
 
-export async function runWithExecutionControl<T>(input: ExecutionControlInput | undefined, run: (control: ExecutionControl) => Promise<T>): Promise<T> {
+export async function runWithExecutionControl<T>(
+  input: ExecutionControlInput | undefined,
+  run: (control: ExecutionControl) => Promise<T>,
+  completion: ExecutionCompletionPolicy<T> = {},
+): Promise<T> {
   const inherited = currentExecutionControl();
   if (inherited) {
     assertExecutionActive(inherited);
-    return run(inherited);
+    const result = await run(inherited);
+    if (!completion.acceptStoppedResult?.(result)) assertExecutionActive(inherited);
+    return result;
   }
 
   const deadlineMs = boundedDeadline(input?.deadlineMs);
@@ -78,7 +92,7 @@ export async function runWithExecutionControl<T>(input: ExecutionControlInput | 
     return await executionScope.run(control, async () => {
       assertExecutionActive(control);
       const result = await run(control);
-      assertExecutionActive(control);
+      if (!completion.acceptStoppedResult?.(result)) assertExecutionActive(control);
       return result;
     });
   } catch (error) {

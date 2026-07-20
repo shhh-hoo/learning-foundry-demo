@@ -15,7 +15,12 @@ import {
 } from "@/db/schema";
 import type { Actor } from "@/domain/model";
 import { DomainInvariantError, requireRole } from "@/domain/invariants";
-import { requireTaskEpisodeScope } from "@/application/task-scope";
+import {
+  requireGovernedFollowupScope,
+  requireTaskEpisodeScope,
+  requireWritableGeneralEpisode,
+} from "@/application/task-scope";
+import { requireEpisodeDiagnosisLineage } from "@/application/governed-followup-lineage";
 import {
   assertExecutionActive,
   runWithExecutionControl,
@@ -48,6 +53,7 @@ type RuntimeLineage = {
   context: typeof contextCompilations.$inferSelect;
   observation: typeof diagnosticObservations.$inferSelect;
   sourceAttempt: typeof learnerAttempts.$inferSelect;
+  followupActivity: Awaited<ReturnType<typeof requireEpisodeDiagnosisLineage>>;
   capability: typeof capabilities.$inferSelect;
   version: typeof capabilityVersions.$inferSelect;
   stage: AssetRuntimeStage;
@@ -196,14 +202,34 @@ async function loadRuntimeLineage(actor: Actor, request: AssetRuntimeRequest): P
     || lineage.context.taskId !== scope.task.id
     || lineage.context.episodeId !== scope.episode.id
     || lineage.observation.supersededById
-    || lineage.sourceAttempt.taskId !== scope.task.id
-    || lineage.sourceAttempt.episodeId !== scope.episode.id) {
+    || lineage.sourceAttempt.taskId !== scope.task.id) {
     throw new DomainInvariantError("ActivityPlan lineage is stale or inconsistent", "ASSET_RUNTIME_LINEAGE_STALE");
   }
   const currentObservations = await getDb().select({ id: diagnosticObservations.id }).from(diagnosticObservations)
     .where(and(eq(diagnosticObservations.attemptId, lineage.sourceAttempt.id), isNull(diagnosticObservations.supersededById)));
   if (currentObservations.length !== 1 || currentObservations[0]?.id !== lineage.observation.id) {
     throw new DomainInvariantError("ActivityPlan Diagnosis Proposal is no longer current", "ASSET_RUNTIME_DIAGNOSIS_STALE");
+  }
+  const followupActivity = await requireEpisodeDiagnosisLineage({
+    taskId: scope.task.id,
+    episodeId: scope.episode.id,
+    observation: lineage.observation,
+    attempt: lineage.sourceAttempt,
+  });
+  if (followupActivity) {
+    await requireGovernedFollowupScope(actor, {
+      activityId: followupActivity.id,
+      taskId: scope.task.id,
+      episodeId: scope.episode.id,
+      learnerOriginated: true,
+      requireActiveRuntime: true,
+    });
+  } else {
+    await requireWritableGeneralEpisode(actor, {
+      taskId: scope.task.id,
+      episodeId: scope.episode.id,
+      learnerOriginated: true,
+    });
   }
   await assertContextCurrent(lineage.context);
 
@@ -267,6 +293,16 @@ async function loadRuntimeLineage(actor: Actor, request: AssetRuntimeRequest): P
     capabilityVersionId: lineage.version.id,
     capabilityVersionContentHash: lineage.version.contentHash,
     runtimeContractHash,
+    governedFollowup: followupActivity ? {
+      activityId: followupActivity.id,
+      activityType: followupActivity.activityType,
+      sourceEpisodeId: followupActivity.sourceEpisodeId,
+      targetEpisodeId: followupActivity.targetEpisodeId,
+      governingTeacherReviewId: followupActivity.teacherReviewId,
+      transferEvidenceLimit: followupActivity.activityType === "TRANSFER"
+        ? "TARGET_AUTHENTICATED_TEACHER_DECLARATION_NOT_MACHINE_PROVEN"
+        : undefined,
+    } : null,
   };
   const activityPlanHash = assetRuntimeHash({
     policyVersion: ASSET_RUNTIME_POLICY_VERSION,
@@ -293,6 +329,7 @@ async function loadRuntimeLineage(actor: Actor, request: AssetRuntimeRequest): P
     request,
     scope,
     ...lineage,
+    followupActivity,
     stage,
     runtimeContract: runtime,
     runtimeContractHash,
@@ -305,10 +342,14 @@ async function loadRuntimeLineage(actor: Actor, request: AssetRuntimeRequest): P
   };
 }
 
-function evidenceRefs(lineage: Pick<RuntimeLineage, "proposal" | "resolution" | "context" | "observation" | "sourceAttempt">) {
+function evidenceRefs(lineage: Pick<RuntimeLineage, "proposal" | "resolution" | "context" | "observation" | "sourceAttempt" | "followupActivity">) {
   return [
     { kind: "SOURCE_ATTEMPT", id: lineage.sourceAttempt.id },
     { kind: "DIAGNOSIS_PROPOSAL", id: lineage.observation.id },
+    ...(lineage.followupActivity ? [
+      { kind: "SOURCE_TEACHER_REVIEW", id: lineage.followupActivity.teacherReviewId },
+      { kind: "GOVERNED_FOLLOWUP", id: lineage.followupActivity.id },
+    ] : []),
     { kind: "CONTEXT_COMPILATION", id: lineage.context.id },
     { kind: "CAPABILITY_RESOLUTION", id: lineage.resolution.id },
     { kind: "ACTIVITY_PLAN_PROPOSAL", id: lineage.proposal.id },
@@ -540,10 +581,11 @@ function throwTerminal(delivery: typeof runtimeDeliveries.$inferSelect): never {
   );
 }
 
-export async function executeAssetStage(
+async function executeAssetStageWithMode(
   actor: Actor,
   rawRequest: AssetRuntimeRequest,
-  dependencies: AssetRuntimeDependencies = defaultDependencies,
+  dependencies: AssetRuntimeDependencies,
+  terminalMode: "THROW" | "RETURN",
 ) {
   const request = AssetRuntimeRequest.parse(rawRequest);
   return runWithExecutionControl({ deadlineMs: request.deadlineMs }, async (control: ExecutionControl) => {
@@ -551,7 +593,10 @@ export async function executeAssetStage(
     if (prepared.delivery.status === "SUCCEEDED") {
       return { delivery: prepared.delivery, attempt: prepared.attempt, replayed: true };
     }
-    if (TERMINAL.has(prepared.delivery.status)) throwTerminal(prepared.delivery);
+    if (TERMINAL.has(prepared.delivery.status)) {
+      if (terminalMode === "THROW") throwTerminal(prepared.delivery);
+      return { delivery: prepared.delivery, attempt: prepared.attempt, replayed: true };
+    }
     await dependencies.afterDeliveryStarted?.(prepared);
     try {
       assertExecutionActive(control);
@@ -567,7 +612,27 @@ export async function executeAssetStage(
       const normalized = normalizeRuntimeError(error);
       const status = terminalStatusForError(normalized) as Exclude<AssetRuntimeTerminalStatus, "SUCCEEDED">;
       const delivery = await finalizeDelivery(prepared, { status, error: normalized });
-      throwTerminal(delivery);
+      if (terminalMode === "THROW") throwTerminal(delivery);
+      return { delivery, attempt: prepared.attempt, replayed: prepared.replayed };
     }
+  }, {
+    acceptStoppedResult: (result) => terminalMode === "RETURN" && TERMINAL.has(result.delivery.status),
   });
+}
+
+export async function executeAssetStage(
+  actor: Actor,
+  rawRequest: AssetRuntimeRequest,
+  dependencies: AssetRuntimeDependencies = defaultDependencies,
+) {
+  return executeAssetStageWithMode(actor, rawRequest, dependencies, "THROW");
+}
+
+/** Governed orchestration uses the persisted terminal RuntimeDelivery as data. */
+export async function executeAssetStageResult(
+  actor: Actor,
+  rawRequest: AssetRuntimeRequest,
+  dependencies: AssetRuntimeDependencies = defaultDependencies,
+) {
+  return executeAssetStageWithMode(actor, rawRequest, dependencies, "RETURN");
 }
