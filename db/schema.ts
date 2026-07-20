@@ -506,13 +506,29 @@ export const learnerAttempts = product.table("learner_attempts", {
   episodeId: uuid("episode_id").notNull().references(() => learningEpisodes.id, { onDelete: "cascade" }),
   learnerId: uuid("learner_id").notNull().references(() => users.id),
   capabilityId: uuid("capability_id").references(() => capabilities.id),
+  capabilityVersionId: uuid("capability_version_id").references(() => capabilityVersions.id),
+  activityPlanId: uuid("activity_plan_id").references((): AnyPgColumn => activityPlans.id),
+  runtimeDeliveryId: uuid("runtime_delivery_id").references((): AnyPgColumn => runtimeDeliveries.id),
   fileAssetId: uuid("file_asset_id").references(() => fileAssets.id),
   prompt: text("prompt").notNull(),
   response: text("response").notNull(),
   structuredInput: jsonb("structured_input").$type<Record<string, unknown>>().notNull(),
   sourceRefs: jsonb("source_refs").$type<Array<Record<string, string>>>().default([]).notNull(),
+  modality: text("modality"),
+  contentHash: text("content_hash"),
+  assistanceProvenance: jsonb("assistance_provenance").$type<Record<string, unknown>>(),
   createdAt: createdAt(),
-}, (table) => [index("attempts_task_idx").on(table.taskId, table.createdAt)]);
+}, (table) => [
+  index("attempts_task_idx").on(table.taskId, table.createdAt),
+  uniqueIndex("learner_attempt_runtime_delivery_uq").on(table.runtimeDeliveryId).where(sql`${table.runtimeDeliveryId} IS NOT NULL`),
+  check("learner_attempt_runtime_lineage_ck", sql`
+    (${table.runtimeDeliveryId} IS NULL AND ${table.activityPlanId} IS NULL AND ${table.capabilityVersionId} IS NULL
+      AND ${table.modality} IS NULL AND ${table.contentHash} IS NULL AND ${table.assistanceProvenance} IS NULL)
+    OR (${table.runtimeDeliveryId} IS NOT NULL AND ${table.activityPlanId} IS NOT NULL AND ${table.capabilityVersionId} IS NOT NULL
+      AND length(btrim(${table.modality})) > 0 AND length(${table.contentHash}) > 7
+      AND jsonb_typeof(${table.assistanceProvenance}) = 'object' AND ${table.assistanceProvenance} <> '{}'::jsonb)
+  `),
+]);
 
 export const diagnosticObservations = product.table("diagnostic_observations", {
   id: id(),
@@ -625,6 +641,104 @@ export const activityPlanProposals = product.table("activity_plan_proposals", {
     AND NOT (${table.retryIntent}->>'formalRetryCreated')::boolean
     AND length(${table.inputHash}) > 7 AND length(${table.policyVersion}) > 0 AND length(btrim(${table.rationale})) > 0
   `),
+]);
+
+/** Class A: immutable exact stage accepted for one authorized runtime launch. */
+export const activityPlans = product.table("activity_plans", {
+  id: uuid("id").primaryKey(),
+  institutionId: uuid("institution_id").notNull().references(() => institutions.id, { onDelete: "cascade" }),
+  courseId: uuid("course_id").notNull().references(() => courses.id),
+  taskId: uuid("task_id").notNull().references(() => learningTasks.id, { onDelete: "cascade" }),
+  episodeId: uuid("episode_id").notNull().references(() => learningEpisodes.id, { onDelete: "cascade" }),
+  activityPlanProposalId: uuid("activity_plan_proposal_id").notNull().references(() => activityPlanProposals.id),
+  contextCompilationId: uuid("context_compilation_id").notNull().references(() => contextCompilations.id),
+  diagnosticObservationId: uuid("diagnostic_observation_id").notNull().references(() => diagnosticObservations.id),
+  capabilityResolutionId: uuid("capability_resolution_id").notNull().references(() => capabilityResolutions.id),
+  capabilityId: uuid("capability_id").notNull().references(() => capabilities.id),
+  capabilityVersionId: uuid("capability_version_id").notNull().references(() => capabilityVersions.id),
+  capabilityVersionContentHash: text("capability_version_content_hash").notNull(),
+  runtimeContractHash: text("runtime_contract_hash").notNull(),
+  implementationKey: text("implementation_key").notNull(),
+  runtimeKind: text("runtime_kind").notNull(),
+  stageOrder: integer("stage_order").notNull(),
+  stageSnapshot: jsonb("stage_snapshot").$type<Record<string, unknown>>().notNull(),
+  runtimeContract: jsonb("runtime_contract").$type<Record<string, unknown>>().notNull(),
+  evidenceProvenance: jsonb("evidence_provenance").$type<Record<string, unknown>>().notNull(),
+  inputHash: text("input_hash").notNull(),
+  createdBy: uuid("created_by").notNull().references(() => users.id),
+  createdAt: createdAt(),
+}, (table) => [
+  uniqueIndex("activity_plan_proposal_uq").on(table.activityPlanProposalId),
+  uniqueIndex("activity_plan_input_hash_uq").on(table.institutionId, table.inputHash),
+  index("activity_plan_task_idx").on(table.taskId, table.episodeId, table.createdAt),
+  check("activity_plan_exact_stage_ck", sql`${table.stageOrder} = 1 AND length(${table.capabilityVersionContentHash}) > 7 AND length(${table.runtimeContractHash}) > 7 AND length(${table.inputHash}) > 7`),
+  check("activity_plan_runtime_json_ck", sql`jsonb_typeof(${table.stageSnapshot})='object' AND jsonb_typeof(${table.runtimeContract})='object' AND jsonb_typeof(${table.evidenceProvenance})='object'`),
+]);
+
+/** Class A: one bounded execution fact for one immutable ActivityPlan stage. */
+export const runtimeDeliveries = product.table("runtime_deliveries", {
+  id: uuid("id").primaryKey(),
+  institutionId: uuid("institution_id").notNull().references(() => institutions.id, { onDelete: "cascade" }),
+  courseId: uuid("course_id").notNull().references(() => courses.id),
+  taskId: uuid("task_id").notNull().references(() => learningTasks.id, { onDelete: "cascade" }),
+  episodeId: uuid("episode_id").notNull().references(() => learningEpisodes.id, { onDelete: "cascade" }),
+  learnerId: uuid("learner_id").notNull().references(() => users.id),
+  activityPlanId: uuid("activity_plan_id").notNull().references(() => activityPlans.id),
+  capabilityId: uuid("capability_id").notNull().references(() => capabilities.id),
+  capabilityVersionId: uuid("capability_version_id").notNull().references(() => capabilityVersions.id),
+  capabilityVersionContentHash: text("capability_version_content_hash").notNull(),
+  runtimeContractHash: text("runtime_contract_hash").notNull(),
+  implementationKey: text("implementation_key").notNull(),
+  runtimeKind: text("runtime_kind").notNull(),
+  requestHash: text("request_hash").notNull(),
+  idempotencyKey: text("idempotency_key").notNull(),
+  status: text("status").notNull(),
+  deadlineMs: integer("deadline_ms").notNull(),
+  normalizedOutput: jsonb("normalized_output").$type<Record<string, unknown>>(),
+  normalizedError: jsonb("normalized_error").$type<Record<string, unknown>>(),
+  outputHash: text("output_hash"),
+  startedAt: timestamp("started_at", { withTimezone: true }).defaultNow().notNull(),
+  finishedAt: timestamp("finished_at", { withTimezone: true }),
+}, (table) => [
+  uniqueIndex("runtime_delivery_activity_plan_uq").on(table.activityPlanId),
+  uniqueIndex("runtime_delivery_replay_uq").on(table.institutionId, table.idempotencyKey),
+  index("runtime_delivery_task_idx").on(table.taskId, table.episodeId, table.startedAt),
+  check("runtime_delivery_status_ck", sql`${table.status} IN ('PENDING','RUNNING','SUCCEEDED','FAILED','TIMED_OUT','CANCELLED')`),
+  check("runtime_delivery_deadline_ck", sql`${table.deadlineMs} > 0 AND ${table.deadlineMs} <= 120000`),
+  check("runtime_delivery_terminal_ck", sql`
+    (${table.status} IN ('PENDING','RUNNING') AND ${table.finishedAt} IS NULL AND ${table.normalizedOutput} IS NULL AND ${table.normalizedError} IS NULL AND ${table.outputHash} IS NULL)
+    OR (${table.status}='SUCCEEDED' AND ${table.finishedAt} IS NOT NULL AND ${table.normalizedOutput} IS NOT NULL AND ${table.normalizedError} IS NULL AND ${table.outputHash} IS NOT NULL)
+    OR (${table.status} IN ('FAILED','TIMED_OUT','CANCELLED') AND ${table.finishedAt} IS NOT NULL AND ${table.normalizedOutput} IS NULL AND ${table.normalizedError} IS NOT NULL AND ${table.outputHash} IS NULL)
+  `),
+]);
+
+/** Class A: append-only, delivery-local ordered runtime and learner interaction fact. */
+export const learningEvents = product.table("learning_events", {
+  id: uuid("id").primaryKey(),
+  institutionId: uuid("institution_id").notNull().references(() => institutions.id, { onDelete: "cascade" }),
+  courseId: uuid("course_id").notNull().references(() => courses.id),
+  taskId: uuid("task_id").notNull().references(() => learningTasks.id, { onDelete: "cascade" }),
+  episodeId: uuid("episode_id").notNull().references(() => learningEpisodes.id, { onDelete: "cascade" }),
+  activityPlanId: uuid("activity_plan_id").notNull().references(() => activityPlans.id),
+  runtimeDeliveryId: uuid("runtime_delivery_id").notNull().references(() => runtimeDeliveries.id, { onDelete: "cascade" }),
+  sequence: integer("sequence").notNull(),
+  eventKey: text("event_key").notNull(),
+  eventType: text("event_type").notNull(),
+  actorType: text("actor_type").notNull(),
+  actorUserId: uuid("actor_user_id").references(() => users.id),
+  payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+  evidenceRefs: jsonb("evidence_refs").$type<Array<Record<string, string>>>().notNull(),
+  createdAt: createdAt(),
+}, (table) => [
+  uniqueIndex("learning_event_delivery_sequence_uq").on(table.runtimeDeliveryId, table.sequence),
+  uniqueIndex("learning_event_delivery_key_uq").on(table.runtimeDeliveryId, table.eventKey),
+  index("learning_event_task_idx").on(table.taskId, table.episodeId, table.createdAt),
+  check("learning_event_sequence_ck", sql`${table.sequence} BETWEEN 1 AND 5`),
+  check("learning_event_actor_ck", sql`
+    (${table.actorType}='SYSTEM' AND ${table.actorUserId} IS NULL)
+    OR (${table.actorType}='LEARNER' AND ${table.actorUserId} IS NOT NULL)
+  `),
+  check("learning_event_json_ck", sql`jsonb_typeof(${table.payload})='object' AND jsonb_typeof(${table.evidenceRefs})='array' AND length(btrim(${table.eventKey}))>0 AND length(btrim(${table.eventType}))>0`),
 ]);
 
 export const teacherReviews = product.table("teacher_reviews", {
