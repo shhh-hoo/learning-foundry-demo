@@ -3,10 +3,12 @@ import { afterAll, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import { getActor } from "@/application/actor";
 import { resolveCapabilityForDiagnosis } from "@/application/capability-resolution";
+import { planActivityForResolution } from "@/application/activity-planning";
 import { closeDb, getDb } from "@/db/client";
 import { SEED } from "@/db/ids";
 import {
   capabilities,
+  activityPlanProposals,
   capabilityResolutions,
   capabilityVersions,
   contextCompilations,
@@ -102,6 +104,7 @@ describe.sequential("CAP-02 PostgreSQL Diagnosis-driven Capability Resolution", 
       const capabilityId = randomUUID();
       const versionId = randomUUID();
       const key = `cap02-${label}-${capabilityId}`;
+      const contentHash = `cap02-${label}-${versionId}`;
       await getDb().insert(capabilities).values({
         id: capabilityId,
         key,
@@ -117,9 +120,9 @@ describe.sequential("CAP-02 PostgreSQL Diagnosis-driven Capability Resolution", 
         contract: resolutionContract({ ...options, key }),
         implementationKey: `cap02.${label}`,
         status: options.status ?? "ACTIVE",
-        contentHash: `cap02-${label}-${versionId}`,
+        contentHash,
       });
-      return { capabilityId, versionId, key };
+      return { capabilityId, versionId, key, contentHash };
     };
 
     const selected = await addCapability("selected", { key: "selected" });
@@ -234,6 +237,37 @@ describe.sequential("CAP-02 PostgreSQL Diagnosis-driven Capability Resolution", 
     expect(candidates.some((candidate) => candidate.capabilityKey === disabled.key && candidate.exclusionReasons.includes("VERSION_DISABLED"))).toBe(true);
     expect(candidates.some((candidate) => candidate.capabilityKey === dependencyUnavailable.key && candidate.exclusionReasons.includes("DEPENDENCY_UNAVAILABLE"))).toBe(true);
     expect(candidates.some((candidate) => candidate.capabilityKey === providerUnavailable.key && candidate.exclusionReasons.includes("PROVIDER_UNAVAILABLE"))).toBe(true);
+
+    const firstPlan = await planActivityForResolution(actor, { taskId, episodeId, capabilityResolutionId: first.id });
+    const replayedPlan = await planActivityForResolution(actor, { taskId, episodeId, capabilityResolutionId: first.id });
+    expect(firstPlan).toMatchObject({
+      state: "READY",
+      capabilityResolutionId: first.id,
+      contextCompilationId: first.contextCompilationId,
+      diagnosticObservationId: observationId,
+      selectedCapabilityId: selected.capabilityId,
+      selectedCapabilityVersionId: selected.versionId,
+      selectedVersionContentHash: selected.contentHash,
+      replayed: false,
+    });
+    expect(replayedPlan).toMatchObject({ id: firstPlan.id, inputHash: firstPlan.inputHash, replayed: true });
+    expect(firstPlan.stages).toHaveLength(1);
+    expect(firstPlan.stages[0]).toMatchObject({ order: 1, kind: "CAPABILITY_ACTIVITY", capabilityVersionId: selected.versionId });
+    expect(firstPlan.runtimeHandoff).toMatchObject({ executable: true, capabilityVersionId: selected.versionId });
+    expect(firstPlan.retryIntent).toMatchObject({ kind: "TEACHER_REVIEW_REQUIRED", formalRetryCreated: false });
+    expect(await getDb().select().from(activityPlanProposals).where(eq(activityPlanProposals.capabilityResolutionId, first.id))).toHaveLength(1);
+    await expect(getDb().update(activityPlanProposals).set({ rationale: "rewritten" }).where(eq(activityPlanProposals.id, firstPlan.id)))
+      .rejects.toMatchObject({ cause: expect.objectContaining({ code: "23514" }) });
+
+    const foreignInstitutionId = randomUUID();
+    const foreignLearnerId = randomUUID();
+    await getDb().insert(institutions).values({ id: foreignInstitutionId, slug: `cap03-${foreignInstitutionId}`, name: "CAP-03 foreign institution" });
+    await getDb().insert(users).values({ id: foreignLearnerId, email: `cap03-${foreignLearnerId}@integration.invalid`, name: "CAP-03 foreign learner" });
+    await getDb().insert(institutionMemberships).values({ userId: foreignLearnerId, institutionId: foreignInstitutionId, role: "LEARNER" });
+    const foreignActor = await getActor(foreignLearnerId, foreignInstitutionId, "integration-test", `cap03:${foreignLearnerId}`);
+    await expect(planActivityForResolution(foreignActor, { taskId, episodeId, capabilityResolutionId: first.id }))
+      .rejects.toMatchObject({ code: "TENANT_ISOLATION" });
+    expect(await getDb().select().from(activityPlanProposals).where(eq(activityPlanProposals.capabilityResolutionId, first.id))).toHaveLength(1);
   });
 
   it("denies a learner's cross-tenant Task before Context, Diagnosis or resolution persistence", async () => {

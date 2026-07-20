@@ -25,7 +25,7 @@ describe("fresh migration contract", () => {
   it("keeps the clean rewrite history and adds governed Asset Loop enforcement", async () => {
     const directory = new URL("../../db/migrations/", import.meta.url);
     const migrations = (await readdir(directory)).filter((name) => name.endsWith(".sql"));
-    expect(migrations).toEqual(["0000_full_framework.sql", "0001_full_framework.sql", "0002_recoverable_resume_claims.sql", "0003_production_auth_tenant_enforcement.sql", "0004_canonical_identity_context_evidence.sql", "0005_authoritative_context_compiler.sql", "0006_diagnosis_capability_resolution.sql"]);
+    expect(migrations).toEqual(["0000_full_framework.sql", "0001_full_framework.sql", "0002_recoverable_resume_claims.sql", "0003_production_auth_tenant_enforcement.sql", "0004_canonical_identity_context_evidence.sql", "0005_authoritative_context_compiler.sql", "0006_diagnosis_capability_resolution.sql", "0007_activity_planning.sql"]);
     const migration = await readFile(new URL("../../db/migrations/0000_full_framework.sql", import.meta.url), "utf8");
     const assetMigration = await readFile(new URL("../../db/migrations/0001_full_framework.sql", import.meta.url), "utf8");
     expect(migration).not.toMatch(/migrated-legacy-record|legacy-review|legacy-outcome|legacy-publication|HUMAN_COMMAND/);
@@ -80,6 +80,18 @@ describe("fresh migration contract", () => {
     expect(rehearsal).toContain('exactBaseMigrations: "0000-0005"');
     expect(rehearsal).toContain('legacyContractFailedClosed: true');
     expect(rehearsal).toContain('immutableRewriteDenied: true');
+  });
+
+  it("adds immutable Class-B CAP-03 planning without creating runtime or rewriting prior Product State", async () => {
+    const migration = await readFile(new URL("../../db/migrations/0007_activity_planning.sql", import.meta.url), "utf8");
+    expect(migration).toContain('CREATE TABLE "foundry_product"."activity_plan_proposals"');
+    expect(migration).toContain("TENANT_DIRECT_CLASS_B");
+    expect(migration).toContain("cap03_activity_plan_lineage_guard");
+    expect(migration).toContain("READY plan does not pin the eligible active exact version");
+    expect(migration).toContain("cap03_activity_plan_immutable");
+    expect(migration).not.toMatch(/CREATE TABLE[^;]*(runtime_deliveries|learning_events)/i);
+    expect(migration).not.toMatch(/ALTER TABLE "foundry_product"\."(capability_resolutions|context_compilations|diagnostic_observations|capability_versions)"/);
+    expect(migration).not.toMatch(/DROP TABLE|TRUNCATE|DELETE FROM/);
   });
 
   it("adds forward-compatible recoverable resume claims without rewriting prior migrations", async () => {

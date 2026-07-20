@@ -6,6 +6,7 @@ import { executePersistedCapability } from "@/application/capabilities";
 import { prepareAttemptForDiagnosis } from "@/application/attempt-interpreter";
 import { compileAuthorizedContext } from "@/application/context-service";
 import { resolveCapabilityForDiagnosis } from "@/application/capability-resolution";
+import { planActivityForResolution } from "@/application/activity-planning";
 
 export const DiagnosisState = new StateSchema({
   actor: ActorSchema,
@@ -35,6 +36,8 @@ export const DiagnosisState = new StateSchema({
   capabilityDecision: z.enum(["EXISTING", "PARAMETERIZE", "COMPOSE", "ADAPT", "GENERATE", "NO_MATCH"]).optional(),
   selectedCapabilityVersionId: z.string().uuid().optional(),
   teacherEscalation: z.boolean().optional(),
+  activityPlanProposalId: z.string().uuid().optional(),
+  activityPlanState: z.enum(["READY", "BLOCKED", "ESCALATED"]).optional(),
 });
 
 export type DiagnosisGraphDependencies = {
@@ -45,6 +48,7 @@ export type DiagnosisGraphDependencies = {
   persistObservation: typeof persistDiagnosticObservation;
   persistUnavailable: typeof persistUnavailableObservation;
   resolveCapability: typeof resolveCapabilityForDiagnosis;
+  planActivity: typeof planActivityForResolution;
 };
 
 const defaultDependencies: DiagnosisGraphDependencies = {
@@ -55,6 +59,7 @@ const defaultDependencies: DiagnosisGraphDependencies = {
   persistObservation: persistDiagnosticObservation,
   persistUnavailable: persistUnavailableObservation,
   resolveCapability: resolveCapabilityForDiagnosis,
+  planActivity: planActivityForResolution,
 };
 
 export function buildDiagnosisGraph(checkpointer?: BaseCheckpointSaver, dependencies: DiagnosisGraphDependencies = defaultDependencies) {
@@ -137,11 +142,21 @@ export function buildDiagnosisGraph(checkpointer?: BaseCheckpointSaver, dependen
         teacherEscalation: resolution.teacherEscalation,
       };
     })
+    .addNode("plan_activity", async (state) => {
+      if (!state.capabilityResolutionId) throw new Error("Activity Planning requires exact CapabilityResolution lineage");
+      const plan = await dependencies.planActivity(state.actor, {
+        taskId: state.taskId,
+        episodeId: state.episodeId,
+        capabilityResolutionId: state.capabilityResolutionId,
+      });
+      return { activityPlanProposalId: plan.id, activityPlanState: plan.state as "READY" | "BLOCKED" | "ESCALATED" };
+    })
     .addEdge(START, "compile_context")
     .addEdge("compile_context", "prepare_attempt")
     .addEdge("prepare_attempt", "capture_attempt")
     .addEdge("capture_attempt", "execute_capability")
     .addEdge("execute_capability", "resolve_capability")
-    .addEdge("resolve_capability", END)
+    .addEdge("resolve_capability", "plan_activity")
+    .addEdge("plan_activity", END)
     .compile({ checkpointer });
 }

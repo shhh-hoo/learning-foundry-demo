@@ -50,6 +50,13 @@
       "when": 1784592000000,
       "tag": "0006_diagnosis_capability_resolution",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1784678400000,
+      "tag": "0007_activity_planning",
+      "breakpoints": true
     }
   ]
 }
