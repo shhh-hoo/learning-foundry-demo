@@ -27,6 +27,9 @@ import {
   learnerStrategyVersions,
   sourceAssetVersions,
   sourceRecords,
+  teacherAssignments,
+  teacherCapabilityConstraints,
+  teacherInterventions,
 } from "@/db/schema";
 import { DomainInvariantError, requireRole } from "@/domain/invariants";
 import { requireTaskEpisodeScope } from "@/application/task-scope";
@@ -43,6 +46,11 @@ type ContextAttempt = Pick<
 
 type CanonicalContextRecord = typeof contextItems.$inferSelect;
 type CarryoverRecord = typeof contextCarryoverRelations.$inferSelect;
+type TeacherConstraintSource = {
+  constraint: typeof teacherCapabilityConstraints.$inferSelect;
+  assignment: typeof teacherAssignments.$inferSelect | null;
+  intervention: typeof teacherInterventions.$inferSelect | null;
+};
 
 export type CompileAuthorizedContextInput = {
   taskId: string;
@@ -149,12 +157,23 @@ async function compileAndPersist(actor: Actor, input: CompileAuthorizedContextIn
     throw new DomainInvariantError("Learning Task learner profile lineage is missing or inconsistent", "CONTEXT_PROFILE_LINEAGE");
   }
 
-  const [directItems, carryovers, strategies, events, attempts] = await Promise.all([
+  const [directItems, carryovers, strategies, events, attempts, teacherConstraintSources] = await Promise.all([
     db.select().from(contextItems).where(eq(contextItems.taskId, input.taskId)),
     db.select().from(contextCarryoverRelations).where(eq(contextCarryoverRelations.targetTaskId, input.taskId)),
     db.select().from(learnerStrategyVersions).where(eq(learnerStrategyVersions.learnerProfileId, profile.id)),
     db.select().from(conversationEvents).where(eq(conversationEvents.taskId, input.taskId)).orderBy(desc(conversationEvents.createdAt), desc(conversationEvents.id)).limit(30),
     db.select().from(learnerAttempts).where(eq(learnerAttempts.taskId, input.taskId)).orderBy(desc(learnerAttempts.createdAt), desc(learnerAttempts.id)).limit(10),
+    db.select({
+      constraint: teacherCapabilityConstraints,
+      assignment: teacherAssignments,
+      intervention: teacherInterventions,
+    }).from(teacherCapabilityConstraints)
+      .leftJoin(teacherAssignments, eq(teacherAssignments.id, teacherCapabilityConstraints.sourceAssignmentId))
+      .leftJoin(teacherInterventions, eq(teacherInterventions.id, teacherCapabilityConstraints.sourceInterventionId))
+      .where(and(
+        eq(teacherCapabilityConstraints.taskId, input.taskId),
+        eq(teacherCapabilityConstraints.episodeId, input.episodeId),
+      )),
   ]);
 
   const activeStrategies = strategies.filter((strategy) => strategy.status === "ACTIVE"
@@ -211,6 +230,7 @@ async function compileAndPersist(actor: Actor, input: CompileAuthorizedContextIn
   const authorityActorIds = [...new Set([
     ...canonicalItems.flatMap((item) => isTeacherConstraint(item.kind) && item.actorUserId ? [item.actorUserId] : []),
     ...carryovers.flatMap((relation) => relation.actorUserId ? [relation.actorUserId] : []),
+    ...teacherConstraintSources.map(({ constraint }) => constraint.teacherId),
   ])];
   const [authorityMemberships, authorityEnrollments] = authorityActorIds.length
     ? await Promise.all([
@@ -237,6 +257,11 @@ async function compileAndPersist(actor: Actor, input: CompileAuthorizedContextIn
     const institutionRoles = authorityRoles.get(userId) ?? new Set<string>();
     const courseRoles = authorityCourseRoles.get(userId) ?? new Set<string>();
     return institutionRoles.has("ADMIN") || (institutionRoles.has("TEACHER") && courseRoles.has("TEACHER"));
+  };
+  const hasCap05TeacherCourseAuthority = (userId: string): boolean => {
+    const institutionRoles = authorityRoles.get(userId) ?? new Set<string>();
+    const courseRoles = authorityCourseRoles.get(userId) ?? new Set<string>();
+    return institutionRoles.has("TEACHER") && courseRoles.has("TEACHER");
   };
 
   function sourceExclusion(source: typeof sourceRecords.$inferSelect, version: typeof sourceAssetVersions.$inferSelect): ContextItem["exclusionReason"] {
@@ -400,6 +425,54 @@ async function compileAndPersist(actor: Actor, input: CompileAuthorizedContextIn
   }
 
   const carryoverByItemId = new Map(carryovers.map((relation) => [relation.sourceContextItemId, relation]));
+  const supersededConstraintIds = new Set(teacherConstraintSources.flatMap(({ constraint }) => constraint.supersedesConstraintId ? [constraint.supersedesConstraintId] : []));
+  const teacherConstraintCandidates = teacherConstraintSources.map((source: TeacherConstraintSource): ContextItem => {
+    const { constraint, assignment, intervention } = source;
+    const exactSource = assignment ?? intervention;
+    if (!exactSource || Boolean(assignment) === Boolean(intervention)
+      || constraint.institutionId !== scope.task.institutionId
+      || constraint.courseId !== scope.task.courseId
+      || constraint.taskId !== scope.task.id
+      || constraint.episodeId !== scope.episode.id
+      || exactSource.institutionId !== constraint.institutionId
+      || exactSource.courseId !== constraint.courseId
+      || exactSource.taskId !== constraint.taskId
+      || exactSource.teacherId !== constraint.teacherId
+      || (intervention && intervention.episodeId !== constraint.episodeId)) {
+      throw new DomainInvariantError("Teacher Capability constraint source lineage is inconsistent", "CONTEXT_TEACHER_CONSTRAINT_LINEAGE");
+    }
+    if (!hasCap05TeacherCourseAuthority(constraint.teacherId)) {
+      throw new DomainInvariantError("Teacher Capability constraint lacks current course authority", "CONTEXT_TEACHER_AUTHORITY");
+    }
+    const superseded = supersededConstraintIds.has(constraint.id);
+    const payload = constraint.effect === "REQUIRE"
+      ? { requiredCapabilityKey: constraint.capabilityKeySnapshot, capabilityId: constraint.capabilityId, reason: constraint.reason }
+      : { excludedCapabilityKey: constraint.capabilityKeySnapshot, capabilityId: constraint.capabilityId, reason: constraint.reason };
+    return {
+      id: `teacher-capability-constraint:${constraint.id}`,
+      institutionId: constraint.institutionId,
+      courseId: constraint.courseId,
+      learnerProfileId: profile.id,
+      taskId: constraint.taskId,
+      episodeId: scope.episode.id,
+      kind: constraint.effect === "REQUIRE" ? "CAPABILITY_REQUIREMENT" : "CAPABILITY_EXCLUSION",
+      scope: "EPISODE",
+      state: superseded ? "SUPERSEDED" : "ACTIVE",
+      content: stableContextJson(payload),
+      payload,
+      modality: "TEXT",
+      required: !superseded,
+      priority: 95,
+      superseded,
+      inclusionReason: "ACTIVE_EPISODE_SCOPE",
+      exclusionReason: superseded ? "SUPERSEDED_FACT" : undefined,
+      provenanceRefs: [
+        provenance("CAPABILITY_CONSTRAINT", constraint.id),
+        provenance(assignment ? "TEACHER_ASSIGNMENT" : "TEACHER_INTERVENTION", exactSource.id),
+        provenance("ACTOR", constraint.teacherId),
+      ],
+    };
+  });
   const authoritativeCandidates: ContextItem[] = [
     {
       id: `learning-task:${scope.task.id}`,
@@ -468,6 +541,7 @@ async function compileAndPersist(actor: Actor, input: CompileAuthorizedContextIn
         ...(strategy.sourceRecordId ? [provenance("SOURCE_RECORD", strategy.sourceRecordId)] : []),
       ],
     })),
+    ...teacherConstraintCandidates,
     ...directItems.map((item) => canonicalCandidate(item)),
     ...carriedItems.map((item) => canonicalCandidate(item, carryoverByItemId.get(item.id))),
   ];

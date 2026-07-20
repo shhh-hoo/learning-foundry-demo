@@ -220,6 +220,9 @@ const attemptedActivityPlanProposalHash = `tenant-harness-denied-${attemptedActi
 const attemptedActivityPlanId = randomUUID();
 const attemptedRuntimeDeliveryId = randomUUID();
 const attemptedLearningEventId = randomUUID();
+const attemptedTeacherAssignmentId = randomUUID();
+const attemptedTeacherInterventionId = randomUUID();
+const attemptedTeacherConstraintId = randomUUID();
 const attemptedCheckpointId = randomUUID();
 const attemptedCheckpointThread = `${tenantB}:tenant-harness-denied:${attemptedCheckpointId}`;
 const authSessionPositiveId = randomUUID();
@@ -768,6 +771,44 @@ try {
     if (inserted.count !== 1) throw new Error("LearningEvent probe requires one visible tenant-A fixture");
   }, /LearningEvent delivery\/actor lineage mismatch/);
   directlyProbedWritableTables.add("foundry_product.learning_events");
+
+  await expectRoleTransactionDenied("TeacherAssignment insert outside current tenant/actor", product, RUNTIME_DATABASE_ROLES.product, tenantA, async (transaction) => {
+    await transaction`
+      INSERT INTO foundry_product.teacher_assignments
+        (id,institution_id,course_id,learner_id,task_id,teacher_id,instructions,completion_rule,actor_provenance,idempotency_key)
+      VALUES (${attemptedTeacherAssignmentId}::uuid,${tenantB}::uuid,${courseB}::uuid,${learnerB}::uuid,${taskB}::uuid,${learnerB}::uuid,
+        'Denied tenant assignment','Denied tenant completion',
+        jsonb_build_object('userId',${learnerB}::text,'institutionId',${tenantB}::text,'roles',jsonb_build_array('TEACHER'),'authMethod','tenant-harness','sessionId','denied','authenticatedAt',now()::text),
+        ${`tenant-harness-denied-${attemptedTeacherAssignmentId}`})
+    `;
+  }, /CAP-05 assignment actor\/course denied|row-level security/);
+  directlyProbedWritableTables.add("foundry_product.teacher_assignments");
+
+  await expectRoleTransactionDenied("TeacherIntervention insert outside current tenant/actor", product, RUNTIME_DATABASE_ROLES.product, tenantA, async (transaction) => {
+    await transaction`
+      INSERT INTO foundry_product.teacher_interventions
+        (id,institution_id,course_id,task_id,episode_id,runtime_delivery_id,learner_attempt_id,activity_plan_id,
+         diagnostic_observation_id,context_compilation_id,capability_resolution_id,capability_version_id,
+         constraint_capability_id,constraint_capability_key_snapshot,teacher_id,action_type,reason,target_lineage,actor_provenance,idempotency_key)
+      VALUES (${attemptedTeacherInterventionId}::uuid,${tenantB}::uuid,${courseB}::uuid,${taskB}::uuid,${episodeB}::uuid,
+        ${randomUUID()}::uuid,${attemptB}::uuid,${randomUUID()}::uuid,${observationB}::uuid,${randomUUID()}::uuid,${randomUUID()}::uuid,
+        ${capability.version_id}::uuid,${capability.id}::uuid,'denied-capability',${learnerB}::uuid,'REQUIRE_CAPABILITY','Denied intervention',
+        jsonb_build_object('taskId',${taskB}::text),
+        jsonb_build_object('userId',${learnerB}::text,'institutionId',${tenantB}::text,'roles',jsonb_build_array('TEACHER'),'authMethod','tenant-harness','sessionId','denied','authenticatedAt',now()::text),
+        ${`tenant-harness-denied-${attemptedTeacherInterventionId}`})
+    `;
+  }, /CAP-05 intervention actor\/course denied|row-level security/);
+  directlyProbedWritableTables.add("foundry_product.teacher_interventions");
+
+  await expectRoleTransactionDenied("TeacherCapabilityConstraint insert outside current tenant/actor", product, RUNTIME_DATABASE_ROLES.product, tenantA, async (transaction) => {
+    await transaction`
+      INSERT INTO foundry_product.teacher_capability_constraints
+        (id,institution_id,course_id,task_id,episode_id,teacher_id,effect,capability_id,capability_key_snapshot,reason,source_assignment_id)
+      VALUES (${attemptedTeacherConstraintId}::uuid,${tenantB}::uuid,${courseB}::uuid,${taskB}::uuid,${episodeB}::uuid,
+        ${learnerB}::uuid,'REQUIRE',${capability.id}::uuid,'denied-capability','Denied constraint',${attemptedTeacherAssignmentId}::uuid)
+    `;
+  }, /CAP-05 constraint actor\/tenant denied|row-level security/);
+  directlyProbedWritableTables.add("foundry_product.teacher_capability_constraints");
 
   await expectRoleTransactionDenied("LearningTask insert with tenant B course", product, RUNTIME_DATABASE_ROLES.product, tenantA, async (transaction) => {
     await transaction`

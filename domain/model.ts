@@ -134,6 +134,9 @@ export type ContextProvenanceReference = {
     | "SOURCE_ASSET_VERSION"
     | "EVIDENCE_UNIT"
     | "EVIDENCE_DERIVATIVE"
+    | "TEACHER_ASSIGNMENT"
+    | "TEACHER_INTERVENTION"
+    | "CAPABILITY_CONSTRAINT"
     | "ACTOR";
   id: string;
   version?: string;

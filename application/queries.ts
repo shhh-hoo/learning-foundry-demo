@@ -285,7 +285,104 @@ export async function getTeacherWorkspace(actor: Actor) {
       eq(componentDeliveries.institutionId, actor.institutionId),
       inArray(componentDeliveries.courseId, actor.courseIds.length ? actor.courseIds : ["00000000-0000-0000-0000-000000000000"]),
     )).orderBy(desc(componentDeliveries.createdAt));
-  return { queue, patterns, retries, pendingWorkflows, sourceReviews, componentSupport, deliveries };
+  const teacherCommandEnabled = actor.roles.includes("TEACHER");
+  const assignmentCourses = teacherCommandEnabled ? await sql<Array<Record<string, unknown>>>`
+    SELECT course.id, course.code, course.name
+    FROM foundry_product.courses course
+    JOIN foundry_product.course_enrollments enrollment ON enrollment.institution_id=course.institution_id
+      AND enrollment.course_id=course.id AND enrollment.user_id=${actor.userId} AND enrollment.role='TEACHER'
+    JOIN foundry_product.institution_memberships membership ON membership.institution_id=course.institution_id
+      AND membership.user_id=${actor.userId} AND membership.role='TEACHER'
+    WHERE course.institution_id=${actor.institutionId} AND course.active
+      AND course.id=ANY(${actor.courseIds}::uuid[])
+    ORDER BY course.code
+  ` : [];
+  const assignmentLearners = teacherCommandEnabled ? await sql<Array<Record<string, unknown>>>`
+    SELECT enrollment.course_id, learner.id, learner.name
+    FROM foundry_product.course_enrollments enrollment
+    JOIN foundry_product.courses course ON course.id=enrollment.course_id AND course.institution_id=enrollment.institution_id AND course.active
+    JOIN foundry_product.course_enrollments teacher_enrollment ON teacher_enrollment.institution_id=enrollment.institution_id
+      AND teacher_enrollment.course_id=enrollment.course_id AND teacher_enrollment.user_id=${actor.userId} AND teacher_enrollment.role='TEACHER'
+    JOIN foundry_product.institution_memberships teacher_membership ON teacher_membership.institution_id=enrollment.institution_id
+      AND teacher_membership.user_id=${actor.userId} AND teacher_membership.role='TEACHER'
+    JOIN foundry_product.institution_memberships membership ON membership.institution_id=enrollment.institution_id
+      AND membership.user_id=enrollment.user_id AND membership.role='LEARNER'
+    JOIN foundry_product.learner_profiles profile ON profile.institution_id=enrollment.institution_id AND profile.learner_id=enrollment.user_id
+    JOIN foundry_product.users learner ON learner.id=enrollment.user_id
+    WHERE enrollment.institution_id=${actor.institutionId} AND enrollment.role='LEARNER'
+      AND enrollment.course_id=ANY(${actor.courseIds}::uuid[])
+    ORDER BY enrollment.course_id, learner.name
+  ` : [];
+  const assignmentCapabilities = teacherCommandEnabled ? await sql<Array<Record<string, unknown>>>`
+    SELECT course.id AS course_id, capability.id, capability.key, capability.name
+    FROM foundry_product.courses course
+    JOIN foundry_product.course_enrollments teacher_enrollment ON teacher_enrollment.institution_id=course.institution_id
+      AND teacher_enrollment.course_id=course.id AND teacher_enrollment.user_id=${actor.userId} AND teacher_enrollment.role='TEACHER'
+    JOIN foundry_product.institution_memberships teacher_membership ON teacher_membership.institution_id=course.institution_id
+      AND teacher_membership.user_id=${actor.userId} AND teacher_membership.role='TEACHER'
+    JOIN foundry_product.subjects subject ON subject.id=course.subject_id
+    JOIN foundry_product.capabilities capability ON capability.reference_pack_key=subject.reference_pack_key
+    JOIN foundry_product.capability_versions version ON version.id=capability.active_version_id AND version.status='ACTIVE'
+    WHERE course.institution_id=${actor.institutionId} AND course.active AND course.id=ANY(${actor.courseIds}::uuid[])
+    ORDER BY course.id, capability.name
+  ` : [];
+  const assignments = teacherCommandEnabled ? await sql<Array<Record<string, unknown>>>`
+    SELECT assignment.id, assignment.course_id, assignment.learner_id, assignment.task_id,
+      assignment.status, assignment.instructions, assignment.completion_rule, assignment.due_at,
+      assignment.actor_provenance, assignment.created_at, task.title, task.goal, learner.name AS learner_name
+    FROM foundry_product.teacher_assignments assignment
+    JOIN foundry_product.learning_tasks task ON task.id=assignment.task_id
+    JOIN foundry_product.users learner ON learner.id=assignment.learner_id
+    WHERE assignment.institution_id=${actor.institutionId} AND assignment.teacher_id=${actor.userId}
+      AND assignment.course_id=ANY(${actor.courseIds}::uuid[])
+    ORDER BY assignment.created_at DESC, assignment.id DESC LIMIT 20
+  ` : [];
+  const runtimeInspections = await sql<Array<Record<string, unknown>>>`
+    SELECT delivery.id AS runtime_delivery_id, delivery.status AS runtime_status, delivery.started_at, delivery.finished_at,
+      delivery.request_hash, delivery.output_hash, delivery.normalized_output, delivery.normalized_error,
+      task.id AS task_id, task.course_id, task.title AS task_title, task.goal AS task_goal, task.status AS task_status,
+      episode.id AS episode_id, episode.status AS episode_status, learner.id AS learner_id, learner.name AS learner_name,
+      attempt.id AS attempt_id, attempt.prompt, attempt.response, attempt.structured_input, attempt.source_refs,
+      attempt.assistance_provenance, attempt.content_hash AS attempt_content_hash,
+      plan.id AS activity_plan_id, plan.input_hash AS activity_plan_input_hash, plan.evidence_provenance,
+      diagnosis.id AS diagnosis_id, diagnosis.status AS diagnosis_status, diagnosis.summary AS diagnosis_summary,
+      diagnosis.structured_result AS diagnosis_result, diagnosis.input_lineage AS diagnosis_input_lineage,
+      diagnosis.output_lineage AS diagnosis_output_lineage, diagnosis.superseded_by_id,
+      context.id AS context_compilation_id, context.snapshot_hash AS context_snapshot_hash,
+      resolution.id AS capability_resolution_id, resolution.decision AS resolution_decision, resolution.selection_rationale,
+      capability.id AS capability_id, capability.key AS capability_key, capability.name AS capability_name,
+      version.id AS capability_version_id, version.version AS capability_version, version.content_hash AS capability_version_content_hash,
+      delivery.runtime_contract_hash,
+      NOT EXISTS (SELECT 1 FROM foundry_product.runtime_deliveries newer WHERE newer.task_id=delivery.task_id AND newer.episode_id=delivery.episode_id AND (newer.started_at,newer.id)>(delivery.started_at,delivery.id)) AS is_latest_delivery,
+      COALESCE((SELECT jsonb_agg(jsonb_build_object(
+        'id', event.id, 'sequence', event.sequence, 'eventKey', event.event_key, 'eventType', event.event_type,
+        'actorType', event.actor_type, 'actorUserId', event.actor_user_id, 'payload', event.payload,
+        'evidenceRefs', event.evidence_refs, 'createdAt', event.created_at
+      ) ORDER BY event.sequence) FROM foundry_product.learning_events event WHERE event.runtime_delivery_id=delivery.id),'[]'::jsonb) AS learning_events,
+      COALESCE((SELECT jsonb_agg(jsonb_build_object(
+        'id', intervention.id, 'actionType', intervention.action_type, 'reason', intervention.reason,
+        'constraintCapabilityId', intervention.constraint_capability_id, 'constraintCapabilityKey', intervention.constraint_capability_key_snapshot,
+        'actorProvenance', intervention.actor_provenance, 'targetLineage', intervention.target_lineage, 'createdAt', intervention.created_at
+      ) ORDER BY intervention.created_at, intervention.id) FROM foundry_product.teacher_interventions intervention WHERE intervention.runtime_delivery_id=delivery.id),'[]'::jsonb) AS interventions
+    FROM foundry_product.runtime_deliveries delivery
+    JOIN foundry_product.activity_plans plan ON plan.id=delivery.activity_plan_id
+    JOIN foundry_product.learner_attempts attempt ON attempt.runtime_delivery_id=delivery.id AND attempt.activity_plan_id=plan.id
+    JOIN foundry_product.diagnostic_observations diagnosis ON diagnosis.id=plan.diagnostic_observation_id
+    JOIN foundry_product.context_compilations context ON context.id=plan.context_compilation_id
+    JOIN foundry_product.capability_resolutions resolution ON resolution.id=plan.capability_resolution_id
+    JOIN foundry_product.capabilities capability ON capability.id=delivery.capability_id
+    JOIN foundry_product.capability_versions version ON version.id=delivery.capability_version_id
+    JOIN foundry_product.learning_tasks task ON task.id=delivery.task_id
+    JOIN foundry_product.learning_episodes episode ON episode.id=delivery.episode_id
+    JOIN foundry_product.users learner ON learner.id=delivery.learner_id
+    WHERE delivery.institution_id=${actor.institutionId} AND delivery.course_id=ANY(${actor.courseIds}::uuid[])
+      AND delivery.status IN ('SUCCEEDED','FAILED','TIMED_OUT','CANCELLED')
+    ORDER BY delivery.started_at DESC, delivery.id DESC LIMIT 30
+  `;
+  return {
+    queue, patterns, retries, pendingWorkflows, sourceReviews, componentSupport, deliveries,
+    teacherCommandEnabled, assignmentCourses, assignmentLearners, assignmentCapabilities, assignments, runtimeInspections,
+  };
 }
 
 export async function getFoundryWorkspace(actor: Actor) {

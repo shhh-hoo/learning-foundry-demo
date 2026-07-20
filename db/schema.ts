@@ -741,6 +741,89 @@ export const learningEvents = product.table("learning_events", {
   check("learning_event_json_ck", sql`jsonb_typeof(${table.payload})='object' AND jsonb_typeof(${table.evidenceRefs})='array' AND length(btrim(${table.eventKey}))>0 AND length(btrim(${table.eventType}))>0`),
 ]);
 
+/** Class A: authenticated teacher assignment that creates one existing LearningTask. */
+export const teacherAssignments = product.table("teacher_assignments", {
+  id: id(),
+  institutionId: uuid("institution_id").notNull().references(() => institutions.id, { onDelete: "cascade" }),
+  courseId: uuid("course_id").notNull().references(() => courses.id),
+  learnerId: uuid("learner_id").notNull().references(() => users.id),
+  taskId: uuid("task_id").notNull().references(() => learningTasks.id, { onDelete: "cascade" }),
+  teacherId: uuid("teacher_id").notNull().references(() => users.id),
+  status: text("status").default("ASSIGNED").notNull(),
+  instructions: text("instructions").notNull(),
+  completionRule: text("completion_rule").notNull(),
+  dueAt: timestamp("due_at", { withTimezone: true }),
+  actorProvenance: jsonb("actor_provenance").$type<{ userId: string; institutionId: string; roles: string[]; authMethod: string; sessionId: string; authenticatedAt: string }>().notNull(),
+  idempotencyKey: text("idempotency_key").notNull(),
+  createdAt: createdAt(),
+}, (table) => [
+  uniqueIndex("teacher_assignment_task_uq").on(table.taskId),
+  uniqueIndex("teacher_assignment_actor_key_uq").on(table.institutionId, table.teacherId, table.idempotencyKey),
+  index("teacher_assignment_course_idx").on(table.institutionId, table.courseId, table.createdAt),
+  check("teacher_assignment_status_ck", sql`${table.status} = 'ASSIGNED'`),
+  check("teacher_assignment_payload_ck", sql`length(btrim(${table.instructions})) > 0 AND length(btrim(${table.completionRule})) > 0`),
+  check("teacher_assignment_provenance_ck", sql`length(${table.actorProvenance}->>'userId') > 0 AND length(${table.actorProvenance}->>'institutionId') > 0 AND length(${table.actorProvenance}->>'authMethod') > 0 AND length(${table.actorProvenance}->>'sessionId') > 0 AND length(${table.actorProvenance}->>'authenticatedAt') > 0 AND jsonb_typeof(${table.actorProvenance}->'roles')='array' AND ${table.actorProvenance}->'roles' @> '["TEACHER"]'::jsonb AND (${table.actorProvenance}->>'authMethod') NOT LIKE 'migrated-%'`),
+]);
+
+/** Class A: append-only authenticated teacher action over exact completed runtime lineage. */
+export const teacherInterventions = product.table("teacher_interventions", {
+  id: id(),
+  institutionId: uuid("institution_id").notNull().references(() => institutions.id, { onDelete: "cascade" }),
+  courseId: uuid("course_id").notNull().references(() => courses.id),
+  taskId: uuid("task_id").notNull().references(() => learningTasks.id, { onDelete: "cascade" }),
+  episodeId: uuid("episode_id").notNull().references(() => learningEpisodes.id, { onDelete: "cascade" }),
+  runtimeDeliveryId: uuid("runtime_delivery_id").notNull().references(() => runtimeDeliveries.id),
+  learnerAttemptId: uuid("learner_attempt_id").notNull().references(() => learnerAttempts.id),
+  activityPlanId: uuid("activity_plan_id").notNull().references(() => activityPlans.id),
+  diagnosticObservationId: uuid("diagnostic_observation_id").notNull().references(() => diagnosticObservations.id),
+  contextCompilationId: uuid("context_compilation_id").notNull().references(() => contextCompilations.id),
+  capabilityResolutionId: uuid("capability_resolution_id").notNull().references(() => capabilityResolutions.id),
+  capabilityVersionId: uuid("capability_version_id").notNull().references(() => capabilityVersions.id),
+  constraintCapabilityId: uuid("constraint_capability_id").notNull().references(() => capabilities.id),
+  constraintCapabilityKeySnapshot: text("constraint_capability_key_snapshot").notNull(),
+  teacherId: uuid("teacher_id").notNull().references(() => users.id),
+  actionType: text("action_type").notNull(),
+  reason: text("reason").notNull(),
+  status: text("status").default("RECORDED").notNull(),
+  targetLineage: jsonb("target_lineage").$type<Record<string, unknown>>().notNull(),
+  actorProvenance: jsonb("actor_provenance").$type<{ userId: string; institutionId: string; roles: string[]; authMethod: string; sessionId: string; authenticatedAt: string }>().notNull(),
+  idempotencyKey: text("idempotency_key").notNull(),
+  createdAt: createdAt(),
+}, (table) => [
+  index("teacher_intervention_task_idx").on(table.taskId, table.episodeId, table.createdAt),
+  uniqueIndex("teacher_intervention_actor_key_uq").on(table.institutionId, table.teacherId, table.idempotencyKey),
+  check("teacher_intervention_action_ck", sql`${table.actionType} IN ('REQUIRE_CAPABILITY','EXCLUDE_CAPABILITY')`),
+  check("teacher_intervention_status_ck", sql`${table.status} = 'RECORDED'`),
+  check("teacher_intervention_payload_ck", sql`length(btrim(${table.reason})) > 0 AND length(btrim(${table.constraintCapabilityKeySnapshot})) > 0 AND jsonb_typeof(${table.targetLineage})='object' AND ${table.targetLineage}<>'{}'::jsonb`),
+  check("teacher_intervention_provenance_ck", sql`length(${table.actorProvenance}->>'userId') > 0 AND length(${table.actorProvenance}->>'institutionId') > 0 AND length(${table.actorProvenance}->>'authMethod') > 0 AND length(${table.actorProvenance}->>'sessionId') > 0 AND length(${table.actorProvenance}->>'authenticatedAt') > 0 AND jsonb_typeof(${table.actorProvenance}->'roles')='array' AND ${table.actorProvenance}->'roles' @> '["TEACHER"]'::jsonb AND (${table.actorProvenance}->>'authMethod') NOT LIKE 'migrated-%'`),
+]);
+
+/** Class A: append-only CapabilityRequirement or CapabilityExclusion. */
+export const teacherCapabilityConstraints = product.table("teacher_capability_constraints", {
+  id: id(),
+  institutionId: uuid("institution_id").notNull().references(() => institutions.id, { onDelete: "cascade" }),
+  courseId: uuid("course_id").notNull().references(() => courses.id),
+  taskId: uuid("task_id").notNull().references(() => learningTasks.id, { onDelete: "cascade" }),
+  episodeId: uuid("episode_id").notNull().references(() => learningEpisodes.id, { onDelete: "cascade" }),
+  teacherId: uuid("teacher_id").notNull().references(() => users.id),
+  effect: text("effect").notNull(),
+  capabilityId: uuid("capability_id").notNull().references(() => capabilities.id),
+  capabilityKeySnapshot: text("capability_key_snapshot").notNull(),
+  reason: text("reason").notNull(),
+  sourceAssignmentId: uuid("source_assignment_id").references(() => teacherAssignments.id),
+  sourceInterventionId: uuid("source_intervention_id").references(() => teacherInterventions.id),
+  supersedesConstraintId: uuid("supersedes_constraint_id").references((): AnyPgColumn => teacherCapabilityConstraints.id),
+  createdAt: createdAt(),
+}, (table) => [
+  index("teacher_constraint_task_idx").on(table.taskId, table.episodeId, table.createdAt),
+  uniqueIndex("teacher_constraint_one_successor_uq").on(table.supersedesConstraintId).where(sql`${table.supersedesConstraintId} IS NOT NULL`),
+  uniqueIndex("teacher_constraint_assignment_uq").on(table.sourceAssignmentId, table.effect, table.capabilityId).where(sql`${table.sourceAssignmentId} IS NOT NULL`),
+  uniqueIndex("teacher_constraint_intervention_uq").on(table.sourceInterventionId).where(sql`${table.sourceInterventionId} IS NOT NULL`),
+  check("teacher_constraint_effect_ck", sql`${table.effect} IN ('REQUIRE','EXCLUDE')`),
+  check("teacher_constraint_source_ck", sql`(${table.sourceAssignmentId} IS NOT NULL) <> (${table.sourceInterventionId} IS NOT NULL)`),
+  check("teacher_constraint_payload_ck", sql`length(btrim(${table.capabilityKeySnapshot})) > 0 AND length(btrim(${table.reason})) > 0 AND (${table.supersedesConstraintId} IS NULL OR ${table.supersedesConstraintId} <> ${table.id})`),
+]);
+
 export const teacherReviews = product.table("teacher_reviews", {
   id: id(),
   observationId: uuid("observation_id").notNull().references(() => diagnosticObservations.id),
