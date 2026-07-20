@@ -25,6 +25,7 @@ const attemptId = "90000000-0000-4000-8000-000000000001";
 const observationId = "90000000-0000-4000-8000-000000000002";
 const contextCompilationId = "90000000-0000-4000-8000-000000000003";
 const capabilityResolutionId = "90000000-0000-4000-8000-000000000004";
+const activityPlanProposalId = "90000000-0000-4000-8000-000000000005";
 const compileContext = vi.fn(async () => ({
   id: contextCompilationId,
   snapshotHash: "sha256:diagnosis-context",
@@ -129,6 +130,7 @@ describe("bounded natural Attempt preparation", () => {
     const persist = vi.fn(async () => ({ id: observationId }));
     const unavailable = vi.fn(async () => ({ id: observationId }));
     const resolveCapability = vi.fn(async () => ({ id: capabilityResolutionId, decision: "EXISTING", selectedCapabilityVersionId: capabilityVersionId, teacherEscalation: false }));
+    const planActivity = vi.fn(async () => ({ id: activityPlanProposalId, state: "READY" }));
     const graph = buildDiagnosisGraph(undefined, {
       compileContext,
       prepareAttempt: (input: Parameters<typeof prepareAttemptForDiagnosis>[0]) => prepareAttemptForDiagnosis(input, prepDependencies),
@@ -137,6 +139,7 @@ describe("bounded natural Attempt preparation", () => {
       persistObservation: persist,
       persistUnavailable: unavailable,
       resolveCapability,
+      planActivity,
     } as unknown as DiagnosisGraphDependencies);
 
     const result = await graph.invoke({
@@ -159,8 +162,9 @@ describe("bounded natural Attempt preparation", () => {
     expect(persist).toHaveBeenCalledTimes(1);
     expect(unavailable).not.toHaveBeenCalled();
     expect(resolveCapability).toHaveBeenCalledWith(actor, { taskId, episodeId, diagnosticObservationId: observationId });
+    expect(planActivity).toHaveBeenCalledWith(actor, { taskId, episodeId, capabilityResolutionId });
     expect(result.diagnosisStatus).toBe("AVAILABLE");
-    expect(result).toMatchObject({ capabilityResolutionId, capabilityDecision: "EXISTING", selectedCapabilityVersionId: capabilityVersionId, teacherEscalation: false });
+    expect(result).toMatchObject({ capabilityResolutionId, capabilityDecision: "EXISTING", selectedCapabilityVersionId: capabilityVersionId, teacherEscalation: false, activityPlanProposalId, activityPlanState: "READY" });
     expect(records).toHaveLength(1);
     expect(records[0]).toMatchObject({ provider: "FAKE", model: "fake-structured-model", status: "SUCCEEDED", usage: { inputTokens: 12, outputTokens: 7, totalTokens: 19 } });
     expect(Object.keys(records[0])).not.toEqual(expect.arrayContaining(["prompt", "response", "output", "raw"]));
@@ -226,6 +230,7 @@ describe("bounded natural Attempt preparation", () => {
     const capture = vi.fn(async () => ({ id: attemptId }));
     const unavailable = vi.fn(async () => ({ id: observationId }));
     const resolveCapability = vi.fn(async () => ({ id: capabilityResolutionId, decision: "NO_MATCH", selectedCapabilityVersionId: null, teacherEscalation: true }));
+    const planActivity = vi.fn(async () => ({ id: activityPlanProposalId, state: "ESCALATED" }));
     const graph = buildDiagnosisGraph(undefined, {
       compileContext,
       prepareAttempt: (input: Parameters<typeof prepareAttemptForDiagnosis>[0]) => prepareAttemptForDiagnosis(input, prepDependencies),
@@ -234,6 +239,7 @@ describe("bounded natural Attempt preparation", () => {
       persistObservation: vi.fn(),
       persistUnavailable: unavailable,
       resolveCapability,
+      planActivity,
     } as unknown as DiagnosisGraphDependencies);
 
     const result = await graph.invoke({
@@ -250,6 +256,7 @@ describe("bounded natural Attempt preparation", () => {
     expect(unavailable).toHaveBeenCalledTimes(1);
     expect(resolveCapability).toHaveBeenCalledTimes(1);
     expect(result.diagnosisStatus).toBe("UNAVAILABLE");
-    expect(result).toMatchObject({ capabilityDecision: "NO_MATCH", teacherEscalation: true });
+    expect(planActivity).toHaveBeenCalledTimes(1);
+    expect(result).toMatchObject({ capabilityDecision: "NO_MATCH", teacherEscalation: true, activityPlanProposalId, activityPlanState: "ESCALATED" });
   });
 });

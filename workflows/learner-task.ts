@@ -76,6 +76,8 @@ export function buildLearnerTaskGraph(checkpointer?: BaseCheckpointSaver, faultH
           capabilityDecision: result.capabilityDecision,
           selectedCapabilityVersionId: result.selectedCapabilityVersionId,
           teacherEscalation: result.teacherEscalation,
+          activityPlanProposalId: result.activityPlanProposalId,
+          activityPlanState: result.activityPlanState,
           requiresTeacherReview: true,
         },
       };

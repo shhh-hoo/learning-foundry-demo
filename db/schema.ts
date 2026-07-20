@@ -571,6 +571,62 @@ export const capabilityResolutions = product.table("capability_resolutions", {
   `),
 ]);
 
+/** Class B: immutable proposed activity sequence; not RuntimeDelivery or a human assignment. */
+export const activityPlanProposals = product.table("activity_plan_proposals", {
+  id: uuid("id").primaryKey(),
+  institutionId: uuid("institution_id").notNull().references(() => institutions.id, { onDelete: "cascade" }),
+  courseId: uuid("course_id").notNull().references(() => courses.id),
+  taskId: uuid("task_id").notNull().references(() => learningTasks.id, { onDelete: "cascade" }),
+  episodeId: uuid("episode_id").notNull().references(() => learningEpisodes.id, { onDelete: "cascade" }),
+  contextCompilationId: uuid("context_compilation_id").notNull().references(() => contextCompilations.id),
+  diagnosticObservationId: uuid("diagnostic_observation_id").notNull().references(() => diagnosticObservations.id),
+  capabilityResolutionId: uuid("capability_resolution_id").notNull().references(() => capabilityResolutions.id),
+  policyVersion: text("policy_version").notNull(),
+  inputHash: text("input_hash").notNull(),
+  state: text("state").notNull(),
+  resolutionDecision: text("resolution_decision").notNull(),
+  selectedCapabilityId: uuid("selected_capability_id").references(() => capabilities.id),
+  selectedCapabilityVersionId: uuid("selected_capability_version_id").references(() => capabilityVersions.id),
+  selectedVersionContentHash: text("selected_version_content_hash"),
+  rationale: text("rationale").notNull(),
+  stages: jsonb("stages").$type<Array<Record<string, unknown>>>().notNull(),
+  teacherConstraints: jsonb("teacher_constraints").$type<Array<Record<string, unknown>>>().notNull(),
+  teacherIntervention: jsonb("teacher_intervention").$type<Record<string, unknown>>().notNull(),
+  retryIntent: jsonb("retry_intent").$type<Record<string, unknown>>().notNull(),
+  runtimeHandoff: jsonb("runtime_handoff").$type<Record<string, unknown>>().notNull(),
+  blockReasons: jsonb("block_reasons").$type<string[]>().notNull(),
+  createdBy: uuid("created_by").notNull().references(() => users.id),
+  createdAt: createdAt(),
+}, (table) => [
+  uniqueIndex("activity_plan_proposal_resolution_uq").on(table.capabilityResolutionId),
+  uniqueIndex("activity_plan_proposal_replay_uq").on(table.institutionId, table.inputHash),
+  index("activity_plan_proposal_task_idx").on(table.taskId, table.episodeId, table.createdAt),
+  check("activity_plan_proposal_state_ck", sql`${table.state} IN ('READY','BLOCKED','ESCALATED')`),
+  check("activity_plan_proposal_decision_ck", sql`${table.resolutionDecision} IN ('EXISTING','PARAMETERIZE','COMPOSE','ADAPT','GENERATE','NO_MATCH')`),
+  check("activity_plan_proposal_payload_ck", sql`
+    (${table.state} = 'READY' AND ${table.resolutionDecision} = 'EXISTING'
+      AND ${table.selectedCapabilityId} IS NOT NULL AND ${table.selectedCapabilityVersionId} IS NOT NULL
+      AND ${table.selectedVersionContentHash} IS NOT NULL AND jsonb_array_length(${table.stages}) > 0
+      AND (${table.runtimeHandoff}->>'executable')::boolean
+      AND jsonb_typeof(${table.runtimeHandoff}->'capabilityVersionId')='string'
+      AND ${table.runtimeHandoff}->>'capabilityVersionId'=${table.selectedCapabilityVersionId}::text)
+    OR (${table.state} <> 'READY' AND ${table.selectedCapabilityId} IS NULL
+      AND ${table.selectedCapabilityVersionId} IS NULL AND ${table.selectedVersionContentHash} IS NULL
+      AND jsonb_array_length(${table.stages}) = 0 AND NOT (${table.runtimeHandoff}->>'executable')::boolean
+      AND ${table.runtimeHandoff} ? 'capabilityVersionId'
+      AND ${table.runtimeHandoff}->'capabilityVersionId'='null'::jsonb)
+  `),
+  check("activity_plan_proposal_json_ck", sql`
+    jsonb_typeof(${table.stages})='array' AND jsonb_typeof(${table.teacherConstraints})='array'
+    AND jsonb_typeof(${table.teacherIntervention})='object' AND jsonb_typeof(${table.retryIntent})='object'
+    AND jsonb_typeof(${table.runtimeHandoff})='object' AND jsonb_typeof(${table.blockReasons})='array'
+    AND jsonb_typeof(${table.runtimeHandoff}->'executable')='boolean'
+    AND jsonb_typeof(${table.retryIntent}->'formalRetryCreated')='boolean'
+    AND NOT (${table.retryIntent}->>'formalRetryCreated')::boolean
+    AND length(${table.inputHash}) > 7 AND length(${table.policyVersion}) > 0 AND length(btrim(${table.rationale})) > 0
+  `),
+]);
+
 export const teacherReviews = product.table("teacher_reviews", {
   id: id(),
   observationId: uuid("observation_id").notNull().references(() => diagnosticObservations.id),
