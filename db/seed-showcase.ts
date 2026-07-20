@@ -104,7 +104,15 @@ for (const [index, definition] of CHEMISTRY_CAPABILITIES.entries()) {
     implementationKey: definition.implementationKey,
     status: "ACTIVE",
     contentHash: digest(JSON.stringify(definition)),
-  }).onConflictDoNothing();
+  }).onConflictDoUpdate({
+    target: capabilityVersions.id,
+    set: {
+      contract: { ...definition.contract, evaluationFixture: definition.evaluationFixture },
+      implementationKey: definition.implementationKey,
+      status: "ACTIVE",
+      contentHash: digest(JSON.stringify(definition)),
+    },
+  });
 }
 
 await db.insert(sourceRecords).values({

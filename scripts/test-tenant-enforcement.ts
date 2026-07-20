@@ -213,6 +213,8 @@ const attemptedTaskIds = [randomUUID(), randomUUID()];
 const attemptedRetrievalId = randomUUID();
 const attemptedDeliveryId = randomUUID();
 const attemptedDeliveryKey = `tenant-harness-denied-${attemptedDeliveryId}`;
+const attemptedCapabilityResolutionId = randomUUID();
+const attemptedCapabilityResolutionHash = `tenant-harness-denied-${attemptedCapabilityResolutionId}`;
 const attemptedCheckpointId = randomUUID();
 const attemptedCheckpointThread = `${tenantB}:tenant-harness-denied:${attemptedCheckpointId}`;
 const authSessionPositiveId = randomUUID();
@@ -655,6 +657,28 @@ try {
     directlyProbedWritableTables.add(`${input.schemaName}.${input.tableName}`);
   };
 
+  await expectRoleTransactionDenied("CapabilityResolution insert with tenant B Task", product, RUNTIME_DATABASE_ROLES.product, tenantA, async (transaction) => {
+    const inserted = await transaction`
+      INSERT INTO foundry_product.capability_resolutions
+        (id, institution_id, course_id, task_id, episode_id, context_compilation_id,
+         diagnostic_observation_id, policy_version, input_hash, decision, candidate_set,
+         selected_capability_id, selected_capability_version_id, selection_rationale,
+         parameterization_recommendation, composition_recommendation, gap_signal,
+         no_match, teacher_escalation, created_by)
+      SELECT
+        ${attemptedCapabilityResolutionId}::uuid, institution_id, course_id, ${taskB}::uuid, ${episodeB}::uuid,
+        context_compilation_id, diagnostic_observation_id, policy_version, ${attemptedCapabilityResolutionHash},
+        decision, candidate_set, selected_capability_id, selected_capability_version_id,
+        selection_rationale, parameterization_recommendation, composition_recommendation,
+        gap_signal, no_match, teacher_escalation, created_by
+      FROM foundry_product.capability_resolutions
+      ORDER BY created_at
+      LIMIT 1
+    `;
+    if (inserted.count !== 1) throw new Error("CapabilityResolution probe requires one visible tenant-A fixture");
+  }, /CAP-02 CapabilityResolution Task\/Episode tenant lineage mismatch/);
+  directlyProbedWritableTables.add("foundry_product.capability_resolutions");
+
   await expectRoleTransactionDenied("LearningTask insert with tenant B course", product, RUNTIME_DATABASE_ROLES.product, tenantA, async (transaction) => {
     await transaction`
       INSERT INTO foundry_product.learning_tasks (id, institution_id, course_id, learner_id, title, goal)
@@ -948,7 +972,7 @@ try {
     ]::text[]))
     ORDER BY schema_name, table_name
   `;
-  const expectedWritableKeys = expectedWritableTables.map((row) => row.table_key);
+  const expectedWritableKeys = expectedWritableTables.map((row) => row.table_key).sort();
   const actualWritableKeys = [...directlyProbedWritableTables].sort();
   if (JSON.stringify(actualWritableKeys) !== JSON.stringify(expectedWritableKeys)) {
     throw new Error(`Direct writable-lineage probe matrix mismatch: ${JSON.stringify({ expectedWritableKeys, actualWritableKeys })}`);
@@ -1038,6 +1062,7 @@ try {
     await product`DELETE FROM foundry_product.auth_sessions WHERE id IN (${authSessionPositiveId}::uuid, ${attemptedAuthSessionId}::uuid, ${roleNoneAuthSessionIds[0]}::uuid, ${roleNoneAuthSessionIds[1]}::uuid, ${roleNoneAuthSessionIds[2]}::uuid, ${roleNoneAuthSessionIds[3]}::uuid)`;
     await product`DELETE FROM foundry_operational.eval_runs WHERE id=${evalFixtureA}::uuid`;
     await product`DELETE FROM foundry_operational.retrieval_runs WHERE id IN (${retrievalA}::uuid, ${retrievalB}::uuid, ${attemptedRetrievalId}::uuid)`;
+    await product`DELETE FROM foundry_product.capability_resolutions WHERE id=${attemptedCapabilityResolutionId}::uuid`;
     await product`DELETE FROM foundry_product.component_deliveries WHERE id=${attemptedDeliveryId}::uuid`;
     await product`DELETE FROM foundry_product.library_items WHERE id=${libraryFixtureA}::uuid`;
     await product`DELETE FROM foundry_product.schedule_items WHERE id=${scheduleFixtureA}::uuid`;

@@ -442,8 +442,8 @@ describe.sequential("Checkpoint A PostgreSQL integration", () => {
       actor: learner,
       threadId: deadlineThread,
       state: { taskId: SEED.task, episodeId: SEED.episode, courseId: SEED.course, message: `Deadline after learner Event ${deadlineFixture}`, requestedAction: "EXPLAIN", idempotencyKey: deadlineKey },
-      execution: { deadlineMs: 5 },
-      testFaults: { async afterLearnerEventPersisted() { await new Promise((resolve) => setTimeout(resolve, 10)); } },
+      execution: { deadlineMs: 100 },
+      testFaults: { async afterLearnerEventPersisted() { await new Promise((resolve) => setTimeout(resolve, 125)); } },
     })).rejects.toMatchObject({ code: "EXECUTION_TIMED_OUT" });
     const [timedOut] = await getDb().select().from(workflowRuns).where(eq(workflowRuns.threadId, deadlineThread));
     expect(timedOut.status).toBe("TIMED_OUT");

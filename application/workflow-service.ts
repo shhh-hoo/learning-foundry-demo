@@ -259,7 +259,7 @@ export async function startWorkflow(input: { kind: WorkflowKind; actor: Actor; s
 
 function extractProductLinks(result: unknown): Record<string, string> {
   const state = result as Record<string, unknown>;
-  const keys = ["taskId", "episodeId", "attemptId", "observationId", "reviewId", "retryId", "outcomeId", "componentId", "componentVersionId", "evaluationId", "decisionId"];
+  const keys = ["taskId", "episodeId", "attemptId", "observationId", "capabilityResolutionId", "selectedCapabilityVersionId", "reviewId", "retryId", "outcomeId", "componentId", "componentVersionId", "evaluationId", "decisionId"];
   return Object.fromEntries(keys.flatMap((key) => typeof state?.[key] === "string" ? [[key, state[key] as string]] : []));
 }
 

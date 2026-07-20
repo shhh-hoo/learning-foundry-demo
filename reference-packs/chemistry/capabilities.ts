@@ -151,7 +151,7 @@ const amountField: LearnerCapabilityField = { key: "amount", label: "Amount of s
 const volumeField: LearnerCapabilityField = { key: "volume", label: "Solution volume", kind: "quantity", help: "Enter the volume used for the concentration.", min: 0, step: 0.001, unitOptions: ["L", "mL", "cm3"], defaultUnit: "mL" };
 const learnerAnswerField: LearnerCapabilityField = { key: "learnerAnswer", label: "Your final numerical answer", kind: "number", help: "Enter the number from your working; include units in the working above.", step: 0.0001 };
 
-export const CHEMISTRY_CAPABILITIES: ChemistryCapabilityDefinition[] = [
+const BASE_CHEMISTRY_CAPABILITIES: ChemistryCapabilityDefinition[] = [
   {
     key: "chemistry-molar-concentration",
     name: "Molar concentration",
@@ -366,6 +366,62 @@ export const CHEMISTRY_CAPABILITIES: ChemistryCapabilityDefinition[] = [
     },
   },
 ];
+
+/**
+ * These are genuine deterministic callable capabilities. The Registry metadata
+ * describes their selection and runtime boundary; it does not turn reference
+ * text or teaching-support templates into Component Assets.
+ */
+export const CHEMISTRY_CAPABILITIES: ChemistryCapabilityDefinition[] = BASE_CHEMISTRY_CAPABILITIES.map((definition) => ({
+  ...definition,
+  contract: {
+    ...definition.contract,
+    resolution: {
+      contractType: "CALLABLE_LEARNING_CAPABILITY",
+      verified: true,
+      learningProblem: definition.learner.purpose,
+      exactMatchSignals: [definition.key, definition.name, definition.learner.purpose, definition.implementationKey],
+      eligibility: {
+        learnerLevels: ["*"],
+        taskTypes: ["*"],
+        curricula: ["*"],
+        languages: ["en", "zh", "mixed"],
+        accessibility: ["keyboard", "screen-reader", "text"],
+        prerequisites: [],
+        contraindications: [],
+      },
+      availability: {
+        status: "AVAILABLE",
+        institutionIds: [],
+        courseIds: [],
+        rights: "NOT_REQUIRED",
+        dependencies: [{ key: "mathjs", status: "AVAILABLE" }],
+        provider: null,
+      },
+      parameterization: {
+        supported: false,
+        signals: [],
+        recommendation: {},
+      },
+      composition: {
+        supported: false,
+        contributes: [],
+      },
+      adaptation: {
+        reviewed: true,
+        signals: [definition.key, definition.name, definition.learner.purpose],
+      },
+      runtime: {
+        kind: "TRUSTED_DETERMINISTIC_ADAPTER",
+        input: definition.contract.input,
+        parameters: definition.learner.fields.map((field) => ({ key: field.key, kind: field.kind })),
+        state: { mode: "STATELESS" },
+        output: definition.contract.output,
+        events: ["ATTEMPT_SUBMITTED", "CAPABILITY_RESULT"],
+      },
+    },
+  },
+}));
 
 function assignField(target: Record<string, unknown>, field: LearnerCapabilityField, rawFields: Record<string, string>): void {
   const rawValue = rawFields[field.key]?.trim();

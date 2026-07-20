@@ -25,7 +25,7 @@ describe("fresh migration contract", () => {
   it("keeps the clean rewrite history and adds governed Asset Loop enforcement", async () => {
     const directory = new URL("../../db/migrations/", import.meta.url);
     const migrations = (await readdir(directory)).filter((name) => name.endsWith(".sql"));
-    expect(migrations).toEqual(["0000_full_framework.sql", "0001_full_framework.sql", "0002_recoverable_resume_claims.sql", "0003_production_auth_tenant_enforcement.sql", "0004_canonical_identity_context_evidence.sql", "0005_authoritative_context_compiler.sql"]);
+    expect(migrations).toEqual(["0000_full_framework.sql", "0001_full_framework.sql", "0002_recoverable_resume_claims.sql", "0003_production_auth_tenant_enforcement.sql", "0004_canonical_identity_context_evidence.sql", "0005_authoritative_context_compiler.sql", "0006_diagnosis_capability_resolution.sql"]);
     const migration = await readFile(new URL("../../db/migrations/0000_full_framework.sql", import.meta.url), "utf8");
     const assetMigration = await readFile(new URL("../../db/migrations/0001_full_framework.sql", import.meta.url), "utf8");
     expect(migration).not.toMatch(/migrated-legacy-record|legacy-review|legacy-outcome|legacy-publication|HUMAN_COMMAND/);
@@ -64,6 +64,22 @@ describe("fresh migration contract", () => {
     expect(migration).toContain('BEFORE UPDATE ON "foundry_product"."context_compilations"');
     expect(migration).not.toContain('BEFORE UPDATE OR DELETE ON "foundry_product"."context_compilations"');
     expect(migration).not.toMatch(/DROP TABLE|TRUNCATE|DELETE FROM/);
+  });
+
+  it("adds immutable tenant-scoped CAP-02 resolution assertions without rewriting Registry, Diagnosis or Context", async () => {
+    const migration = await readFile(new URL("../../db/migrations/0006_diagnosis_capability_resolution.sql", import.meta.url), "utf8");
+    expect(migration).toContain('CREATE TABLE "foundry_product"."capability_resolutions"');
+    expect(migration).toContain('CREATE UNIQUE INDEX "capability_resolution_replay_uq"');
+    expect(migration).toContain('cap02_capability_resolution_lineage_guard');
+    expect(migration).toContain('candidate set is incomplete, duplicated or stale');
+    expect(migration).toContain('selected CapabilityVersion is not the eligible active exact version');
+    expect(migration).toContain('cap02_capability_resolution_immutable');
+    expect(migration).not.toMatch(/ALTER TABLE "foundry_product"\.(?:"capabilities"|"capability_versions"|"diagnostic_observations"|"context_compilations")/);
+    expect(migration).not.toMatch(/DROP TABLE|TRUNCATE|DELETE FROM/);
+    const rehearsal = await readFile(new URL("../../scripts/test-cap02-resolution-upgrade.ts", import.meta.url), "utf8");
+    expect(rehearsal).toContain('exactBaseMigrations: "0000-0005"');
+    expect(rehearsal).toContain('legacyContractFailedClosed: true');
+    expect(rehearsal).toContain('immutableRewriteDenied: true');
   });
 
   it("adds forward-compatible recoverable resume claims without rewriting prior migrations", async () => {

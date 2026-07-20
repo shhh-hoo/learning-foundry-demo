@@ -66,7 +66,19 @@ export function buildLearnerTaskGraph(checkpointer?: BaseCheckpointSaver, faultH
         structuredInput: state.structuredInput,
         idempotencyKey: state.idempotencyKey,
       });
-      return { observationId: result.observationId, result: { attemptId: result.attemptId, observationId: result.observationId, diagnosisStatus: result.diagnosisStatus, requiresTeacherReview: true } };
+      return {
+        observationId: result.observationId,
+        result: {
+          attemptId: result.attemptId,
+          observationId: result.observationId,
+          diagnosisStatus: result.diagnosisStatus,
+          capabilityResolutionId: result.capabilityResolutionId,
+          capabilityDecision: result.capabilityDecision,
+          selectedCapabilityVersionId: result.selectedCapabilityVersionId,
+          teacherEscalation: result.teacherEscalation,
+          requiresTeacherReview: true,
+        },
+      };
     })
     .addNode("library_action", async (state) => {
       const retrieval = await retrieveEvidence({ actor: state.actor, taskId: state.taskId, query: state.message, purpose: "LEARNING", limit: 1 });

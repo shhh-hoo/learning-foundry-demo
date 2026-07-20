@@ -530,6 +530,47 @@ export const diagnosticObservations = product.table("diagnostic_observations", {
   createdAt: createdAt(),
 }, (table) => [index("observations_attempt_idx").on(table.attemptId)]);
 
+/** Class B: immutable, explainable capability candidate set and selection assertion. */
+export const capabilityResolutions = product.table("capability_resolutions", {
+  id: uuid("id").primaryKey(),
+  institutionId: uuid("institution_id").notNull().references(() => institutions.id, { onDelete: "cascade" }),
+  courseId: uuid("course_id").notNull().references(() => courses.id),
+  taskId: uuid("task_id").notNull().references(() => learningTasks.id, { onDelete: "cascade" }),
+  episodeId: uuid("episode_id").notNull().references(() => learningEpisodes.id, { onDelete: "cascade" }),
+  contextCompilationId: uuid("context_compilation_id").notNull().references(() => contextCompilations.id),
+  diagnosticObservationId: uuid("diagnostic_observation_id").notNull().references(() => diagnosticObservations.id),
+  policyVersion: text("policy_version").notNull(),
+  inputHash: text("input_hash").notNull(),
+  decision: text("decision").notNull(),
+  candidateSet: jsonb("candidate_set").$type<Array<Record<string, unknown>>>().notNull(),
+  selectedCapabilityId: uuid("selected_capability_id").references(() => capabilities.id),
+  selectedCapabilityVersionId: uuid("selected_capability_version_id").references(() => capabilityVersions.id),
+  selectionRationale: text("selection_rationale").notNull(),
+  parameterizationRecommendation: jsonb("parameterization_recommendation").$type<Record<string, unknown>>(),
+  compositionRecommendation: jsonb("composition_recommendation").$type<Record<string, unknown>>(),
+  gapSignal: jsonb("gap_signal").$type<Record<string, unknown>>(),
+  noMatch: boolean("no_match").notNull(),
+  teacherEscalation: boolean("teacher_escalation").notNull(),
+  createdBy: uuid("created_by").notNull().references(() => users.id),
+  createdAt: createdAt(),
+}, (table) => [
+  uniqueIndex("capability_resolution_replay_uq").on(table.institutionId, table.inputHash),
+  index("capability_resolution_task_idx").on(table.taskId, table.episodeId, table.createdAt),
+  check("capability_resolution_decision_ck", sql`${table.decision} IN ('EXISTING','PARAMETERIZE','COMPOSE','ADAPT','GENERATE','NO_MATCH')`),
+  check("capability_resolution_hash_ck", sql`length(${table.inputHash}) > 7 AND length(${table.policyVersion}) > 0 AND length(btrim(${table.selectionRationale})) > 0`),
+  check("capability_resolution_selection_ck", sql`(${table.decision} = 'EXISTING' AND ${table.selectedCapabilityId} IS NOT NULL AND ${table.selectedCapabilityVersionId} IS NOT NULL AND NOT ${table.noMatch}) OR (${table.decision} <> 'EXISTING' AND ${table.selectedCapabilityId} IS NULL AND ${table.selectedCapabilityVersionId} IS NULL)`),
+  check("capability_resolution_payload_ck", sql`
+    (${table.decision} = 'EXISTING' AND NOT ${table.noMatch} AND NOT ${table.teacherEscalation}
+      AND ${table.parameterizationRecommendation} IS NULL AND ${table.compositionRecommendation} IS NULL AND ${table.gapSignal} IS NULL)
+    OR (${table.decision} = 'PARAMETERIZE' AND NOT ${table.noMatch} AND ${table.teacherEscalation}
+      AND ${table.parameterizationRecommendation} IS NOT NULL AND ${table.compositionRecommendation} IS NULL AND ${table.gapSignal} IS NULL)
+    OR (${table.decision} = 'COMPOSE' AND NOT ${table.noMatch} AND ${table.teacherEscalation}
+      AND ${table.parameterizationRecommendation} IS NULL AND ${table.compositionRecommendation} IS NOT NULL AND ${table.gapSignal} IS NULL)
+    OR (${table.decision} IN ('ADAPT','GENERATE','NO_MATCH') AND ${table.noMatch} AND ${table.teacherEscalation}
+      AND ${table.parameterizationRecommendation} IS NULL AND ${table.compositionRecommendation} IS NULL AND ${table.gapSignal} IS NOT NULL)
+  `),
+]);
+
 export const teacherReviews = product.table("teacher_reviews", {
   id: id(),
   observationId: uuid("observation_id").notNull().references(() => diagnosticObservations.id),
