@@ -71,16 +71,12 @@ test("wrong-role navigation redirects to a data-free denied page", async ({ page
   }
 });
 
-test("complete Learning Loop and governed Component Asset Loop", async ({ browser }, testInfo) => {
+test("governed Component Asset path", async ({ browser }, testInfo) => {
   test.skip(testInfo.project.name === "mobile", "The mobile project runs authentication and route smoke; the stateful loop runs once on desktop.");
   test.setTimeout(240_000);
   const suffix = `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
   const taskTitle = `E2E governed reasoning ${suffix}`;
-  const taskGoal = "Use authorized Evidence, direct human Review, and a governed Retry to improve the reasoning.";
-  const attemptResponse = `Initial E2E reasoning ${suffix}: I checked the units but need human review of the transformation.`;
-  const retryPrompt = `Retry ${suffix}: justify the transformation using units and the authorized review path.`;
-  const retryResponse = `Retry result ${suffix}: I justified each transformation and verified the units.`;
-  const outcomeNarrative = `E2E Outcome ${suffix}: the learner improved after the linked Retry and human Review.`;
+  const taskGoal = "Use authorized Evidence and direct human Review to exercise the inherited Component path.";
   const candidateTitle = `E2E reviewed support ${suffix}`;
   const successorTitle = `${candidateTitle} concise`;
   const candidateKey = `e2e-reviewed-support-${suffix}`.toLowerCase();
@@ -106,47 +102,8 @@ test("complete Learning Loop and governed Component Asset Loop", async ({ browse
     await expect(unavailableAnswer).toBeVisible();
     await expect(unavailableAnswer.getByTestId("event-evidence-refs")).toContainText("References attached to this event");
 
-    const attempt = learner.page.getByTestId("attempt-form");
-    await attempt.getByLabel("Problem or question").fill("How should I handle the volume units before calculating concentration?");
-    await attempt.getByLabel("Your working and answer").fill(attemptResponse);
-    await attempt.getByRole("button", { name: "Capture Attempt" }).click();
-    await expect(learner.page.getByText(attemptResponse, { exact: true })).toBeVisible();
-    await expect(learner.page.getByText("REVIEW_REQUIRED", { exact: true })).toBeVisible();
-
     const teacher = await openRole(browser, "teacher");
     opened.push(teacher.context);
-    let reviewedTask = taskCard(teacher.page, taskTitle);
-    const review = reviewedTask.getByTestId("teacher-review-form");
-    await expect(reviewedTask.getByText("CAPABILITY_UNAVAILABLE", { exact: true })).toBeVisible();
-    await review.getByPlaceholder("Teaching support").fill("Inspect the learner's units and require an explicit justification for each transformation.");
-    await review.getByRole("button", { name: "Review & resume" }).click();
-    reviewedTask = taskCard(teacher.page, taskTitle);
-    await expect(reviewedTask.getByTestId("retry-form")).toBeVisible();
-
-    const retry = reviewedTask.getByTestId("retry-form");
-    await retry.getByPlaceholder("Reviewed retry prompt").fill(retryPrompt);
-    await retry.getByRole("button", { name: "Assign reviewed Retry" }).click();
-    await expect(retry.getByText("Saved", { exact: true })).toBeVisible();
-
-    await learner.page.reload();
-    await learner.page.getByRole("link", { name: new RegExp(taskTitle) }).click();
-    const retryAttempt = learner.page.getByTestId("retry-attempt-form");
-    await expect(retryAttempt).toContainText(retryPrompt);
-    await retryAttempt.getByPlaceholder("Submit your retry reasoning").fill(retryResponse);
-    await retryAttempt.getByRole("button", { name: "Submit retry Attempt" }).click();
-    await expect(learner.page.getByText(retryResponse, { exact: true })).toBeVisible();
-
-    await teacher.page.reload();
-    const retryReview = teacher.page.getByTestId("retry-review-form");
-    await retryReview.getByPlaceholder("Human teaching support").fill("The retry now justifies the transformation and verifies its units.");
-    await retryReview.getByPlaceholder("Governed Outcome narrative").fill(outcomeNarrative);
-    await retryReview.getByRole("button", { name: "Review result & record Outcome" }).click();
-    await expect(retryReview).toHaveCount(0);
-
-    await learner.page.reload();
-    await learner.page.getByRole("link", { name: new RegExp(taskTitle) }).click();
-    await expect(learner.page.getByText(outcomeNarrative, { exact: true })).toBeVisible();
-    await expect(learner.page.getByText("IMPROVED", { exact: true })).toBeVisible();
 
     for (const capabilityResponse of capabilityResponses) {
       const capabilityAttempt = learner.page.getByTestId("attempt-form");
@@ -172,7 +129,7 @@ test("complete Learning Loop and governed Component Asset Loop", async ({ browse
       await signalReview.getByPlaceholder("Teaching support").fill("Use a unit ledger and state the target concentration unit before substitution.");
       await signalReview.getByRole("button", { name: "Review & resume" }).click();
       signalCard = teacher.page.locator("section.card").filter({ hasText: capabilityResponse });
-      await expect(signalCard.getByTestId("retry-form")).toBeVisible();
+      await expect(signalCard.getByTestId("governed-followup-form")).toBeVisible();
     }
 
     const expert = await openRole(browser, "expert");
@@ -356,7 +313,9 @@ test("real PDF Evidence intake and image Attempt reach governed Learner and Teac
     const review = attemptCard.getByTestId("teacher-review-form");
     await review.getByPlaceholder("Teaching support").fill("Inspect the original image directly because multimodal interpretation is unavailable.");
     await review.getByRole("button", { name: "Review & resume" }).click();
-    await expect(taskCard(teacher.page, taskTitle).filter({ hasText: imagePrompt }).getByTestId("retry-form")).toBeVisible();
+    const reviewedImage = taskCard(teacher.page, taskTitle).filter({ hasText: imagePrompt });
+    await expect(reviewedImage.getByTestId("governed-followup-form")).toHaveCount(0);
+    await expect(reviewedImage.getByText("Governed follow-up and Component candidate actions require an exact reviewed Capability Diagnosis.", { exact: true })).toBeVisible();
   } finally {
     await Promise.all(opened.map((context) => context.close()));
   }

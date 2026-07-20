@@ -31,7 +31,7 @@ import type { Actor } from "@/domain/model";
 import { ComponentContent, ComponentContract, ComponentHumanRubric, humanRubricPasses } from "@/domain/component";
 import { authorizeEvidenceUnitInstitution, authorizePersistedEvidence, evidenceAlignsToCourse } from "@/domain/evidence";
 import { parseReviewDecision, requireEligibleReviewDecision, requireVerifiedReviewProvenance } from "@/domain/review";
-import { requireTaskEpisodeScope } from "@/application/task-scope";
+import { requireWritableGeneralEpisode } from "@/application/task-scope";
 import {
   DomainInvariantError,
   requireCourseAccess,
@@ -47,6 +47,15 @@ function canonical(value: unknown): unknown {
     return Object.fromEntries(Object.entries(value).sort(([left], [right]) => left.localeCompare(right)).map(([key, item]) => [key, canonical(item)]));
   }
   return value;
+}
+
+function deterministicCommandResultId(commandType: string, requestHash: string): string {
+  const digest = createHash("sha256").update(`${commandType}:${requestHash}`).digest("hex");
+  const raw = digest.slice(0, 32).split("");
+  raw[12] = "5";
+  raw[16] = ((Number.parseInt(raw[16] ?? "0", 16) & 0x3) | 0x8).toString(16);
+  const value = raw.join("");
+  return `${value.slice(0, 8)}-${value.slice(8, 12)}-${value.slice(12, 16)}-${value.slice(16, 20)}-${value.slice(20, 32)}`;
 }
 
 export function commandRequestHash(actor: Pick<Actor, "userId">, commandType: string, input: unknown): string {
@@ -170,11 +179,20 @@ export async function closeTask(actor: Actor, taskId: string) {
   const task = await taskScope(taskId);
   requireCourseAccess(actor, task.institutionId, task.courseId);
   if (actor.roles.includes("LEARNER") && task.learnerId !== actor.userId) throw new DomainInvariantError("Learner cannot close another learner's Task", "TENANT_ISOLATION");
+  if (task.status === "CLOSED") return;
+  const [activeFollowup] = await getDb().select({ id: retryAttempts.id }).from(retryAttempts).where(and(
+    eq(retryAttempts.taskId, taskId),
+    sql`${retryAttempts.idempotencyKey} IS NOT NULL`,
+    inArray(retryAttempts.status, ["ASSIGNED", "IN_PROGRESS", "WAITING_FOR_REVIEW", "FAILED_RECOVERABLE"]),
+  )).limit(1);
+  if (activeFollowup) {
+    throw new DomainInvariantError("Cancel or finish the governed follow-up before closing this Task", "FOLLOWUP_ACTIVE");
+  }
   await getDb().update(learningTasks).set({ status: "CLOSED", closedAt: new Date(), updatedAt: new Date() }).where(eq(learningTasks.id, taskId));
 }
 
 export async function appendConversationEvent(actor: Actor, input: { taskId: string; episodeId: string; kind: string; content: string; actorType?: string; sourceRefs?: Array<Record<string, string>>; evidenceRefs?: Array<Record<string, string>>; idempotencyKey: string }) {
-  await requireTaskEpisodeScope(actor, {
+  await requireWritableGeneralEpisode(actor, {
     taskId: input.taskId,
     episodeId: input.episodeId,
     learnerOriginated: input.actorType === "LEARNER" || actor.roles.includes("LEARNER"),
@@ -241,7 +259,7 @@ export async function captureAttempt(actor: Actor, input: {
 }) {
   assertExecutionActive();
   requireRole(actor, ["LEARNER", "ADMIN"]);
-  const { task } = await requireTaskEpisodeScope(actor, { taskId: input.taskId, episodeId: input.episodeId, learnerOriginated: true });
+  const { task } = await requireWritableGeneralEpisode(actor, { taskId: input.taskId, episodeId: input.episodeId, learnerOriginated: true });
   if (input.fileAssetId) {
     const [asset] = await getDb().select().from(fileAssets).where(and(
       eq(fileAssets.id, input.fileAssetId),
@@ -275,6 +293,7 @@ export async function captureAttempt(actor: Actor, input: {
 }
 
 export async function persistDiagnosticObservation(input: {
+  observationId?: string;
   attemptId: string;
   capabilityVersionId: string;
   result: {
@@ -293,8 +312,14 @@ export async function persistDiagnosticObservation(input: {
     eq(diagnosticObservations.attemptId, input.attemptId),
     eq(diagnosticObservations.capabilityVersionId, input.capabilityVersionId),
   )).orderBy(desc(diagnosticObservations.createdAt)).limit(1);
-  if (existing) return existing;
+  if (existing) {
+    if (input.observationId && existing.id !== input.observationId) {
+      throw new DomainInvariantError("Diagnosis replay identity conflicts with persisted Product State", "DIAGNOSIS_REPLAY_CONFLICT");
+    }
+    return existing;
+  }
   const [observation] = await getDb().insert(diagnosticObservations).values({
+    ...(input.observationId ? { id: input.observationId } : {}),
     attemptId: attempt.id,
     capabilityVersionId: input.capabilityVersionId,
     status: input.result.status === "CORRECT" ? "READY_FOR_REVIEW" : "NEEDS_REVIEW",
@@ -339,12 +364,11 @@ export async function createTeacherReview(actor: Actor, input: {
   supplement?: string;
   teachingSupport: string;
   idempotencyKey: string;
-}) {
+}, options: { deterministicResultId?: boolean; requestContext?: Record<string, unknown> } = {}) {
   assertExecutionActive();
   requireHumanCommand(actor, ["TEACHER", "ADMIN"]);
   const decision = parseReviewDecision(input);
   const observationId = input.observationId;
-  const reviewId = randomUUID();
   const rows = await getDb().select({ task: learningTasks }).from(learnerAttempts)
     .innerJoin(learningTasks, eq(learningTasks.id, learnerAttempts.taskId))
     .innerJoin(diagnosticObservations, eq(diagnosticObservations.attemptId, learnerAttempts.id))
@@ -353,7 +377,15 @@ export async function createTeacherReview(actor: Actor, input: {
   if (!task) throw new DomainInvariantError("Diagnostic Observation not found", "OBSERVATION_NOT_FOUND");
   requireCourseAccess(actor, task.institutionId, task.courseId);
   const commandType = "TEACHER_REVIEW";
-  const requestHash = commandRequestHash(actor, commandType, { ...input, ...decision, idempotencyKey: undefined });
+  const requestHash = commandRequestHash(actor, commandType, {
+    ...input,
+    ...decision,
+    idempotencyKey: undefined,
+    requestContext: options.requestContext,
+  });
+  const reviewId = options.deterministicResultId
+    ? deterministicCommandResultId(commandType, requestHash)
+    : randomUUID();
   return getDb().transaction(async (tx) => {
     const reserved = await tx.insert(idempotencyKeys).values({ institutionId: actor.institutionId, key: input.idempotencyKey, commandType, requestHash, resultId: reviewId }).onConflictDoNothing().returning();
     if (!reserved.length) {

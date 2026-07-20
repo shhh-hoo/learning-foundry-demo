@@ -6,10 +6,11 @@ import { authorizeEvidence, authorizeEvidenceUnitInstitution, authorizePersisted
 const actor: Actor = { userId: "20000000-0000-4000-8000-000000000002", institutionId: "10000000-0000-4000-8000-000000000001", roles: ["TEACHER"], courseIds: ["40000000-0000-4000-8000-000000000001"], authMethod: "test", sessionId: "test-session" };
 
 describe("product invariants", () => {
-  it("exposes RETRY only", () => {
+  it("exposes governed Retry, Transfer and Retention separately from Study Review", () => {
     expect(ActivityType.parse("RETRY")).toBe("RETRY");
-    expect(ActivityType.safeParse("TRANSFER").success).toBe(false);
-    expect(ActivityType.safeParse("RETENTION").success).toBe(false);
+    expect(ActivityType.parse("TRANSFER")).toBe("TRANSFER");
+    expect(ActivityType.parse("RETENTION")).toBe("RETENTION");
+    expect(ActivityType.safeParse("STUDY_REVIEW").success).toBe(false);
     expect(StudyReviewActivityType.parse("STUDY_REVIEW")).toBe("STUDY_REVIEW");
     expect(StudyReviewActivityType.safeParse("RETRY").success).toBe(false);
   });

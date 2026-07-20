@@ -18,7 +18,7 @@ export const EvidenceModality = z.enum([
   "VIDEO_SEGMENT",
   "INTERACTIVE_RESOURCE",
 ]);
-export const ActivityType = z.literal("RETRY");
+export const ActivityType = z.enum(["RETRY", "TRANSFER", "RETENTION"]);
 export const StudyReviewActivityType = z.literal("STUDY_REVIEW");
 export const ReviewDecision = z.enum(["ACCEPT", "CORRECT", "SUPPLEMENT", "ESCALATE"]);
 export const PublicationAction = z.enum(["APPROVE", "REJECT", "ROLLBACK"]);
@@ -50,7 +50,7 @@ export const WorkflowKind = z.enum([
   "DIAGNOSIS",
   "ASSET_RUNTIME",
   "TEACHER_REVIEW",
-  "RETRY_OUTCOME",
+  "GOVERNED_FOLLOWUP",
   "COMPONENT_LIFECYCLE",
 ]);
 

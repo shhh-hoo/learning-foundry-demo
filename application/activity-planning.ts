@@ -12,6 +12,7 @@ import {
 } from "@/db/schema";
 import { requireTaskEpisodeScope } from "@/application/task-scope";
 import { assertExecutionActive } from "@/application/execution-control";
+import { requireEpisodeDiagnosisLineage } from "@/application/governed-followup-lineage";
 import { CallableCapabilityResolutionContract } from "@/domain/capability-resolution";
 import {
   ACTIVITY_PLANNING_POLICY_VERSION,
@@ -26,7 +27,7 @@ import { DomainInvariantError } from "@/domain/invariants";
 import type { Actor } from "@/domain/model";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const TEACHER_CONSTRAINT_KINDS = new Set(["TEACHER_CONSTRAINT", "CAPABILITY_REQUIREMENT", "CAPABILITY_EXCLUSION", "TEACHER_ASSIGNMENT", "TEACHER_CORRECTION"]);
+const TEACHER_CONSTRAINT_KINDS = new Set(["TEACHER_CONSTRAINT", "CAPABILITY_REQUIREMENT", "CAPABILITY_EXCLUSION", "TEACHER_ASSIGNMENT", "TEACHER_CORRECTION", "GOVERNED_FOLLOWUP"]);
 
 function asRecords(value: unknown): Array<Record<string, unknown>> {
   return Array.isArray(value) ? value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object" && !Array.isArray(item)) : [];
@@ -82,7 +83,7 @@ async function planInTenant(actor: Actor, input: {
   if (lineage.context.consumer !== "CAPABILITY_RESOLUTION"
     || lineage.context.taskId !== scope.task.id || lineage.context.episodeId !== scope.episode.id
     || lineage.observation.supersededById
-    || lineage.attempt.taskId !== scope.task.id || lineage.attempt.episodeId !== scope.episode.id) {
+    || lineage.attempt.taskId !== scope.task.id) {
     throw new DomainInvariantError("Activity Planning input lineage is stale or inconsistent", "ACTIVITY_PLAN_INPUT_NOT_CURRENT");
   }
   const currentObservations = await getDb().select({ id: diagnosticObservations.id }).from(diagnosticObservations)
@@ -90,6 +91,12 @@ async function planInTenant(actor: Actor, input: {
   if (currentObservations.length !== 1 || currentObservations[0]?.id !== lineage.observation.id) {
     throw new DomainInvariantError("Activity Planning requires one current Diagnosis Proposal", "ACTIVITY_PLAN_DIAGNOSIS_CONFLICT");
   }
+  await requireEpisodeDiagnosisLineage({
+    taskId: scope.task.id,
+    episodeId: scope.episode.id,
+    observation: lineage.observation,
+    attempt: lineage.attempt,
+  });
 
   const [existing] = await getDb().select().from(activityPlanProposals)
     .where(eq(activityPlanProposals.capabilityResolutionId, lineage.resolution.id)).limit(1);

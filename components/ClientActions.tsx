@@ -5,18 +5,28 @@ import { useRouter } from "next/navigation";
 
 function useAction() {
   const router = useRouter();
-  const [pending, startTransition] = useTransition();
+  const [transitionPending, startTransition] = useTransition();
+  const [requestPending, setRequestPending] = useState(false);
+  const requestInFlight = useRef(false);
   const [message, setMessage] = useState("");
   const run = async (url: string, body: Record<string, unknown>, method = "POST") => {
+    if (requestInFlight.current) throw new Error("This request is already in progress");
+    requestInFlight.current = true;
+    setRequestPending(true);
     setMessage("");
-    const response = await fetch(url, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error ?? "Request failed");
-    setMessage("Saved");
-    startTransition(() => router.refresh());
-    return data;
+    try {
+      const response = await fetch(url, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error ?? "Request failed");
+      setMessage("Saved");
+      startTransition(() => router.refresh());
+      return data;
+    } finally {
+      requestInFlight.current = false;
+      setRequestPending(false);
+    }
   };
-  return { run, pending, message, setMessage };
+  return { run, pending: requestPending || transitionPending, message, setMessage };
 }
 
 function useMultipartAction() {
@@ -36,6 +46,15 @@ function useMultipartAction() {
 }
 
 function randomKey(prefix: string) { return `${prefix}:${crypto.randomUUID()}`; }
+
+function useStableCommandKey(prefix: string) {
+  const key = useRef<string | null>(null);
+  if (key.current == null) key.current = randomKey(prefix);
+  return {
+    current: () => key.current!,
+    regenerate: () => { key.current = randomKey(prefix); },
+  };
+}
 
 export function CreateTaskForm({ courseId }: { courseId: string }) {
   const action = useAction();
@@ -89,13 +108,57 @@ type LearnerCapabilityField = {
   defaultUnit?: string;
 };
 
-type LearnerCapability = {
+export type LearnerCapability = {
   publicKey: string;
+  capabilityVersionId?: string;
   name: string;
   purpose: string;
   fields: LearnerCapabilityField[];
   example: string;
 };
+
+export type FollowupContractView = {
+  activityType: "RETRY" | "TRANSFER" | "RETENTION";
+  transfer?: {
+    source?: Record<string, unknown>;
+    target?: Record<string, unknown>;
+    materialDifferenceRationale?: string;
+    evidenceLimit?: string;
+    changedDimensions?: string[];
+  } | null;
+  retention?: {
+    dueAt: string;
+    declaredDelaySeconds: number;
+    interveningExposure: Record<string, unknown>;
+    contentEquivalence: Record<string, unknown>;
+    assistancePolicy: Record<string, unknown>;
+  } | null;
+};
+
+export function ImmutableFollowupContract({ contract }: { contract: FollowupContractView }) {
+  if (contract.activityType === "TRANSFER" && contract.transfer) {
+    return <section className="evidence-card" data-testid="immutable-transfer-contract">
+      <strong>Immutable Transfer contract</strong>
+      <pre>{JSON.stringify({ source: contract.transfer.source, target: contract.transfer.target, changedDimensions: contract.transfer.changedDimensions }, null, 2)}</pre>
+      <p><strong>Material-difference rationale:</strong> {contract.transfer.materialDifferenceRationale}</p>
+      <small>Evidence limit · {contract.transfer.evidenceLimit}</small>
+    </section>;
+  }
+  if (contract.activityType === "RETENTION" && contract.retention) {
+    return <section className="evidence-card" data-testid="immutable-retention-contract">
+      <strong>Immutable Retention assignment contract</strong>
+      <pre>{JSON.stringify({
+        dueAt: contract.retention.dueAt,
+        declaredDelaySeconds: contract.retention.declaredDelaySeconds,
+        assignmentTimeInterveningExposure: contract.retention.interveningExposure,
+        contentEquivalence: contract.retention.contentEquivalence,
+        assistancePolicy: contract.retention.assistancePolicy,
+      }, null, 2)}</pre>
+      <small>Assignment-time declarations remain separate from the teacher&apos;s completion-time exposure confirmation.</small>
+    </section>;
+  }
+  return <small>Retry preserves the reviewed issue while creating a new exact runtime and review chain.</small>;
+}
 
 export function AttemptForm({ taskId, episodeId, capabilities = [] }: { taskId: string; episodeId: string; capabilities?: LearnerCapability[] }) {
   const action = useAction();
@@ -308,45 +371,128 @@ export function ReviewForm({ threadId, expectedVersion }: { threadId: string; ex
   </form>;
 }
 
-export function RetryForm(props: { observationId: string; reviewId: string }) {
+export function GovernedFollowupForm(props: {
+  observationId: string;
+  reviewId: string;
+  transferSource: { context: string; representation: string; itemFamily: string; problemStructure: string };
+}) {
   const action = useAction();
-  return <form className="inline-form" data-testid="retry-form" onSubmit={async (event) => {
+  const commandKey = useStableCommandKey("followup");
+  const [activityType, setActivityType] = useState<"RETRY" | "TRANSFER" | "RETENTION">("RETRY");
+  return <form className="stack compact" data-testid="governed-followup-form" onSubmit={async (event) => {
     event.preventDefault(); const form = new FormData(event.currentTarget);
-    try { await action.run("/api/retries", { ...props, activityType: "RETRY", prompt: form.get("prompt"), scheduledFor: form.get("scheduledFor") ? new Date(String(form.get("scheduledFor"))).toISOString() : undefined, assignmentIdempotencyKey: randomKey("retry") }); }
-    catch (error) { action.setMessage(error instanceof Error ? error.message : "Unable to assign retry"); }
+    const base = { observationId: props.observationId, reviewId: props.reviewId, activityType, prompt: form.get("prompt"), assignmentIdempotencyKey: commandKey.current() };
+    const transfer = activityType === "TRANSFER" ? {
+      transfer: {
+        target: {
+          context: form.get("transferContext"),
+          representation: form.get("transferRepresentation"),
+          itemFamily: form.get("transferItemFamily"),
+          problemStructure: form.get("transferProblemStructure"),
+        },
+        materialDifferenceRationale: form.get("materialDifferenceRationale"),
+      },
+    } : {};
+    const retention = activityType === "RETENTION" ? {
+      retention: {
+        declaredDelaySeconds: Number(form.get("declaredDelaySeconds")),
+        scheduledFor: new Date(String(form.get("scheduledFor"))).toISOString(),
+        interveningExposure: { kind: form.get("exposureKind"), detail: form.get("exposureDetail") },
+        contentEquivalence: { kind: form.get("equivalenceKind"), rationale: form.get("equivalenceRationale") },
+        assistancePolicy: { kind: form.get("assistanceKind"), allowed: form.get("assistanceAllowed") },
+      },
+    } : {};
+    try { await action.run("/api/followups", { ...base, ...transfer, ...retention }); commandKey.regenerate(); }
+    catch (error) { action.setMessage(error instanceof Error ? error.message : "Unable to assign governed follow-up"); }
   }}>
-    <input name="prompt" required placeholder="Reviewed retry prompt" />
-    <input name="scheduledFor" type="datetime-local" />
-    <button disabled={action.pending}>Assign reviewed Retry</button><FormStatus value={action.message}/>
+    <label>Follow-up type<select value={activityType} onChange={(event) => setActivityType(event.target.value as typeof activityType)}><option>RETRY</option><option>TRANSFER</option><option>RETENTION</option></select></label>
+    <label>Learner activity prompt<textarea name="prompt" required minLength={5} placeholder="Prompt tied to this reviewed issue"/></label>
+    {activityType === "TRANSFER" ? <fieldset className="stack compact"><legend>Authenticated teacher Transfer declaration</legend>
+      <small>Canonical source values are shown below. The current runtime can honestly vary only the context: target representation is STRUCTURED and the exact Capability and implementation stay fixed.</small>
+      <pre>{JSON.stringify(props.transferSource, null, 2)}</pre>
+      <label>Target context<input name="transferContext" defaultValue={props.transferSource.context} required/></label>
+      <label>Target representation<input name="transferRepresentation" value="STRUCTURED" readOnly required/></label>
+      <label>Target item family<input name="transferItemFamily" value={props.transferSource.itemFamily} readOnly required/></label><label>Target problem structure<input name="transferProblemStructure" value={props.transferSource.problemStructure} readOnly required/></label>
+      <label>Why this is materially different<textarea name="materialDifferenceRationale" required minLength={10}/></label>
+      <small>Change the target context materially. The source signature is canonical and the target is your authenticated declaration; Foundry does not claim to have machine-proven the contextual difference.</small>
+    </fieldset> : null}
+    {activityType === "RETENTION" ? <fieldset className="stack compact"><legend>Retention schedule and exposure contract</legend>
+      <label>Declared delay in seconds<input name="declaredDelaySeconds" type="number" min={1} max={31536000} defaultValue={86400} required/></label>
+      <label>Scheduled time<input name="scheduledFor" type="datetime-local" required/></label>
+      <label>Intervening exposure<select name="exposureKind"><option>NONE_DECLARED</option><option>SAME_CONTENT</option><option>RELATED_CONTENT</option><option>UNKNOWN</option></select></label>
+      <label>Exposure detail<textarea name="exposureDetail" required/></label>
+      <label>Content equivalence<select name="equivalenceKind"><option>EXACT</option><option>EQUIVALENT_FORM</option><option>SAME_CONCEPT_DIFFERENT_ITEM</option></select></label>
+      <label>Equivalence rationale<textarea name="equivalenceRationale" required minLength={5}/></label>
+      <label>Assistance policy<select name="assistanceKind"><option>INDEPENDENT</option><option>STANDARD_SUPPORT</option><option>DECLARED_ASSISTANCE</option></select></label>
+      <label>Allowed assistance<textarea name="assistanceAllowed" required/></label>
+    </fieldset> : null}
+    <button disabled={action.pending}>Assign governed {activityType}</button><FormStatus value={action.message}/>
   </form>;
 }
 
-export function RetryAttemptForm({ threadId, expectedVersion, prompt }: { threadId: string; expectedVersion: number; prompt: string }) {
+export function FollowupAttemptForm({ threadId, expectedVersion, prompt, contract, scheduledFor, capabilities, unavailableReason }: { threadId: string; expectedVersion: number; prompt: string; contract: FollowupContractView; scheduledFor?: string; capabilities: LearnerCapability[]; unavailableReason?: string }) {
   const action = useAction();
-  return <form className="stack compact" data-testid="retry-attempt-form" onSubmit={async (event) => {
+  const commandKey = useStableCommandKey("followup-attempt");
+  const selectedKey = capabilities[0]?.publicKey ?? "";
+  const selected = capabilities.find((capability) => capability.publicKey === selectedKey);
+  return <form className="stack compact" data-testid="followup-attempt-form" onSubmit={async (event) => {
     event.preventDefault(); const form = new FormData(event.currentTarget);
-    try { await action.run(`/api/workflows/${encodeURIComponent(threadId)}/resume`, { expectedVersion, response: form.get("response"), structuredInput: { responseType: "FREE_TEXT" }, idempotencyKey: randomKey("retry-attempt") }); }
-    catch (error) { action.setMessage(error instanceof Error ? error.message : "Unable to submit retry"); }
-  }}><strong>{prompt}</strong><textarea name="response" required placeholder="Submit your retry reasoning"/><button disabled={action.pending}>Submit retry Attempt</button><FormStatus value={action.message}/></form>;
+    const fields = Object.fromEntries(selected ? selected.fields.flatMap((field) => field.kind === "quantity"
+      ? [[field.key, String(form.get(`followup-field:${field.key}`) ?? "")], [`${field.key}Unit`, String(form.get(`followup-unit:${field.key}`) ?? "")]]
+      : [[field.key, String(form.get(`followup-field:${field.key}`) ?? "")]]) : []);
+    try { await action.run(`/api/workflows/${encodeURIComponent(threadId)}/resume`, { expectedVersion, response: form.get("response"), capabilityPublicKey: selectedKey, fields, idempotencyKey: commandKey.current() }); commandKey.regenerate(); }
+    catch (error) { action.setMessage(error instanceof Error ? error.message : "Unable to submit follow-up"); }
+  }}><div className="header-actions"><strong>{contract.activityType}</strong>{scheduledFor ? <small>Scheduled {new Date(scheduledFor).toLocaleString()}</small> : null}</div><p>{prompt}</p>
+    <ImmutableFollowupContract contract={contract}/>
+    {selected ? <p><strong>Exact planned activity:</strong> {selected.name} · version {selected.capabilityVersionId}</p> : <small>{unavailableReason ?? "The exact planned CapabilityVersion is unavailable or stale; submission is disabled."}</small>}
+    {selected ? <fieldset className="stack compact"><legend>{selected.name}</legend>{selected.fields.map((field) => <div className="stack compact" key={field.key}><label htmlFor={`followup-field:${field.key}`}>{field.label}</label><span className="inline-form"><input id={`followup-field:${field.key}`} name={`followup-field:${field.key}`} type="number" min={field.min} step={field.step ?? "any"} required aria-describedby={`followup-help:${field.key}`}/>{field.kind === "quantity" ? <select name={`followup-unit:${field.key}`} defaultValue={field.defaultUnit} aria-label={`${field.label} unit`}>{field.unitOptions?.map((unit) => <option key={unit}>{unit}</option>)}</select> : null}</span><small id={`followup-help:${field.key}`}>{field.help}</small></div>)}</fieldset> : null}
+    <label>Your new reasoning and answer<textarea name="response" required placeholder="Complete the governed follow-up activity"/></label><button disabled={action.pending || !selected}>Submit {contract.activityType} Attempt</button><FormStatus value={action.message}/></form>;
 }
 
-export function RetryResultReviewForm({ threadId, expectedVersion }: { threadId: string; expectedVersion: number }) {
+export function CancelFollowupForm({ activityId }: { activityId: string }) {
   const action = useAction();
+  return <form className="stack compact" data-testid="cancel-followup-form" onSubmit={async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    try { await action.run(`/api/followups/${encodeURIComponent(activityId)}`, { reason: form.get("reason") }, "DELETE"); }
+    catch (error) { action.setMessage(error instanceof Error ? error.message : "Unable to cancel follow-up"); }
+  }}>
+    <label>Cancellation reason<input name="reason" minLength={5} maxLength={1000} required placeholder="Why this assigned follow-up should stop"/></label>
+    <button className="ghost" disabled={action.pending}>Cancel before runtime</button><FormStatus value={action.message}/>
+  </form>;
+}
+
+export function FollowupResultReviewForm({ threadId, expectedVersion, contract }: { threadId: string; expectedVersion: number; contract: FollowupContractView }) {
+  const action = useAction();
+  const commandKey = useStableCommandKey("followup-review");
   const [decision, setDecision] = useState("ACCEPT");
-  return <form className="stack compact" data-testid="retry-review-form" onSubmit={async (event) => {
+  return <form className="stack compact" data-testid="followup-review-form" onSubmit={async (event) => {
     event.preventDefault(); const form = new FormData(event.currentTarget);
-    const outcome = decision === "ESCALATE" ? {} : { outcomeStatus: form.get("outcomeStatus"), outcomeNarrative: form.get("narrative"), outcomeIdempotencyKey: randomKey("outcome") };
+    const retentionExposure = contract.activityType === "RETENTION" ? {
+      kind: form.get("completedExposureKind"),
+      detail: form.get("completedExposureDetail"),
+    } : undefined;
+    const transferContractConfirmed = contract.activityType === "TRANSFER"
+      ? form.get("transferContractConfirmed") === "on"
+      : undefined;
     try { await action.run(`/api/workflows/${encodeURIComponent(threadId)}/resume`, {
-      expectedVersion, decision, correction: form.get("correction") || undefined, supplement: form.get("supplement") || undefined, teachingSupport: form.get("support"), reviewIdempotencyKey: randomKey("retry-review"), ...outcome,
-    }); }
+      expectedVersion, decision, correction: form.get("correction") || undefined, supplement: form.get("supplement") || undefined, teachingSupport: form.get("support"), reviewIdempotencyKey: commandKey.current(), retentionExposure, transferContractConfirmed,
+    }); commandKey.regenerate(); }
     catch (error) { action.setMessage(error instanceof Error ? error.message : "Unable to complete review"); }
   }}>
     <select name="decision" value={decision} onChange={(event) => setDecision(event.target.value)}><option>ACCEPT</option><option>CORRECT</option><option>SUPPLEMENT</option><option>ESCALATE</option></select>
     {decision === "CORRECT" ? <input name="correction" required placeholder="Required correction"/> : null}
     {decision === "SUPPLEMENT" ? <input name="supplement" required placeholder="Required supplement"/> : null}
-    {decision === "ESCALATE" ? <small>Escalation records the human Review and ends this workflow without a LearningOutcome.</small> : <><select name="outcomeStatus"><option>IMPROVED</option><option>MASTERED</option><option>NEEDS_SUPPORT</option></select><textarea name="narrative" required placeholder="Governed Outcome narrative"/></>}
+    <ImmutableFollowupContract contract={contract}/>
+    {contract.activityType === "TRANSFER" ? <label><input name="transferContractConfirmed" type="checkbox" required/> I confirm the completed activity used this immutable target context and the disclosed evidence limit.</label> : null}
+    {contract.activityType === "RETENTION" ? <fieldset className="stack compact"><legend>Confirm actual intervening exposure</legend>
+      <label>Observed exposure<select name="completedExposureKind"><option>NONE_DECLARED</option><option>SAME_CONTENT</option><option>RELATED_CONTENT</option><option>UNKNOWN</option></select></label>
+      <label>What actually occurred during the delay<textarea name="completedExposureDetail" required minLength={1} maxLength={1000}/></label>
+      <small>This completion-time teacher confirmation is stored separately from the assignment-time expectation.</small>
+    </fieldset> : null}
+    <small>This records only the new human TeacherReview. CAP-06 does not create a LearningOutcome, mastery decision, or effectiveness claim.</small>
     <input name="support" required placeholder="Human teaching support"/>
-    <button disabled={action.pending}>{decision === "ESCALATE" ? "Record escalation" : "Review result & record Outcome"}</button><FormStatus value={action.message}/>
+    <button disabled={action.pending}>{decision === "ESCALATE" ? "Record escalation" : "Review follow-up result"}</button><FormStatus value={action.message}/>
   </form>;
 }
 

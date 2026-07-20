@@ -11,6 +11,7 @@ import {
 import { compileAuthorizedContext } from "@/application/context-service";
 import { assertExecutionActive } from "@/application/execution-control";
 import { requireTaskEpisodeScope } from "@/application/task-scope";
+import { requireEpisodeDiagnosisLineage } from "@/application/governed-followup-lineage";
 import {
   capabilityResolutionHash,
   capabilityResolutionId,
@@ -66,7 +67,7 @@ function buildNeed(input: {
 }): CapabilityResolutionNeed {
   const selected = selectedPayloads(input.context);
   const payloads = selected.map(({ payload }) => payload);
-  const requirementItems = selected.filter(({ item }) => item.kind === "CAPABILITY_REQUIREMENT" || item.kind === "TEACHER_CONSTRAINT");
+  const requirementItems = selected.filter(({ item }) => item.kind === "CAPABILITY_REQUIREMENT" || item.kind === "TEACHER_CONSTRAINT" || item.kind === "GOVERNED_FOLLOWUP");
   const exclusionItems = selected.filter(({ item }) => item.kind === "CAPABILITY_EXCLUSION" || item.kind === "TEACHER_CONSTRAINT");
   const requiredCapabilityKeys = unique(requirementItems.flatMap(({ payload }) => [
     ...strings(payload.capabilityKey),
@@ -157,7 +158,6 @@ async function resolveInTenant(actor: Actor, input: {
     .where(and(
       eq(diagnosticObservations.id, input.diagnosticObservationId),
       eq(learnerAttempts.taskId, scope.task.id),
-      eq(learnerAttempts.episodeId, scope.episode.id),
     ))
     .limit(1);
   if (!diagnosis) {
@@ -174,6 +174,12 @@ async function resolveInTenant(actor: Actor, input: {
   if (currentObservations.length !== 1 || currentObservations[0]?.id !== diagnosis.observation.id) {
     throw new DomainInvariantError("Capability Resolution found ambiguous current Diagnosis Proposals", "DIAGNOSIS_CURRENT_CONFLICT");
   }
+  await requireEpisodeDiagnosisLineage({
+    taskId: scope.task.id,
+    episodeId: scope.episode.id,
+    observation: diagnosis.observation,
+    attempt: diagnosis.attempt,
+  });
 
   const [subject] = await getDb().select({ subject: subjects }).from(subjects)
     .where(eq(subjects.id, scope.course.subjectId))

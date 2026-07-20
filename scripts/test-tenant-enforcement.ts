@@ -10,7 +10,10 @@ function guardedLocalUrl(raw: string | undefined, label: string): string {
   const url = new URL(raw);
   if (!new Set(["localhost", "127.0.0.1", "[::1]", "::1"]).has(url.hostname)) throw new Error(`${label} must target localhost`);
   const database = decodeURIComponent(url.pathname.slice(1));
-  if (!new Set(["learning_foundry_rw02", "learning_foundry_e2e"]).has(database) && !database.startsWith("learning_foundry_rw03")) {
+  const configuredDatabase = process.env.TENANT_TEST_DATABASE_NAME;
+  if (configuredDatabase && configuredDatabase !== "learning_foundry") throw new Error("TENANT_TEST_DATABASE_NAME may only name the PM-owned disposable learning_foundry database");
+  const allowedDatabases = new Set(["learning_foundry_rw02", "learning_foundry_e2e", ...(configuredDatabase ? [configuredDatabase] : [])]);
+  if (!allowedDatabases.has(database) && !database.startsWith("learning_foundry_rw03")) {
     throw new Error(`${label} must target a disposable Learning Foundry enforcement database`);
   }
   return url.toString();
@@ -162,13 +165,15 @@ async function expectCrossTenantUuidUpdateDenied(
   columnName: string,
   foreignId: string,
   expectedMessage: RegExp,
+  targetId?: string,
 ): Promise<void> {
   const table = `${quoted(schemaName)}.${quoted(tableName)}`;
   const column = quoted(columnName);
   await expectRoleTransactionDenied(label, client, RUNTIME_DATABASE_ROLES.product, institutionId, async (transaction) => {
+    const predicate = targetId ? `"id" = $2::uuid` : `ctid = (SELECT ctid FROM ${table} LIMIT 1)`;
     const result = await transaction.unsafe(
-      `UPDATE ${table} SET ${column} = $1::uuid WHERE ctid = (SELECT ctid FROM ${table} LIMIT 1)`,
-      [foreignId],
+      `UPDATE ${table} SET ${column} = $1::uuid WHERE ${predicate}`,
+      targetId ? [foreignId, targetId] : [foreignId],
     );
     if (result.count !== 1) throw new Error(`${label} requires one visible tenant-A fixture`);
   }, expectedMessage);
@@ -220,6 +225,7 @@ const attemptedActivityPlanProposalHash = `tenant-harness-denied-${attemptedActi
 const attemptedActivityPlanId = randomUUID();
 const attemptedRuntimeDeliveryId = randomUUID();
 const attemptedLearningEventId = randomUUID();
+const attemptedOutcomeId = randomUUID();
 const attemptedTeacherAssignmentId = randomUUID();
 const attemptedTeacherInterventionId = randomUUID();
 const attemptedTeacherConstraintId = randomUUID();
@@ -339,8 +345,10 @@ try {
   `;
   await product`
     INSERT INTO foundry_product.retry_attempts
-      (id, original_attempt_id, reviewed_observation_id, teacher_review_id, activity_type, prompt)
-    VALUES (${retryB}::uuid, ${attemptB}::uuid, ${observationB}::uuid, ${reviewB}::uuid, 'RETRY', 'Tenant B retry')
+      (id, original_attempt_id, reviewed_observation_id, teacher_review_id, activity_type, prompt,
+       status, result_attempt_id, result_observation_id, result_review_id)
+    VALUES (${retryB}::uuid, ${attemptB}::uuid, ${observationB}::uuid, ${reviewB}::uuid, 'RETRY', 'Tenant B retry',
+      'REVIEWED', ${attemptB}::uuid, ${observationB}::uuid, ${reviewB}::uuid)
   `;
   const [componentCandidateFixture] = await product<Array<Record<string, unknown>>>`
     SELECT
@@ -387,9 +395,16 @@ try {
         (${componentVersionB}::uuid, ${componentB}::uuid, '0.0.1', '{}'::jsonb, '{}'::jsonb, ARRAY[${observationB}::uuid], ARRAY[${reviewB}::uuid], '{}'::jsonb, ${`hash-${componentVersionB}`}, ${learnerB}::uuid)
     `;
   });
-  const [tenantARetry] = await product<Array<{ id: string }>>`SELECT id FROM foundry_product.retry_attempts ORDER BY created_at LIMIT 1`;
+  const [tenantARetry] = await product<Array<{ id: string }>>`
+    SELECT retry.id
+    FROM foundry_product.retry_attempts retry
+    JOIN foundry_product.learner_attempts attempt ON attempt.id=retry.original_attempt_id
+    JOIN foundry_product.learning_tasks task ON task.id=attempt.task_id
+    WHERE retry.idempotency_key IS NULL AND task.institution_id=${tenantA}::uuid
+    ORDER BY retry.created_at, retry.id LIMIT 1
+  `;
   const [tenantAEvidence] = await product<Array<{ id: string }>>`SELECT id FROM foundry_product.evidence_units WHERE institution_id=${tenantA}::uuid ORDER BY created_at LIMIT 1`;
-  if (!tenantARetry || !tenantAEvidence) throw new Error("Tenant harness requires browser-created tenant A Retry and Evidence fixtures");
+  if (!tenantARetry || !tenantAEvidence) throw new Error("Tenant harness requires a historical tenant A Retry and Evidence fixture");
   await product`INSERT INTO foundry_product.library_items (id, learner_id, course_id, evidence_unit_id, title, reason) VALUES (${libraryFixtureA}::uuid, ${learnerA}::uuid, ${courseA}::uuid, ${tenantAEvidence.id}::uuid, 'Harness library', 'Lineage probe')`;
   await product`INSERT INTO foundry_product.schedule_items (id, learner_id, task_id, activity_type, due_at) VALUES (${scheduleFixtureA}::uuid, ${learnerA}::uuid, ${taskA}::uuid, 'STUDY_REVIEW', now())`;
   await product`INSERT INTO foundry_product.transfer_activities (id, retry_id, target_concept, evidence_unit_id) VALUES (${transferFixtureA}::uuid, ${tenantARetry.id}::uuid, 'Harness transfer', ${tenantAEvidence.id}::uuid)`;
@@ -651,6 +666,7 @@ try {
     columnName: string;
     foreignId: string;
     expectedMessage: RegExp;
+    targetId?: string;
   }) => {
     await expectCrossTenantUuidUpdateDenied(
       input.label,
@@ -661,6 +677,7 @@ try {
       input.columnName,
       input.foreignId,
       input.expectedMessage,
+      input.targetId,
     );
     directlyProbedWritableTables.add(`${input.schemaName}.${input.tableName}`);
   };
@@ -836,10 +853,20 @@ try {
   await probeUuidLineage({ label: "LearnerAttempt update to tenant B task", schemaName: "foundry_product", tableName: "learner_attempts", columnName: "task_id", foreignId: taskB, expectedMessage: /LearnerAttempt tenant lineage mismatch/ });
   await probeUuidLineage({ label: "DiagnosticObservation update to tenant B attempt", schemaName: "foundry_product", tableName: "diagnostic_observations", columnName: "attempt_id", foreignId: attemptB, expectedMessage: /DiagnosticObservation tenant lineage mismatch/ });
   await probeUuidLineage({ label: "TeacherReview update to tenant B observation", schemaName: "foundry_product", tableName: "teacher_reviews", columnName: "observation_id", foreignId: observationB, expectedMessage: /TeacherReview tenant lineage mismatch/ });
-  await probeUuidLineage({ label: "RetryAttempt update to tenant B attempt", schemaName: "foundry_product", tableName: "retry_attempts", columnName: "original_attempt_id", foreignId: attemptB, expectedMessage: /Retry tenant lineage mismatch/ });
-  await probeUuidLineage({ label: "TransferActivity update to tenant B evidence", schemaName: "foundry_product", tableName: "transfer_activities", columnName: "evidence_unit_id", foreignId: evidenceB, expectedMessage: /Transfer tenant lineage mismatch/ });
-  await probeUuidLineage({ label: "RetentionReview update to tenant B evidence", schemaName: "foundry_product", tableName: "retention_reviews", columnName: "evidence_unit_id", foreignId: evidenceB, expectedMessage: /Retention tenant lineage mismatch/ });
-  await probeUuidLineage({ label: "LearningOutcome update to tenant B task", schemaName: "foundry_product", tableName: "learning_outcomes", columnName: "task_id", foreignId: taskB, expectedMessage: /LearningOutcome tenant lineage mismatch/ });
+  await probeUuidLineage({ label: "RetryAttempt update to tenant B attempt", schemaName: "foundry_product", tableName: "retry_attempts", columnName: "original_attempt_id", foreignId: attemptB, targetId: tenantARetry.id, expectedMessage: /Retry tenant lineage mismatch/ });
+  await probeUuidLineage({ label: "TransferActivity update to tenant B evidence", schemaName: "foundry_product", tableName: "transfer_activities", columnName: "evidence_unit_id", foreignId: evidenceB, targetId: transferFixtureA, expectedMessage: /Transfer tenant lineage mismatch/ });
+  await probeUuidLineage({ label: "RetentionReview update to tenant B evidence", schemaName: "foundry_product", tableName: "retention_reviews", columnName: "evidence_unit_id", foreignId: evidenceB, targetId: retentionFixtureA, expectedMessage: /Retention tenant lineage mismatch/ });
+  await expectRoleTransactionDenied("LearningOutcome insert with tenant B Task", product, RUNTIME_DATABASE_ROLES.product, tenantA, async (transaction) => {
+    await transaction`
+      INSERT INTO foundry_product.learning_outcomes
+        (id,task_id,retry_id,result_review_id,teacher_id,outcome_type,status,evidence_refs,narrative,actor_provenance,idempotency_key)
+      VALUES (${attemptedOutcomeId}::uuid,${taskB}::uuid,${retryB}::uuid,${reviewB}::uuid,${learnerB}::uuid,
+        'RETRY','REVIEWED','[]'::jsonb,'Denied cross-tenant Outcome probe',
+        jsonb_build_object('institutionId',${tenantB}::text,'userId',${learnerB}::text),
+        ${`tenant-harness-denied-outcome:${attemptedOutcomeId}`})
+    `;
+  }, /LearningOutcome tenant lineage mismatch|row-level security/);
+  directlyProbedWritableTables.add("foundry_product.learning_outcomes");
   await probeUuidLineage({ label: "Component update to tenant B course", schemaName: "foundry_product", tableName: "components", columnName: "course_id", foreignId: courseB, expectedMessage: /Component tenant lineage mismatch/ });
   await probeUuidLineage({ label: "ComponentVersion update to tenant B component", schemaName: "foundry_product", tableName: "component_versions", columnName: "component_id", foreignId: componentB, expectedMessage: /ComponentVersion tenant lineage mismatch|Terminal Component versions are immutable/ });
   await probeUuidLineage({ label: "ComponentEvaluation update to tenant B version", schemaName: "foundry_product", tableName: "component_evaluations", columnName: "component_version_id", foreignId: componentVersionB, expectedMessage: /ComponentEvaluation tenant lineage mismatch|Component evaluations are immutable/ });
@@ -863,7 +890,7 @@ try {
 
   await probeUuidLineage({ label: "LibraryItem update to tenant B evidence", schemaName: "foundry_product", tableName: "library_items", columnName: "evidence_unit_id", foreignId: evidenceB, expectedMessage: /LibraryItem tenant lineage mismatch/ });
   await probeUuidLineage({ label: "ScheduleItem update to tenant B task", schemaName: "foundry_product", tableName: "schedule_items", columnName: "task_id", foreignId: taskB, expectedMessage: /ScheduleItem tenant lineage mismatch/ });
-  await probeUuidLineage({ label: "GovernanceEvent update to tenant B entity", schemaName: "foundry_product", tableName: "governance_events", columnName: "entity_id", foreignId: taskB, expectedMessage: /GovernanceEvent tenant lineage mismatch/ });
+  await probeUuidLineage({ label: "GovernanceEvent update to tenant B entity", schemaName: "foundry_product", tableName: "governance_events", columnName: "entity_id", foreignId: taskB, expectedMessage: /GovernanceEvent tenant lineage mismatch|GovernanceEvents are append-only/ });
 
   await expectRoleTransactionDenied("IdempotencyKey update to tenant B result", product, RUNTIME_DATABASE_ROLES.product, tenantA, async (transaction) => {
     const updated = await transaction`

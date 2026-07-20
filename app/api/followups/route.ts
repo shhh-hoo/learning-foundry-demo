@@ -1,21 +1,18 @@
-import { z } from "zod";
+import { GovernedFollowupStart } from "@/domain/governed-followup";
 import { withApiActor } from "@/application/identity";
 import { errorResponse, requireWorkflowHttpSuccess } from "@/application/http";
 import { startWorkflow } from "@/application/workflow-service";
 
-const StartRetry = z.object({
-  observationId: z.string().uuid(),
-  reviewId: z.string().uuid(),
-  activityType: z.literal("RETRY"),
-  prompt: z.string().min(1),
-  assignmentIdempotencyKey: z.string().min(8),
-}).strict();
-
 export async function POST(request: Request) {
   try {
     const result = await withApiActor(async (actor) => {
-      const state = StartRetry.parse(await request.json());
-      return startWorkflow({ kind: "GOVERNED_FOLLOWUP", actor, state, execution: { signal: request.signal } });
+      const state = GovernedFollowupStart.parse(await request.json());
+      return startWorkflow({
+        kind: "GOVERNED_FOLLOWUP",
+        actor,
+        state,
+        execution: { signal: request.signal },
+      });
     });
     requireWorkflowHttpSuccess(result);
     return Response.json(result, { status: 201 });

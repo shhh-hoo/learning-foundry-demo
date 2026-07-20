@@ -9,7 +9,6 @@ import {
   createTeacherReview,
   createComponentCandidate,
   createTask,
-  linkRetryResult,
   persistUnavailableObservation,
   scheduleStudyReview,
 } from "@/application/commands";
@@ -22,7 +21,7 @@ import { resumeWorkflow, startWorkflow, WorkflowProcessCrashForTests } from "@/a
 import { claimWorkflowResume, finalizeWorkflowResumeClaim, RESUME_LEASE_MS } from "@/application/workflow-resume-lease";
 import { closeDb, getDb, getSql } from "@/db/client";
 import { SEED } from "@/db/ids";
-import { authSessions, conversationEvents, courseEnrollments, courses, evidenceUnits, idempotencyKeys, institutionMemberships, learningOutcomes, libraryItems, retryAttempts, scheduleItems, sourceRecords, teacherReviews, users, workflowRuns } from "@/db/schema";
+import { authSessions, conversationEvents, courseEnrollments, courses, evidenceUnits, idempotencyKeys, institutionMemberships, libraryItems, retryAttempts, scheduleItems, sourceRecords, teacherReviews, users, workflowRuns } from "@/db/schema";
 import type { Actor } from "@/domain/model";
 import { DomainInvariantError } from "@/domain/invariants";
 import { closeWorkflowCheckpointer, getWorkflowCheckpointer } from "@/workflows/checkpointer";
@@ -675,157 +674,6 @@ describe.sequential("Checkpoint A PostgreSQL integration", () => {
     }
   });
 
-  it("derives Retry authority and rejects another learner, institution or Task result", async () => {
-    const [currentReview] = await getDb().select().from(teacherReviews).where(eq(teacherReviews.observationId, fixtureObservationId)).orderBy(desc(teacherReviews.createdAt), desc(teacherReviews.id)).limit(1);
-    const retryState = {
-      observationId: fixtureObservationId,
-      reviewId: currentReview.id,
-      activityType: "RETRY" as const,
-      assignmentIdempotencyKey: `derived-retry:${randomUUID()}`,
-      prompt: "Submit the reviewed retry.",
-      taskId: randomUUID(),
-      episodeId: randomUUID(),
-      capabilityId: randomUUID(),
-    };
-    await expect(startWorkflow({
-      kind: "RETRY_OUTCOME",
-      actor: teacher,
-      state: retryState,
-      taskId: randomUUID(),
-      episodeId: randomUUID(),
-    })).rejects.toMatchObject({ code: "WORKFLOW_BINDING_MISMATCH" });
-    const workflow = await startWorkflow({ kind: "RETRY_OUTCOME", actor: teacher, state: retryState });
-    const wrongLearner: Actor = { ...learner, userId: randomUUID(), sessionId: `wrong-learner:${randomUUID()}` };
-    await expect(resumeWorkflow(wrongLearner, workflow.threadId, { expectedVersion: workflow.expectedVersion, response: "Wrong learner", structuredInput: {}, idempotencyKey: `wrong-learner:${randomUUID()}` })).rejects.toMatchObject({ code: "WORKFLOW_OWNERSHIP" });
-    const wrongInstitution: Actor = { ...learner, institutionId: randomUUID(), sessionId: `wrong-institution:${randomUUID()}` };
-    await expect(resumeWorkflow(wrongInstitution, workflow.threadId, { expectedVersion: workflow.expectedVersion, response: "Wrong institution", structuredInput: {}, idempotencyKey: `wrong-institution:${randomUUID()}` })).rejects.toMatchObject({ code: "TENANT_ISOLATION" });
-
-    const otherTask = await createTask(learner, { courseId: SEED.course, title: "Other lineage Task", goal: "Prove that retry results cannot cross Tasks", idempotencyKey: `other-task:${randomUUID()}` });
-    const otherAttempt = await captureAttempt(learner, { taskId: otherTask.taskId, episodeId: otherTask.episodeId!, prompt: "Other Task", response: "Another Task result", structuredInput: {}, idempotencyKey: `other-attempt:${randomUUID()}` });
-    const otherObservation = await persistUnavailableObservation({ attemptId: otherAttempt.id, reason: "Cross-lineage negative fixture" });
-    const otherReview = await createTeacherReview(teacher, { observationId: otherObservation.id, decision: "ACCEPT", teachingSupport: "Review remains scoped to the other Task.", idempotencyKey: `other-review:${randomUUID()}` });
-    const retry = await createRetry(teacher, { observationId: fixtureObservationId, reviewId: currentReview.id, activityType: "RETRY", prompt: "Original Task retry", idempotencyKey: `lineage-retry:${randomUUID()}` });
-    await expect(linkRetryResult(teacher, { retryId: retry.id, resultAttemptId: otherAttempt.id, resultObservationId: otherObservation.id, resultReviewId: otherReview.reviewId })).rejects.toMatchObject({ code: "RETRY_LINEAGE_INVALID" });
-  });
-
-  it("validates an eligible retry-result payload before any Product State write", async () => {
-    const [currentReview] = await getDb().select().from(teacherReviews).where(eq(teacherReviews.observationId, fixtureObservationId)).orderBy(desc(teacherReviews.createdAt), desc(teacherReviews.id)).limit(1);
-    const retry = await startWorkflow({
-      kind: "RETRY_OUTCOME",
-      actor: teacher,
-      state: { observationId: fixtureObservationId, reviewId: currentReview.id, activityType: "RETRY", assignmentIdempotencyKey: `malformed-retry:${randomUUID()}`, prompt: "Submit a retry whose Review payload will be rejected." },
-    });
-    const learnerResume = await resumeWorkflow(learner, retry.threadId, { expectedVersion: retry.expectedVersion, response: "A real retry result awaiting Review.", structuredInput: { responseType: "FREE_TEXT" }, idempotencyKey: `malformed-attempt:${randomUUID()}` });
-    const result = learnerResume.result as Record<string, unknown>;
-    const retryId = String(result.retryId);
-    const resultObservationId = String(result.resultObservationId);
-    expect(await getDb().select().from(teacherReviews).where(eq(teacherReviews.observationId, resultObservationId))).toEqual([]);
-    await expect(resumeWorkflow(teacher, retry.threadId, {
-      expectedVersion: learnerResume.expectedVersion,
-      decision: "ACCEPT",
-      teachingSupport: "This malformed command omits every required Outcome field.",
-      reviewIdempotencyKey: `malformed-review:${randomUUID()}`,
-    })).rejects.toBeTruthy();
-    expect(await getDb().select().from(teacherReviews).where(eq(teacherReviews.observationId, resultObservationId))).toEqual([]);
-    const [unlinkedRetry] = await getDb().select().from(retryAttempts).where(eq(retryAttempts.id, retryId)).limit(1);
-    expect(unlinkedRetry).toMatchObject({ status: "ASSIGNED", resultAttemptId: null, resultObservationId: null, resultReviewId: null });
-    expect(await getDb().select().from(learningOutcomes).where(eq(learningOutcomes.retryId, retryId))).toEqual([]);
-  });
-
-  it("rolls back Review and Retry linkage when Outcome persistence fails", async () => {
-    const [currentReview] = await getDb().select().from(teacherReviews).where(eq(teacherReviews.observationId, fixtureObservationId)).orderBy(desc(teacherReviews.createdAt), desc(teacherReviews.id)).limit(1);
-    const retry = await startWorkflow({
-      kind: "RETRY_OUTCOME",
-      actor: teacher,
-      state: { observationId: fixtureObservationId, reviewId: currentReview.id, activityType: "RETRY", assignmentIdempotencyKey: `atomic-retry:${randomUUID()}`, prompt: "Submit a retry for atomic persistence proof." },
-    });
-    const learnerResume = await resumeWorkflow(learner, retry.threadId, { expectedVersion: retry.expectedVersion, response: "A retry result for atomic persistence proof.", structuredInput: { responseType: "FREE_TEXT" }, idempotencyKey: `atomic-attempt:${randomUUID()}` });
-    const result = learnerResume.result as Record<string, unknown>;
-    const retryId = String(result.retryId);
-    const resultObservationId = String(result.resultObservationId);
-    const conflictingOutcomeKey = `atomic-outcome:${randomUUID()}`;
-    await getDb().insert(idempotencyKeys).values({ institutionId: teacher.institutionId, key: conflictingOutcomeKey, commandType: "LEARNING_OUTCOME", requestHash: "conflicting-request-hash", resultId: randomUUID() });
-    await expect(resumeWorkflow(teacher, retry.threadId, {
-      expectedVersion: learnerResume.expectedVersion,
-      decision: "ACCEPT",
-      teachingSupport: "This valid Review must roll back with the rejected Outcome.",
-      outcomeStatus: "IMPROVED",
-      outcomeNarrative: "This Outcome cannot claim the conflicting idempotency key.",
-      reviewIdempotencyKey: `atomic-review:${randomUUID()}`,
-      outcomeIdempotencyKey: conflictingOutcomeKey,
-    })).rejects.toMatchObject({ code: "IDEMPOTENCY_MISMATCH" });
-    expect(await getDb().select().from(teacherReviews).where(eq(teacherReviews.observationId, resultObservationId))).toEqual([]);
-    const [unlinkedRetry] = await getDb().select().from(retryAttempts).where(eq(retryAttempts.id, retryId)).limit(1);
-    expect(unlinkedRetry).toMatchObject({ status: "ASSIGNED", resultAttemptId: null, resultObservationId: null, resultReviewId: null });
-    expect(await getDb().select().from(learningOutcomes).where(eq(learningOutcomes.retryId, retryId))).toEqual([]);
-  });
-
-  it("requires a reviewed retry Observation before creating an Outcome", async () => {
-    const [currentReview] = await getDb().select().from(teacherReviews).where(eq(teacherReviews.observationId, fixtureObservationId)).orderBy(desc(teacherReviews.createdAt)).limit(1);
-    expect(currentReview).toBeTruthy();
-    const retry = await startWorkflow({
-      kind: "RETRY_OUTCOME",
-      actor: teacher,
-      state: {
-        teacherActor: teacher,
-        observationId: fixtureObservationId,
-        reviewId: currentReview.id,
-        activityType: "RETRY",
-        assignmentIdempotencyKey: `assign-retry:${randomUUID()}`,
-        prompt: "Review the reasoning again and justify each transformation.",
-        taskId: SEED.task,
-        episodeId: SEED.episode,
-      },
-      taskId: SEED.task,
-      episodeId: SEED.episode,
-    });
-    expect(retry.interruptType).toBe("LEARNER_RETRY_REQUIRED");
-    const learnerResume = await resumeWorkflow(learner, retry.threadId, { expectedVersion: retry.expectedVersion, response: "I checked units and justified each transformation.", structuredInput: { responseType: "FREE_TEXT" }, idempotencyKey: `retry-attempt:${randomUUID()}` });
-    expect(learnerResume.interruptType).toBe("RETRY_RESULT_REVIEW_REQUIRED");
-    const teacherPayload = { expectedVersion: learnerResume.expectedVersion, decision: "ACCEPT", teachingSupport: "The retry now states the evidence for each transformation.", outcomeStatus: "IMPROVED", outcomeNarrative: "The learner improved on the linked Retry after direct human Review.", reviewIdempotencyKey: `retry-review:${randomUUID()}`, outcomeIdempotencyKey: `retry-outcome:${randomUUID()}` } as const;
-    await expect(resumeWorkflow(teacher, retry.threadId, teacherPayload, { testFaults: { afterGraphCompletion() { throw new WorkflowProcessCrashForTests(); } } })).rejects.toBeInstanceOf(WorkflowProcessCrashForTests);
-    const crashedResult = await getDb().select().from(workflowRuns).where(eq(workflowRuns.id, retry.runId));
-    expect(crashedResult[0]).toMatchObject({ status: "RESUMING" });
-    const retryId = String((learnerResume.result as Record<string, unknown>).retryId);
-    const resultObservationId = String((learnerResume.result as Record<string, unknown>).resultObservationId);
-    const [originalReview] = await getDb().select().from(teacherReviews).where(eq(teacherReviews.observationId, resultObservationId));
-    const [originalOutcome] = await getDb().select().from(learningOutcomes).where(eq(learningOutcomes.retryId, retryId));
-    expect(originalReview?.id).toBeTruthy();
-    expect(originalOutcome?.id).toBeTruthy();
-    await getDb().update(workflowRuns).set({ resumeLeaseExpiresAt: new Date(Date.now() - 1) }).where(eq(workflowRuns.id, retry.runId));
-    const teacherResume = await resumeWorkflow(teacher, retry.threadId, teacherPayload);
-    expect(teacherResume.status).toBe("COMPLETED");
-    const outcomeId = String((teacherResume.result as Record<string, unknown>).outcomeId);
-    expect(outcomeId).toBe(originalOutcome.id);
-    expect(String((teacherResume.result as Record<string, unknown>).resultReviewId)).toBe(originalReview.id);
-    expect(await getDb().select().from(teacherReviews).where(eq(teacherReviews.observationId, resultObservationId))).toEqual([originalReview]);
-    expect(await getDb().select().from(learningOutcomes).where(eq(learningOutcomes.retryId, retryId))).toEqual([originalOutcome]);
-    const [outcome] = await getDb().select().from(learningOutcomes).where(eq(learningOutcomes.id, outcomeId)).limit(1);
-    expect(outcome.outcomeType).toBe("RETRY");
-    expect(outcome.evidenceRefs.map((reference) => reference.kind)).toEqual(["ATTEMPT", "DIAGNOSIS", "REVIEW"]);
-    expect(outcome.actorProvenance.userId).toBe(teacher.userId);
-  });
-
-  it("records a retry-result ESCALATE without creating a LearningOutcome", async () => {
-    const [currentReview] = await getDb().select().from(teacherReviews).where(eq(teacherReviews.observationId, fixtureObservationId)).orderBy(desc(teacherReviews.createdAt), desc(teacherReviews.id)).limit(1);
-    const retry = await startWorkflow({
-      kind: "RETRY_OUTCOME",
-      actor: teacher,
-      state: { observationId: fixtureObservationId, reviewId: currentReview.id, activityType: "RETRY", assignmentIdempotencyKey: `escalated-retry:${randomUUID()}`, prompt: "Submit a retry for escalation review." },
-    });
-    const learnerResume = await resumeWorkflow(learner, retry.threadId, { expectedVersion: retry.expectedVersion, response: "This retry still needs specialist review.", structuredInput: { responseType: "FREE_TEXT" }, idempotencyKey: `escalated-attempt:${randomUUID()}` });
-    const teacherResume = await resumeWorkflow(teacher, retry.threadId, { expectedVersion: learnerResume.expectedVersion, decision: "ESCALATE", teachingSupport: "Escalate to a subject specialist; do not record an Outcome.", reviewIdempotencyKey: `escalated-review:${randomUUID()}` });
-    expect(teacherResume.status).toBe("COMPLETED");
-    expect((teacherResume.result as Record<string, unknown>).outcomeId).toBeUndefined();
-    const retryId = String((teacherResume.result as Record<string, unknown>).retryId);
-    const resultObservationId = String((teacherResume.result as Record<string, unknown>).resultObservationId);
-    const [linkedRetry] = await getDb().select().from(retryAttempts).where(eq(retryAttempts.id, retryId)).limit(1);
-    expect(linkedRetry.status).toBe("ESCALATED");
-    const outcomes = await getDb().select().from(learningOutcomes).where(eq(learningOutcomes.retryId, retryId));
-    expect(outcomes).toEqual([]);
-    const workspace = await getTeacherWorkspace(teacher);
-    expect(workspace.queue.find((row) => row.observation_id === resultObservationId)?.review_decision).toBe("ESCALATE");
-  });
 
   it("rejects unavailable signals and mismatched Component workflow lineage", async () => {
     const [currentReview] = await getDb().select().from(teacherReviews).where(eq(teacherReviews.observationId, fixtureObservationId)).orderBy(desc(teacherReviews.createdAt)).limit(1);

@@ -124,6 +124,7 @@ function isTeacherConstraint(kind: string): boolean {
     "CAPABILITY_REQUIREMENT",
     "CAPABILITY_EXCLUSION",
     "TEACHER_ASSIGNMENT",
+    "GOVERNED_FOLLOWUP",
   ]).has(kind);
 }
 
