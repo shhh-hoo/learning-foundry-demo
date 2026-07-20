@@ -5,6 +5,7 @@ import { captureAttempt, persistDiagnosticObservation, persistUnavailableObserva
 import { executePersistedCapability } from "@/application/capabilities";
 import { prepareAttemptForDiagnosis } from "@/application/attempt-interpreter";
 import { compileAuthorizedContext } from "@/application/context-service";
+import { resolveCapabilityForDiagnosis } from "@/application/capability-resolution";
 
 export const DiagnosisState = new StateSchema({
   actor: ActorSchema,
@@ -30,6 +31,10 @@ export const DiagnosisState = new StateSchema({
   attemptId: z.string().uuid().optional(),
   diagnosisStatus: z.enum(["AVAILABLE", "UNAVAILABLE"]).optional(),
   observationId: z.string().uuid().optional(),
+  capabilityResolutionId: z.string().uuid().optional(),
+  capabilityDecision: z.enum(["EXISTING", "PARAMETERIZE", "COMPOSE", "ADAPT", "GENERATE", "NO_MATCH"]).optional(),
+  selectedCapabilityVersionId: z.string().uuid().optional(),
+  teacherEscalation: z.boolean().optional(),
 });
 
 export type DiagnosisGraphDependencies = {
@@ -39,6 +44,7 @@ export type DiagnosisGraphDependencies = {
   executeCapability: typeof executePersistedCapability;
   persistObservation: typeof persistDiagnosticObservation;
   persistUnavailable: typeof persistUnavailableObservation;
+  resolveCapability: typeof resolveCapabilityForDiagnosis;
 };
 
 const defaultDependencies: DiagnosisGraphDependencies = {
@@ -48,6 +54,7 @@ const defaultDependencies: DiagnosisGraphDependencies = {
   executeCapability: executePersistedCapability,
   persistObservation: persistDiagnosticObservation,
   persistUnavailable: persistUnavailableObservation,
+  resolveCapability: resolveCapabilityForDiagnosis,
 };
 
 export function buildDiagnosisGraph(checkpointer?: BaseCheckpointSaver, dependencies: DiagnosisGraphDependencies = defaultDependencies) {
@@ -116,10 +123,25 @@ export function buildDiagnosisGraph(checkpointer?: BaseCheckpointSaver, dependen
       const observation = await dependencies.persistObservation({ attemptId: state.attemptId, capabilityVersionId: execution.version.id, capabilityId: execution.capability.id, result: execution.result });
       return { observationId: observation.id, diagnosisStatus: "AVAILABLE" as const };
     })
+    .addNode("resolve_capability", async (state) => {
+      if (!state.observationId) throw new Error("Capability Resolution requires current Diagnosis lineage");
+      const resolution = await dependencies.resolveCapability(state.actor, {
+        taskId: state.taskId,
+        episodeId: state.episodeId,
+        diagnosticObservationId: state.observationId,
+      });
+      return {
+        capabilityResolutionId: resolution.id,
+        capabilityDecision: resolution.decision,
+        selectedCapabilityVersionId: resolution.selectedCapabilityVersionId ?? undefined,
+        teacherEscalation: resolution.teacherEscalation,
+      };
+    })
     .addEdge(START, "compile_context")
     .addEdge("compile_context", "prepare_attempt")
     .addEdge("prepare_attempt", "capture_attempt")
     .addEdge("capture_attempt", "execute_capability")
-    .addEdge("execute_capability", END)
+    .addEdge("execute_capability", "resolve_capability")
+    .addEdge("resolve_capability", END)
     .compile({ checkpointer });
 }

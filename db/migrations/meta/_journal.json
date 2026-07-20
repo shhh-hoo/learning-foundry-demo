@@ -43,6 +43,13 @@
       "when": 1784505600000,
       "tag": "0005_authoritative_context_compiler",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1784592000000,
+      "tag": "0006_diagnosis_capability_resolution",
+      "breakpoints": true
     }
   ]
 }
