@@ -29,6 +29,46 @@ jobs:
       - run: npm run check
       - run: npm test
       - run: npm run build
+      - name: Smoke-test local Showcase startup
+        env:
+          SHOWCASE_NO_OPEN: "true"
+        run: |
+          set -euo pipefail
+          log_file="${RUNNER_TEMP}/learning-foundry-showcase.log"
+          npm run showcase >"${log_file}" 2>&1 &
+          showcase_pid=$!
+          cleanup() {
+            kill "${showcase_pid}" 2>/dev/null || true
+            wait "${showcase_pid}" 2>/dev/null || true
+            npm run showcase:destroy >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+
+          ready=false
+          for attempt in $(seq 1 120); do
+            if curl --fail --silent http://127.0.0.1:3202/health >/dev/null \
+              && curl --fail --silent http://127.0.0.1:3100/api/health >/dev/null \
+              && curl --fail --silent http://127.0.0.1:3100/sign-in >/dev/null; then
+              ready=true
+              break
+            fi
+            if ! kill -0 "${showcase_pid}" 2>/dev/null; then
+              echo "Showcase launcher exited before readiness"
+              cat "${log_file}"
+              exit 1
+            fi
+            sleep 2
+          done
+
+          if [[ "${ready}" != "true" ]]; then
+            echo "Showcase did not become ready"
+            cat "${log_file}"
+            exit 1
+          fi
+
+          curl --fail --silent http://127.0.0.1:3202/health
+          curl --fail --silent http://127.0.0.1:3100/api/health
+          curl --fail --silent http://127.0.0.1:3100/sign-in >/dev/null
       - if: github.event_name != 'pull_request'
         uses: actions/configure-pages@v5
       - if: github.event_name != 'pull_request'
