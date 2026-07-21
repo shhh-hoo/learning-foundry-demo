@@ -5,8 +5,11 @@ import {
   componentVersions,
   componentDeliveries,
   componentEvaluations,
+  componentAssetPreviews,
+  capabilityAvailabilityDecisions,
   components,
   capabilities,
+  capabilityVersions,
   conversationEvents,
   courses,
   diagnosticObservations,
@@ -26,6 +29,9 @@ import {
   teacherReviews,
   publicationDecisions,
   workflowRuns,
+  capabilityResolutions,
+  capabilitySupplyRelations,
+  activityPlanProposals,
 } from "@/db/schema";
 import type { Actor } from "@/domain/model";
 import { ComponentContent, ComponentContract, ComponentHumanRubric, humanRubricPasses } from "@/domain/component";
@@ -40,6 +46,10 @@ import {
   requireRole,
 } from "@/domain/invariants";
 import { assertExecutionActive } from "@/application/execution-control";
+import { CallableCapabilityResolutionContract } from "@/domain/capability-resolution";
+import { SourceWebComponentAssetContract, SourceWebComponentAssetPackage, WebComponentAssetContract, WebComponentAssetPackage, webComponentAssetHash } from "@/domain/web-component-asset";
+import { resolveCapabilityForSupplyRelation } from "@/application/capability-resolution";
+import { planActivityForResolution } from "@/application/activity-planning";
 
 function canonical(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonical);
@@ -918,6 +928,17 @@ export async function updateComponentVersion(actor: Actor, input: { componentId:
   });
 }
 
+export type PublicationDependencies = {
+  resolveCapability: typeof resolveCapabilityForSupplyRelation;
+  planActivity: typeof planActivityForResolution;
+  beforeReplan?: () => void | Promise<void>;
+};
+
+const publicationDependencies: PublicationDependencies = {
+  resolveCapability: resolveCapabilityForSupplyRelation,
+  planActivity: planActivityForResolution,
+};
+
 export async function decidePublication(actor: Actor, input: {
   componentVersionId: string;
   evaluationId: string;
@@ -926,7 +947,7 @@ export async function decidePublication(actor: Actor, input: {
   rationale: string;
   rubric: Record<string, unknown>;
   idempotencyKey: string;
-}) {
+}, dependencies: PublicationDependencies = publicationDependencies) {
   assertExecutionActive();
   requireHumanCommand(actor, ["EXPERT", "ADMIN"]);
   const rationale = input.rationale.trim();
@@ -935,23 +956,75 @@ export async function decidePublication(actor: Actor, input: {
   if (input.action === "APPROVE" && !humanRubricPasses(rubric)) {
     throw new DomainInvariantError("APPROVE requires PASS attestations for domain correctness, pedagogy, safety, and reuse readiness", "HUMAN_RUBRIC_BLOCKED");
   }
-  const decisionId = randomUUID();
   const commandType = "COMPONENT_PUBLICATION_DECISION";
   const requestHash = commandRequestHash(actor, commandType, { ...input, rubric, idempotencyKey: undefined });
+  const decisionId = deterministicCommandResultId(commandType, requestHash);
   return getDb().transaction(async (tx) => {
     const reserved = await tx.insert(idempotencyKeys).values({ institutionId: actor.institutionId, key: input.idempotencyKey, commandType, requestHash, resultId: decisionId }).onConflictDoNothing().returning();
     if (!reserved.length) {
       const [existing] = await tx.select().from(idempotencyKeys).where(and(eq(idempotencyKeys.institutionId, actor.institutionId), eq(idempotencyKeys.commandType, commandType), eq(idempotencyKeys.key, input.idempotencyKey)));
-      return { decisionId: assertReplay(existing, commandType, requestHash), replayed: true };
+      const existingDecisionId = assertReplay(existing, commandType, requestHash);
+      const [existingDecision] = await tx.select({ decision: publicationDecisions, component: components }).from(publicationDecisions)
+        .innerJoin(componentVersions, eq(componentVersions.id, publicationDecisions.componentVersionId))
+        .innerJoin(components, eq(components.id, componentVersions.componentId))
+        .where(eq(publicationDecisions.id, existingDecisionId)).limit(1);
+      if (!existingDecision) throw new DomainInvariantError("Publication replay target is missing", "IDEMPOTENCY_INTEGRITY");
+      requireCourseAccess(actor, existingDecision.component.institutionId, existingDecision.component.courseId);
+      let capabilityResolutionId: string | null = null;
+      let activityPlanProposalId: string | null = null;
+      let capabilitySupplyRelationId: string | null = null;
+      if (existingDecision.decision.action === "APPROVE" && existingDecision.component.assetType === "WEB_COMPONENT_ASSET") {
+        if (!existingDecision.component.registeredCapabilityId || !existingDecision.component.registeredCapabilityVersionId || !existingDecision.component.sourceCapabilityResolutionId) {
+          throw new DomainInvariantError("Publication replay is missing its exact Registry binding", "IDEMPOTENCY_INTEGRITY");
+        }
+        const [relation] = await tx.select().from(capabilitySupplyRelations).where(eq(capabilitySupplyRelations.registeredCapabilityVersionId, existingDecision.component.registeredCapabilityVersionId)).limit(1);
+        capabilitySupplyRelationId = relation?.id ?? null;
+        const [source] = relation ? await tx.select().from(capabilityResolutions).where(eq(capabilityResolutions.id, relation.sourceCapabilityResolutionId)).limit(1) : [];
+        const [replan] = source ? await tx.select({ resolution: capabilityResolutions, plan: activityPlanProposals })
+          .from(capabilityResolutions)
+          .innerJoin(activityPlanProposals, eq(activityPlanProposals.capabilityResolutionId, capabilityResolutions.id))
+          .where(and(
+            eq(capabilityResolutions.taskId, source.taskId),
+            eq(capabilityResolutions.episodeId, source.episodeId),
+            eq(capabilityResolutions.selectedCapabilityId, existingDecision.component.registeredCapabilityId),
+            eq(capabilityResolutions.selectedCapabilityVersionId, existingDecision.component.registeredCapabilityVersionId),
+            eq(capabilityResolutions.decision, "EXISTING"),
+            eq(activityPlanProposals.state, "READY"),
+            eq(activityPlanProposals.selectedCapabilityVersionId, existingDecision.component.registeredCapabilityVersionId),
+          )).orderBy(desc(capabilityResolutions.createdAt), desc(capabilityResolutions.id)).limit(1) : [];
+        if (!replan) throw new DomainInvariantError("Publication replay is missing durable exact re-resolution and READY planning", "IDEMPOTENCY_INTEGRITY");
+        capabilityResolutionId = replan.resolution.id;
+        activityPlanProposalId = replan.plan.id;
+      }
+      return { decisionId: existingDecisionId, componentId: existingDecision.component.id, componentVersionId: existingDecision.decision.componentVersionId, registeredCapabilityId: existingDecision.component.registeredCapabilityId, registeredCapabilityVersionId: existingDecision.component.registeredCapabilityVersionId, capabilitySupplyRelationId, capabilityResolutionId, activityPlanProposalId, action: existingDecision.decision.action as "APPROVE" | "REJECT", replayed: true };
+    }
+    const [lockedVersion] = await tx.select({ id: componentVersions.id, componentId: componentVersions.componentId })
+      .from(componentVersions).where(eq(componentVersions.id, input.componentVersionId)).for("update").limit(1);
+    if (lockedVersion) {
+      await tx.select({ id: components.id }).from(components)
+        .where(eq(components.id, lockedVersion.componentId)).for("update").limit(1);
     }
     const [binding] = await tx.select({ version: componentVersions, component: components, evaluation: componentEvaluations })
       .from(componentVersions)
       .innerJoin(components, eq(components.id, componentVersions.componentId))
       .innerJoin(componentEvaluations, and(eq(componentEvaluations.id, input.evaluationId), eq(componentEvaluations.componentVersionId, componentVersions.id)))
       .where(and(eq(componentVersions.id, input.componentVersionId), eq(components.institutionId, actor.institutionId)))
-      .for("update")
       .limit(1);
-    if (!binding) throw new DomainInvariantError("Publication evaluation is outside the active institution or version lineage", "TENANT_ISOLATION");
+    if (!binding) {
+      const [versionProbe] = await tx.select({ id: componentVersions.id, componentId: componentVersions.componentId })
+        .from(componentVersions).where(eq(componentVersions.id, input.componentVersionId)).limit(1);
+      const [evaluationProbe] = await tx.select({ id: componentEvaluations.id, componentVersionId: componentEvaluations.componentVersionId })
+        .from(componentEvaluations).where(eq(componentEvaluations.id, input.evaluationId)).limit(1);
+      const reason = !versionProbe
+        ? "VERSION_NOT_AUTHORIZED"
+        : !evaluationProbe
+          ? "EVALUATION_NOT_AUTHORIZED"
+          : evaluationProbe.componentVersionId !== versionProbe.id
+            ? "EVALUATION_VERSION_MISMATCH"
+            : "COMPONENT_SCOPE_MISMATCH";
+      throw new DomainInvariantError(`Publication evaluation is outside the active institution or version lineage (${reason})`, "TENANT_ISOLATION");
+    }
+    requireCourseAccess(actor, binding.component.institutionId, binding.component.courseId);
     const [workflow] = await tx.select().from(workflowRuns).where(and(
       eq(workflowRuns.threadId, input.workflowThreadId),
       eq(workflowRuns.institutionId, actor.institutionId),
@@ -969,29 +1042,106 @@ export async function decidePublication(actor: Actor, input: {
     }
     if (binding.version.status !== "DRAFT") throw new DomainInvariantError("Component version already has a terminal publication decision", "PUBLICATION_CONFLICT");
     if (binding.evaluation.contentHash !== binding.version.contentHash) throw new DomainInvariantError("Publication evaluation is stale for this Component content", "COMPONENT_EVALUATION_STALE");
-    const currentSignals = await tx.select({ observation: diagnosticObservations, attempt: learnerAttempts, task: learningTasks, review: teacherReviews })
-      .from(diagnosticObservations)
-      .innerJoin(learnerAttempts, eq(learnerAttempts.id, diagnosticObservations.attemptId))
-      .innerJoin(learningTasks, eq(learningTasks.id, learnerAttempts.taskId))
-      .innerJoin(teacherReviews, eq(teacherReviews.observationId, diagnosticObservations.id))
-      .where(and(
-        inArray(diagnosticObservations.id, binding.evaluation.sourceObservationIds),
-        inArray(teacherReviews.id, binding.evaluation.sourceReviewIds),
-        isNull(diagnosticObservations.supersededById),
-        eq(learningTasks.institutionId, actor.institutionId),
-        eq(learningTasks.courseId, binding.evaluation.courseId),
-      ));
-    const currentObservationIds = new Set(currentSignals.map(({ observation }) => observation.id));
-    const currentReviewIds = new Set(currentSignals.map(({ review }) => review.id));
-    const currentAttemptIds = new Set(currentSignals.map(({ attempt }) => attempt.id));
-    const evaluationLineageCurrent = currentObservationIds.size === binding.evaluation.sourceObservationIds.length
-      && currentReviewIds.size === binding.evaluation.sourceReviewIds.length
-      && currentAttemptIds.size === binding.evaluation.sourceAttemptIds.length
-      && binding.evaluation.sourceObservationIds.every((id) => currentObservationIds.has(id))
-      && binding.evaluation.sourceReviewIds.every((id) => currentReviewIds.has(id))
-      && binding.evaluation.sourceAttemptIds.every((id) => currentAttemptIds.has(id))
-      && currentSignals.every(({ review }) => requireEligibleReviewDecision(review.decision, "Component publication") && (requireVerifiedReviewProvenance(review, actor.institutionId), true));
-    if (!evaluationLineageCurrent) throw new DomainInvariantError("Publication evaluation source Reviews or Observations are no longer current", "COMPONENT_EVALUATION_STALE");
+    const webAsset = binding.component.assetType === "WEB_COMPONENT_ASSET";
+    let webSource: { resolution: typeof capabilityResolutions.$inferSelect; plan: typeof activityPlanProposals.$inferSelect; observation: typeof diagnosticObservations.$inferSelect; attempt: typeof learnerAttempts.$inferSelect; task: typeof learningTasks.$inferSelect; sourceCapability: typeof capabilities.$inferSelect; sourceVersion: typeof capabilityVersions.$inferSelect; sourceContract: CallableCapabilityResolutionContract; sourceComponent: typeof components.$inferSelect; sourceComponentVersion: typeof componentVersions.$inferSelect } | null = null;
+    if (webAsset) {
+      const sourceResolutionId = binding.component.sourceCapabilityResolutionId;
+      const sourcePlanId = binding.component.sourceActivityPlanProposalId;
+      if (!sourceResolutionId || !sourcePlanId) throw new DomainInvariantError("Web ComponentAsset source gap lineage is incomplete", "COMPONENT_EVALUATION_STALE");
+      await tx.execute(sql`SELECT foundry_product.lock_cap07_publication_source(${binding.component.id}::uuid,${binding.version.id}::uuid,${binding.evaluation.id}::uuid)`);
+      const [sourceLineage] = await tx.select({ resolution: capabilityResolutions, plan: activityPlanProposals, observation: diagnosticObservations, attempt: learnerAttempts, task: learningTasks })
+        .from(capabilityResolutions)
+        .innerJoin(activityPlanProposals, eq(activityPlanProposals.id, sourcePlanId))
+        .innerJoin(diagnosticObservations, eq(diagnosticObservations.id, capabilityResolutions.diagnosticObservationId))
+        .innerJoin(learnerAttempts, eq(learnerAttempts.id, diagnosticObservations.attemptId))
+        .innerJoin(learningTasks, eq(learningTasks.id, capabilityResolutions.taskId))
+        .where(and(eq(capabilityResolutions.id, sourceResolutionId), eq(capabilityResolutions.institutionId, actor.institutionId), isNull(diagnosticObservations.supersededById)))
+        .limit(1);
+      const [latestResolution] = sourceLineage ? await tx.select({ id: capabilityResolutions.id }).from(capabilityResolutions)
+        .where(and(eq(capabilityResolutions.taskId, sourceLineage.task.id), eq(capabilityResolutions.episodeId, sourceLineage.resolution.episodeId)))
+        .orderBy(desc(capabilityResolutions.createdAt), desc(capabilityResolutions.id)).limit(1) : [];
+      const [latestPlan] = sourceLineage ? await tx.select({ id: activityPlanProposals.id }).from(activityPlanProposals)
+        .where(and(eq(activityPlanProposals.taskId, sourceLineage.task.id), eq(activityPlanProposals.episodeId, sourceLineage.resolution.episodeId)))
+        .orderBy(desc(activityPlanProposals.createdAt), desc(activityPlanProposals.id)).limit(1) : [];
+      const [sourceRegistry] = binding.component.adaptedFromCapabilityId && binding.component.adaptedFromCapabilityVersionId && binding.component.adaptedFromComponentVersionId
+        ? await tx.select({ capability: capabilities, version: capabilityVersions, component: components, componentVersion: componentVersions }).from(capabilityVersions)
+          .innerJoin(capabilities, eq(capabilities.id, capabilityVersions.capabilityId))
+          .innerJoin(componentVersions, eq(componentVersions.id, binding.component.adaptedFromComponentVersionId))
+          .innerJoin(components, eq(components.id, componentVersions.componentId))
+          .where(and(eq(capabilities.id, binding.component.adaptedFromCapabilityId), eq(capabilityVersions.id, binding.component.adaptedFromCapabilityVersionId))).limit(1)
+        : [];
+      const sourceEnvelope = sourceRegistry?.version.contract && typeof sourceRegistry.version.contract === "object"
+        ? (sourceRegistry.version.contract as Record<string, unknown>).resolution ?? sourceRegistry.version.contract
+        : sourceRegistry?.version.contract;
+      const parsedSourceContract = CallableCapabilityResolutionContract.safeParse(sourceEnvelope);
+      const gapSignal = sourceLineage?.resolution.gapSignal as Record<string, unknown> | null;
+      const exactSourceCandidate = Array.isArray(sourceLineage?.resolution.candidateSet) && sourceRegistry
+        ? sourceLineage.resolution.candidateSet.some((candidate) => candidate && typeof candidate === "object" && !Array.isArray(candidate)
+          && candidate.capabilityId === sourceRegistry.capability.id && candidate.versionId === sourceRegistry.version.id
+          && candidate.contentHash === sourceRegistry.version.contentHash && candidate.matchMode === "ADAPT" && candidate.eligibility === "ELIGIBLE"
+          && Array.isArray(candidate.exclusionReasons) && candidate.exclusionReasons.length === 0)
+        : false;
+      if (!sourceLineage || !sourceRegistry || !parsedSourceContract.success) {
+        throw new DomainInvariantError("Web ComponentAsset gap or check lineage is stale (MISSING_SOURCE_LINEAGE)", "COMPONENT_EVALUATION_STALE");
+      }
+      const staleReasons = [
+        sourceLineage.resolution.decision !== "ADAPT" || binding.component.supplyStrategy !== "ADAPT" ? "SUPPLY_STRATEGY" : null,
+        !sourceLineage.resolution.noMatch || !sourceLineage.resolution.teacherEscalation ? "GAP_AUTHORITY" : null,
+        gapSignal?.kind !== "ADAPTATION_REQUIRED" || gapSignal.relatedCapabilityVersionId !== sourceRegistry.version.id ? "GAP_SOURCE_VERSION" : null,
+        sourceLineage.plan.capabilityResolutionId !== sourceLineage.resolution.id || sourceLineage.plan.state !== "BLOCKED" || sourceLineage.plan.selectedCapabilityVersionId ? "BLOCKED_PLAN" : null,
+        latestResolution?.id !== sourceLineage.resolution.id || latestPlan?.id !== sourceLineage.plan.id ? "SOURCE_FRESHNESS" : null,
+        sourceRegistry.capability.activeVersionId !== sourceRegistry.version.id || sourceRegistry.version.status !== "ACTIVE" ? "SOURCE_CAPABILITY_ACTIVE_VERSION" : null,
+        sourceRegistry.version.contentHash !== binding.component.adaptedFromContentHash ? "SOURCE_CAPABILITY_HASH" : null,
+        !parsedSourceContract.data.verified || !parsedSourceContract.data.adaptation.reviewed ? "SOURCE_REVIEW" : null,
+        !exactSourceCandidate ? "SOURCE_CANDIDATE" : null,
+        sourceRegistry.version.componentAssetVersionId !== sourceRegistry.componentVersion.id ? "SOURCE_COMPONENT_BINDING" : null,
+        sourceRegistry.component.activeVersionId !== sourceRegistry.componentVersion.id || sourceRegistry.componentVersion.status !== "PUBLISHED" ? "SOURCE_COMPONENT_ACTIVE_VERSION" : null,
+        sourceRegistry.componentVersion.contentHash !== binding.component.adaptedFromComponentContentHash ? "SOURCE_COMPONENT_HASH" : null,
+        !SourceWebComponentAssetContract.safeParse(sourceRegistry.componentVersion.contract).success ? "SOURCE_COMPONENT_CONTRACT" : null,
+        !SourceWebComponentAssetPackage.safeParse(sourceRegistry.componentVersion.content).success ? "SOURCE_COMPONENT_PACKAGE" : null,
+        webComponentAssetHash(sourceRegistry.componentVersion.contract, sourceRegistry.componentVersion.content) !== sourceRegistry.componentVersion.contentHash ? "SOURCE_COMPONENT_HASH_RECOMPUTE" : null,
+        binding.evaluation.sourceObservationIds.length !== 1 || binding.evaluation.sourceObservationIds[0] !== sourceLineage.observation.id ? "EVALUATION_OBSERVATION" : null,
+        binding.evaluation.sourceReviewIds.length !== 0 ? "EVALUATION_REVIEW" : null,
+        binding.evaluation.sourceAttemptIds.length !== 1 || binding.evaluation.sourceAttemptIds[0] !== sourceLineage.attempt.id ? "EVALUATION_ATTEMPT" : null,
+      ].filter((reason): reason is string => Boolean(reason));
+      if (staleReasons.length) {
+        throw new DomainInvariantError(`Web ComponentAsset gap or check lineage is stale (${staleReasons.join(",")})`, "COMPONENT_EVALUATION_STALE");
+      }
+      webSource = { ...sourceLineage, sourceCapability: sourceRegistry.capability, sourceVersion: sourceRegistry.version, sourceContract: parsedSourceContract.data, sourceComponent: sourceRegistry.component, sourceComponentVersion: sourceRegistry.componentVersion };
+      if (input.action === "APPROVE") {
+        const [preview] = await tx.select().from(componentAssetPreviews).where(and(
+          eq(componentAssetPreviews.componentVersionId, binding.version.id),
+          eq(componentAssetPreviews.componentEvaluationId, binding.evaluation.id),
+          eq(componentAssetPreviews.contentHash, binding.version.contentHash),
+          eq(componentAssetPreviews.status, "SUCCEEDED"),
+        )).orderBy(desc(componentAssetPreviews.createdAt)).limit(1);
+        if (!preview) throw new DomainInvariantError("Authorized confirmation requires a successful exact-version learner preview", "COMPONENT_PREVIEW_REQUIRED");
+      }
+    } else {
+      const currentSignals = await tx.select({ observation: diagnosticObservations, attempt: learnerAttempts, task: learningTasks, review: teacherReviews })
+        .from(diagnosticObservations)
+        .innerJoin(learnerAttempts, eq(learnerAttempts.id, diagnosticObservations.attemptId))
+        .innerJoin(learningTasks, eq(learningTasks.id, learnerAttempts.taskId))
+        .innerJoin(teacherReviews, eq(teacherReviews.observationId, diagnosticObservations.id))
+        .where(and(
+          inArray(diagnosticObservations.id, binding.evaluation.sourceObservationIds),
+          inArray(teacherReviews.id, binding.evaluation.sourceReviewIds),
+          isNull(diagnosticObservations.supersededById),
+          eq(learningTasks.institutionId, actor.institutionId),
+          eq(learningTasks.courseId, binding.evaluation.courseId),
+        ));
+      const currentObservationIds = new Set(currentSignals.map(({ observation }) => observation.id));
+      const currentReviewIds = new Set(currentSignals.map(({ review }) => review.id));
+      const currentAttemptIds = new Set(currentSignals.map(({ attempt }) => attempt.id));
+      const evaluationLineageCurrent = currentObservationIds.size === binding.evaluation.sourceObservationIds.length
+        && currentReviewIds.size === binding.evaluation.sourceReviewIds.length
+        && currentAttemptIds.size === binding.evaluation.sourceAttemptIds.length
+        && binding.evaluation.sourceObservationIds.every((id) => currentObservationIds.has(id))
+        && binding.evaluation.sourceReviewIds.every((id) => currentReviewIds.has(id))
+        && binding.evaluation.sourceAttemptIds.every((id) => currentAttemptIds.has(id))
+        && currentSignals.every(({ review }) => requireEligibleReviewDecision(review.decision, "Component publication") && (requireVerifiedReviewProvenance(review, actor.institutionId), true));
+      if (!evaluationLineageCurrent) throw new DomainInvariantError("Publication evaluation source Reviews or Observations are no longer current", "COMPONENT_EVALUATION_STALE");
+    }
     if (input.action === "APPROVE" && binding.evaluation.systemStatus !== "PASSED") throw new DomainInvariantError("System evaluation gates block publication", "COMPONENT_SYSTEM_GATES_BLOCKED");
     await tx.execute(sql`SELECT set_config('foundry.governance_command', 'component_publication', true)`);
     await tx.insert(publicationDecisions).values({
@@ -1009,14 +1159,109 @@ export async function decidePublication(actor: Actor, input: {
     });
     const [terminalVersion] = await tx.update(componentVersions).set({ status: input.action === "APPROVE" ? "PUBLISHED" : "REJECTED" }).where(and(eq(componentVersions.id, binding.version.id), eq(componentVersions.status, "DRAFT"))).returning();
     if (!terminalVersion) throw new DomainInvariantError("Component version already received a terminal decision", "PUBLICATION_CONFLICT");
-    if (input.action === "APPROVE") {
+    let registeredCapabilityId: string | null = null;
+    let registeredCapabilityVersionId: string | null = null;
+    let capabilityResolutionId: string | null = null;
+    let activityPlanProposalId: string | null = null;
+    let capabilitySupplyRelationId: string | null = null;
+    if (input.action === "APPROVE" && webAsset && webSource) {
+      const contract = WebComponentAssetContract.parse(binding.version.contract);
+      const componentPackage = WebComponentAssetPackage.parse(binding.version.content);
+      registeredCapabilityId = deterministicCommandResultId("CAP07_REGISTERED_CAPABILITY", requestHash);
+      registeredCapabilityVersionId = deterministicCommandResultId("CAP07_REGISTERED_CAPABILITY_VERSION", requestHash);
+      const resolutionContract = CallableCapabilityResolutionContract.parse({
+        contractType: "CALLABLE_LEARNING_CAPABILITY",
+        verified: true,
+        learningProblem: webSource.sourceContract.learningProblem,
+        exactMatchSignals: [webSource.sourceCapability.key, webSource.sourceCapability.name, webSource.sourceContract.learningProblem],
+        eligibility: { learnerLevels: ["COURSE_AUTHORIZED_UNSPECIFIED"], taskTypes: ["CAPABILITY_GAP_REMEDIATION"], curricula: [contract.referencePackKey], languages: [componentPackage.language], accessibility: ["keyboard", "screen-reader", "text"], prerequisites: [], contraindications: [] },
+        availability: { status: "AVAILABLE", institutionIds: [actor.institutionId], courseIds: [binding.component.courseId], rights: "NOT_REQUIRED", dependencies: [], provider: null },
+        parameterization: { supported: false, signals: [], recommendation: {} },
+        composition: { supported: false, contributes: [] },
+        adaptation: { reviewed: true, signals: [webSource.sourceCapability.key, webSource.sourceContract.learningProblem] },
+        runtime: {
+          kind: contract.runtimeKind,
+          input: { type: "object", required: ["selectedChoiceId"], properties: { selectedChoiceId: { type: "string" } } },
+          parameters: { componentAssetVersionId: binding.version.id, templateKey: contract.templateKey },
+          state: { mode: "STATELESS_ONE_SHOT" },
+          output: { type: "object", required: ["componentCompleted", "correct", "feedback", "events"] },
+          events: componentPackage.eventContract,
+        },
+      });
+      const capabilityContract = {
+        resolution: resolutionContract,
+        componentAsset: { componentId: binding.component.id, versionId: binding.version.id, version: binding.version.version, contentHash: binding.version.contentHash, contract, package: componentPackage },
+      };
+      const restrictedReusableValues = [
+        webSource.resolution.id,
+        webSource.plan.id,
+        webSource.observation.id,
+        webSource.observation.summary,
+        webSource.attempt.id,
+        webSource.attempt.prompt,
+        webSource.attempt.response,
+        webSource.attempt.learnerId,
+        webSource.task.id,
+        webSource.task.title,
+        webSource.task.goal,
+      ].filter((value) => value.trim().length >= 8).map((value) => value.toLocaleLowerCase("en-US"));
+      const serializedCapabilityContract = JSON.stringify(capabilityContract).toLocaleLowerCase("en-US");
+      if (restrictedReusableValues.some((value) => serializedCapabilityContract.includes(value))) {
+        throw new DomainInvariantError("Final assembled Registry contract contains restricted learner or gap lineage", "CAPABILITY_REGISTRY_DEIDENTIFICATION_FAILED");
+      }
+      const capabilityContentHash = createHash("sha256").update(JSON.stringify(canonical(capabilityContract))).digest("hex");
+      await tx.insert(capabilities).values({ id: registeredCapabilityId, institutionId: actor.institutionId, courseId: binding.component.courseId, key: `cap07.${actor.institutionId.slice(0, 8)}.${binding.component.id}`, name: contract.title, referencePackKey: contract.referencePackKey, kind: "WEB_COMPONENT_ASSET", activeVersionId: null });
+      await tx.insert(capabilityVersions).values({ id: registeredCapabilityVersionId, capabilityId: registeredCapabilityId, institutionId: actor.institutionId, courseId: binding.component.courseId, componentAssetVersionId: binding.version.id, version: binding.version.version, contract: capabilityContract, implementationKey: contract.implementationKey, status: "ACTIVE", contentHash: capabilityContentHash });
+      await tx.update(components).set({ capabilityId: registeredCapabilityId, registeredCapabilityId, registeredCapabilityVersionId, activeVersionId: binding.version.id, status: "PUBLISHED", title: contract.title }).where(eq(components.id, binding.component.id));
+      await tx.insert(capabilityAvailabilityDecisions).values({
+        institutionId: actor.institutionId,
+        courseId: binding.component.courseId,
+        capabilityId: registeredCapabilityId,
+        capabilityVersionId: registeredCapabilityVersionId,
+        componentVersionId: binding.version.id,
+        confirmationDecisionId: decisionId,
+        availabilityStatus: "AVAILABLE",
+        availabilityScope: { kind: "INSTITUTION_COURSE_PRIVATE", institutionId: actor.institutionId, courseId: binding.component.courseId, crossTenantReuse: false },
+        confirmedBy: actor.userId,
+        actorProvenance: actorProvenance(actor),
+        rationale,
+      });
+      await tx.update(capabilities).set({ activeVersionId: registeredCapabilityVersionId }).where(eq(capabilities.id, registeredCapabilityId));
+      capabilitySupplyRelationId = deterministicCommandResultId("CAP07_CAPABILITY_SUPPLY_RELATION", requestHash);
+      await tx.insert(capabilitySupplyRelations).values({
+        id: capabilitySupplyRelationId,
+        institutionId: actor.institutionId,
+        courseId: binding.component.courseId,
+        sourceCapabilityResolutionId: webSource.resolution.id,
+        sourceActivityPlanProposalId: webSource.plan.id,
+        sourceDiagnosticObservationId: webSource.observation.id,
+        sourceAttemptId: webSource.attempt.id,
+        componentId: binding.component.id,
+        componentVersionId: binding.version.id,
+        registeredCapabilityId,
+        registeredCapabilityVersionId,
+        confirmationDecisionId: decisionId,
+        createdBy: actor.userId,
+      });
+      await dependencies.beforeReplan?.();
+      const resolution = await dependencies.resolveCapability(actor, { supplyRelationId: capabilitySupplyRelationId });
+      if (resolution.decision !== "EXISTING" || resolution.selectedCapabilityId !== registeredCapabilityId || resolution.selectedCapabilityVersionId !== registeredCapabilityVersionId) {
+        throw new DomainInvariantError("Registered exact version did not become the deterministic CAP-02 selection", "CAPABILITY_RERESOLUTION_MISMATCH");
+      }
+      const plan = await dependencies.planActivity(actor, { taskId: resolution.taskId, episodeId: resolution.episodeId, capabilityResolutionId: resolution.id });
+      if (plan.state !== "READY" || plan.selectedCapabilityId !== registeredCapabilityId || plan.selectedCapabilityVersionId !== registeredCapabilityVersionId) {
+        throw new DomainInvariantError("Registered exact version did not produce a READY CAP-03 plan", "CAPABILITY_REPLAN_MISMATCH");
+      }
+      capabilityResolutionId = resolution.id;
+      activityPlanProposalId = plan.id;
+    } else if (input.action === "APPROVE") {
       const contract = ComponentContract.parse(binding.version.contract);
       await tx.update(components).set({ activeVersionId: binding.version.id, status: "PUBLISHED", title: contract.title }).where(eq(components.id, binding.component.id));
     } else if (!binding.component.activeVersionId) {
       await tx.update(components).set({ status: "REJECTED" }).where(eq(components.id, binding.component.id));
     }
     await tx.insert(governanceEvents).values({ institutionId: actor.institutionId, actorUserId: actor.userId, entityType: "PUBLICATION_DECISION", entityId: decisionId, action: input.action, payload: { componentId: binding.component.id, componentVersionId: binding.version.id, evaluationId: binding.evaluation.id, workflowThreadId: input.workflowThreadId, humanRubric: rubric } });
-    return { decisionId, componentId: binding.component.id, componentVersionId: binding.version.id, action: input.action, replayed: false };
+    return { decisionId, componentId: binding.component.id, componentVersionId: binding.version.id, registeredCapabilityId, registeredCapabilityVersionId, capabilitySupplyRelationId, capabilityResolutionId, activityPlanProposalId, action: input.action, replayed: false };
   });
 }
 

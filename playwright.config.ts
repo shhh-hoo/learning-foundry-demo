@@ -13,6 +13,8 @@ const productRuntimeUrl = withRuntimeDatabaseRole(e2eDatabaseUrl, RUNTIME_DATABA
 const authRuntimeUrl = withRuntimeDatabaseRole(e2eDatabaseUrl, RUNTIME_DATABASE_ROLES.auth);
 const workerRuntimeUrl = withRuntimeDatabaseRole(e2eDatabaseUrl, RUNTIME_DATABASE_ROLES.worker);
 const checkpointRuntimeUrl = withRuntimeDatabaseRole(e2eDatabaseUrl, RUNTIME_DATABASE_ROLES.checkpoint);
+const componentExecutorUrl = "http://127.0.0.1:3202";
+const componentExecutorToken = "cap07-e2e-component-executor-internal-token-only";
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -37,6 +39,18 @@ export default defineConfig({
         reuseExistingServer: false,
         timeout: 30_000,
       }, {
+        command: "npm run component-executor",
+        url: `${componentExecutorUrl}/health`,
+        reuseExistingServer: false,
+        timeout: 30_000,
+        env: {
+          COMPONENT_EXECUTOR_PRODUCT_DATABASE_URL: e2eDatabaseUrl,
+          COMPONENT_EXECUTOR_DATABASE_URL: e2eDatabaseUrl,
+          COMPONENT_EXECUTOR_SERVICE_TOKEN: componentExecutorToken,
+          COMPONENT_EXECUTOR_HOST: "127.0.0.1",
+          COMPONENT_EXECUTOR_PORT: "3202",
+        },
+      }, {
         command: "npm run dev -- --hostname localhost --port 3100",
         url: `${localBaseUrl}/api/health`,
         reuseExistingServer: false,
@@ -45,6 +59,8 @@ export default defineConfig({
           PRODUCT_DATABASE_URL: productRuntimeUrl,
           AUTH_DATABASE_URL: authRuntimeUrl,
           WORKER_DATABASE_URL: workerRuntimeUrl,
+          COMPONENT_EXECUTOR_SERVICE_URL: componentExecutorUrl,
+          COMPONENT_EXECUTOR_SERVICE_TOKEN: componentExecutorToken,
           CHECKPOINT_DATABASE_URL: checkpointRuntimeUrl,
           AUTH_SECRET: process.env.AUTH_SECRET ?? "test-auth-secret-learning-foundry-only",
           AUTH_URL: localBaseUrl,
@@ -54,6 +70,7 @@ export default defineConfig({
           AUTH_OIDC_CLIENT_SECRET: "learning-foundry-e2e-secret",
           NODE_EXTRA_CA_CERTS: resolve(tmpdir(), "lf-rw02-oidc-cert.pem"),
           SYNTHETIC_SHOWCASE_MODE: "true",
+          SYNTHETIC_ASSET_RUNTIME_DELAY_MS: "5000",
           SHOWCASE_PASSWORD: showcasePassword,
           DEEPSEEK_API_KEY: "",
           OPENAI_API_KEY: "",

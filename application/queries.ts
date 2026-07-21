@@ -2,6 +2,8 @@ import { and, desc, eq, inArray, lte, or, sql } from "drizzle-orm";
 import { getDb, getSql, getTenantCheckpointSql } from "@/db/client";
 import {
   activityPlanProposals,
+  activityPlans,
+  runtimeDeliveries,
   componentVersions,
   components,
   componentDeliveries,
@@ -31,6 +33,8 @@ import {
   transferActivities,
   retentionReviews,
   workflowRuns,
+  componentAssetPreviews,
+  capabilityAvailabilityDecisions,
 } from "@/db/schema";
 import type { Actor } from "@/domain/model";
 import { authorizeEvidenceUnitInstitution, authorizePersistedEvidence, evidenceAlignsToCourse } from "@/domain/evidence";
@@ -202,7 +206,24 @@ export async function getTaskDetail(actor: Actor, taskId: string) {
     .innerJoin(componentVersions, eq(componentVersions.id, componentDeliveries.componentVersionId))
     .where(and(eq(componentDeliveries.taskId, taskId), eq(componentDeliveries.institutionId, actor.institutionId)))
     .orderBy(desc(componentDeliveries.createdAt));
-  return { task, episodes, events, attempts, observations, reviews, retries, followupContracts, followupPlans, outcomes, contexts, assets, sources, componentSupport };
+  const webComponentActivities = await db.select({
+    proposal: activityPlanProposals,
+    capability: capabilities,
+    capabilityVersion: capabilityVersions,
+    component: components,
+    componentVersion: componentVersions,
+    activityPlan: activityPlans,
+    delivery: runtimeDeliveries,
+  }).from(activityPlanProposals)
+    .innerJoin(capabilityVersions, eq(capabilityVersions.id, activityPlanProposals.selectedCapabilityVersionId))
+    .innerJoin(capabilities, eq(capabilities.id, capabilityVersions.capabilityId))
+    .innerJoin(components, eq(components.registeredCapabilityVersionId, capabilityVersions.id))
+    .innerJoin(componentVersions, eq(componentVersions.id, capabilityVersions.componentAssetVersionId))
+    .leftJoin(activityPlans, eq(activityPlans.activityPlanProposalId, activityPlanProposals.id))
+    .leftJoin(runtimeDeliveries, eq(runtimeDeliveries.activityPlanId, activityPlans.id))
+    .where(and(eq(activityPlanProposals.taskId, taskId), eq(activityPlanProposals.state, "READY"), eq(components.institutionId, actor.institutionId), eq(components.assetType, "WEB_COMPONENT_ASSET")))
+    .orderBy(desc(activityPlanProposals.createdAt), desc(runtimeDeliveries.attemptNumber));
+  return { task, episodes, events, attempts, observations, reviews, retries, followupContracts, followupPlans, outcomes, contexts, assets, sources, componentSupport, webComponentActivities };
 }
 
 export async function getTeacherWorkspace(actor: Actor) {
@@ -437,7 +458,7 @@ export async function getFoundryWorkspace(actor: Actor) {
   const candidateBaseRows = await db.select({ component: components, version: componentVersions, capability: capabilities })
     .from(components)
     .leftJoin(componentVersions, eq(componentVersions.componentId, components.id))
-    .innerJoin(capabilities, eq(capabilities.id, components.capabilityId))
+    .leftJoin(capabilities, eq(capabilities.id, components.capabilityId))
     .where(and(
       eq(components.institutionId, actor.institutionId),
       inArray(components.courseId, actor.courseIds.length ? actor.courseIds : ["00000000-0000-0000-0000-000000000000"]),
@@ -561,7 +582,43 @@ export async function getFoundryWorkspace(actor: Actor) {
       eq(sourceRecords.rightsAuthorizationStatus, "APPROVED"),
       inArray(sourceRecords.courseId, actor.courseIds.length ? actor.courseIds : ["00000000-0000-0000-0000-000000000000"]),
     )).orderBy(evidenceUnits.createdAt);
-  return { candidates: candidateRows, decisions, reviewedPatterns, candidateSources, pendingWorkflows, evidenceOptions };
+  const gapSignals = await getSql()<Array<Record<string, unknown>>>`
+    SELECT resolution.id AS capability_resolution_id, resolution.decision, resolution.gap_signal,
+      resolution.selection_rationale, resolution.candidate_set, plan.id AS activity_plan_proposal_id,
+      plan.state AS plan_state, plan.block_reasons, task.id AS task_id, task.title AS task_title,
+      task.goal AS task_goal, task.course_id, observation.summary AS diagnosis_summary,
+      observation.failure_code, subject.reference_pack_key
+    FROM foundry_product.capability_resolutions resolution
+    JOIN foundry_product.activity_plan_proposals plan ON plan.capability_resolution_id=resolution.id
+    JOIN foundry_product.learning_tasks task ON task.id=resolution.task_id
+    JOIN foundry_product.diagnostic_observations observation ON observation.id=resolution.diagnostic_observation_id
+    JOIN foundry_product.courses course_scope ON course_scope.id=resolution.course_id
+    JOIN foundry_product.subjects subject ON subject.id=course_scope.subject_id
+    WHERE resolution.institution_id=${actor.institutionId}
+      AND resolution.course_id=ANY(${actor.courseIds}::uuid[])
+      AND resolution.decision='ADAPT'
+      AND resolution.no_match AND resolution.teacher_escalation
+      AND plan.state='BLOCKED'
+      AND NOT EXISTS (SELECT 1 FROM foundry_product.capability_resolutions newer WHERE newer.task_id=resolution.task_id AND newer.episode_id=resolution.episode_id AND (newer.created_at,newer.id)>(resolution.created_at,resolution.id))
+      AND NOT EXISTS (SELECT 1 FROM foundry_product.components component WHERE component.source_capability_resolution_id=resolution.id)
+    ORDER BY resolution.created_at DESC, resolution.id DESC
+  `;
+  const previews = versionIds.length ? await db.select().from(componentAssetPreviews).where(inArray(componentAssetPreviews.componentVersionId, versionIds)).orderBy(desc(componentAssetPreviews.createdAt)) : [];
+  const availability = await db.select().from(capabilityAvailabilityDecisions).where(and(eq(capabilityAvailabilityDecisions.institutionId, actor.institutionId), inArray(capabilityAvailabilityDecisions.courseId, actor.courseIds.length ? actor.courseIds : ["00000000-0000-0000-0000-000000000000"]))).orderBy(desc(capabilityAvailabilityDecisions.createdAt));
+  const readyRegistrations = await getSql()<Array<{ component_id: string; capability_version_id: string; capability_resolution_id: string; activity_plan_proposal_id: string }>>`
+    SELECT component.id AS component_id, version.id AS capability_version_id, resolution.id AS capability_resolution_id, plan.id AS activity_plan_proposal_id
+    FROM foundry_product.components component
+    JOIN foundry_product.capabilities capability ON capability.id=component.registered_capability_id AND capability.active_version_id=component.registered_capability_version_id
+    JOIN foundry_product.capability_versions version ON version.id=component.registered_capability_version_id AND version.capability_id=capability.id AND version.component_asset_version_id=component.active_version_id AND version.status='ACTIVE'
+    JOIN foundry_product.capability_availability_decisions availability ON availability.capability_id=capability.id AND availability.capability_version_id=version.id AND availability.component_version_id=component.active_version_id AND availability.availability_status='AVAILABLE'
+    JOIN foundry_product.capability_resolutions source ON source.id=component.source_capability_resolution_id
+    JOIN foundry_product.capability_resolutions resolution ON resolution.task_id=source.task_id AND resolution.episode_id=source.episode_id AND resolution.selected_capability_id=capability.id AND resolution.selected_capability_version_id=version.id AND resolution.decision='EXISTING'
+    JOIN foundry_product.activity_plan_proposals plan ON plan.capability_resolution_id=resolution.id AND plan.selected_capability_version_id=version.id AND plan.state='READY'
+    WHERE component.institution_id=${actor.institutionId} AND component.course_id=ANY(${actor.courseIds}::uuid[]) AND component.status='PUBLISHED'
+      AND NOT EXISTS (SELECT 1 FROM foundry_product.capability_resolutions newer WHERE newer.task_id=source.task_id AND newer.episode_id=source.episode_id AND (newer.created_at,newer.id)>(resolution.created_at,resolution.id))
+      AND NOT EXISTS (SELECT 1 FROM foundry_product.activity_plan_proposals newer WHERE newer.task_id=plan.task_id AND newer.episode_id=plan.episode_id AND (newer.created_at,newer.id)>(plan.created_at,plan.id))
+  `;
+  return { candidates: candidateRows, decisions, reviewedPatterns, candidateSources, pendingWorkflows, evidenceOptions, gapSignals, previews, availability, readyRegistrations };
 }
 
 export async function getEngineeringWorkspace(actor: Actor) {

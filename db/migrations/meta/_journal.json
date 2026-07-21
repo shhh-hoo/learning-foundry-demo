@@ -78,6 +78,13 @@
       "when": 1784937600000,
       "tag": "0010_governed_followup",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1785024000000,
+      "tag": "0011_capability_gap_supply",
+      "breakpoints": true
     }
   ]
 }

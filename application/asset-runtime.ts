@@ -70,6 +70,8 @@ type RuntimeLineage = {
 type PreparedDelivery = RuntimeLineage & {
   delivery: typeof runtimeDeliveries.$inferSelect;
   attempt: typeof learnerAttempts.$inferSelect;
+  retryOfDelivery: typeof runtimeDeliveries.$inferSelect | null;
+  attemptNumber: number;
   replayed: boolean;
 };
 
@@ -144,8 +146,8 @@ function exactCandidateContract(
   ))?.contract;
 }
 
-async function loadRuntimeLineage(actor: Actor, request: AssetRuntimeRequest): Promise<RuntimeLineage> {
-  assertExecutionActive();
+async function loadRuntimeLineage(actor: Actor, request: AssetRuntimeRequest, allowStopped = false): Promise<RuntimeLineage> {
+  if (!allowStopped) assertExecutionActive();
   requireRole(actor, ["LEARNER", "ADMIN"]);
   const scope = await requireTaskEpisodeScope(actor, {
     taskId: request.taskId,
@@ -316,6 +318,7 @@ async function loadRuntimeLineage(actor: Actor, request: AssetRuntimeRequest): P
     actorUserId: actor.userId,
     institutionId: actor.institutionId,
     activityPlanHash,
+    retryOfDeliveryId: request.retryOfDeliveryId,
     taskId: request.taskId,
     episodeId: request.episodeId,
     prompt: request.prompt,
@@ -356,18 +359,37 @@ function evidenceRefs(lineage: Pick<RuntimeLineage, "proposal" | "resolution" | 
   ];
 }
 
-async function prepareDelivery(actor: Actor, request: AssetRuntimeRequest): Promise<PreparedDelivery> {
+async function prepareDelivery(actor: Actor, request: AssetRuntimeRequest, allowStopped = false): Promise<PreparedDelivery> {
   return withTenantDatabase(actor, async () => {
-    const lineage = await loadRuntimeLineage(actor, request);
+    const lineage = await loadRuntimeLineage(actor, request, allowStopped);
     const [existingByKey] = await getDb().select().from(runtimeDeliveries).where(and(
       eq(runtimeDeliveries.institutionId, actor.institutionId),
       eq(runtimeDeliveries.idempotencyKey, request.idempotencyKey),
     )).limit(1);
-    const [existingByPlan] = await getDb().select().from(runtimeDeliveries).where(eq(runtimeDeliveries.activityPlanId, lineage.activityPlanId)).limit(1);
-    const existing = existingByKey ?? existingByPlan;
+    const [retryOfDelivery] = request.retryOfDeliveryId
+      ? await getDb().select().from(runtimeDeliveries).where(and(eq(runtimeDeliveries.id, request.retryOfDeliveryId), eq(runtimeDeliveries.institutionId, actor.institutionId))).limit(1)
+      : [];
+    const attemptNumber = retryOfDelivery ? retryOfDelivery.attemptNumber + 1 : 1;
+    if (request.retryOfDeliveryId) {
+      const normalized = retryOfDelivery?.normalizedError as NormalizedRuntimeError | null | undefined;
+      const [latest] = retryOfDelivery ? await getDb().select().from(runtimeDeliveries)
+        .where(eq(runtimeDeliveries.activityPlanId, lineage.activityPlanId))
+        .orderBy(desc(runtimeDeliveries.attemptNumber)).limit(1) : [];
+      if (!retryOfDelivery || retryOfDelivery.activityPlanId !== lineage.activityPlanId || latest?.id !== retryOfDelivery.id
+        || !new Set(["FAILED", "TIMED_OUT", "CANCELLED"]).has(retryOfDelivery.status)
+        || normalized?.retryable !== true || attemptNumber > 2) {
+        throw new DomainInvariantError("Asset Runtime retry requires the latest exact retryable terminal delivery and at most one retry", "ASSET_RUNTIME_RETRY_DENIED");
+      }
+    }
+    const [existingByAttempt] = await getDb().select().from(runtimeDeliveries).where(and(
+      eq(runtimeDeliveries.activityPlanId, lineage.activityPlanId),
+      eq(runtimeDeliveries.attemptNumber, attemptNumber),
+    )).limit(1);
+    const existing = existingByKey ?? existingByAttempt;
     if (existing) {
       if (existing.id !== lineage.deliveryId || existing.requestHash !== lineage.requestHash
-        || existing.activityPlanId !== lineage.activityPlanId || existing.idempotencyKey !== request.idempotencyKey) {
+        || existing.activityPlanId !== lineage.activityPlanId || existing.idempotencyKey !== request.idempotencyKey
+        || existing.retryOfDeliveryId !== (request.retryOfDeliveryId ?? null) || existing.attemptNumber !== attemptNumber) {
         throw new DomainInvariantError("Asset Runtime replay identity conflicts with persisted Product State", "ASSET_RUNTIME_REPLAY_CONFLICT");
       }
       const [plan] = await getDb().select().from(activityPlans).where(eq(activityPlans.id, existing.activityPlanId)).limit(1);
@@ -378,9 +400,9 @@ async function prepareDelivery(actor: Actor, request: AssetRuntimeRequest): Prom
       if (existing.status === "PENDING") {
         const [running] = await getDb().update(runtimeDeliveries).set({ status: "RUNNING" })
           .where(and(eq(runtimeDeliveries.id, existing.id), eq(runtimeDeliveries.status, "PENDING"))).returning();
-        return { ...lineage, delivery: running ?? existing, attempt, replayed: true };
+        return { ...lineage, delivery: running ?? existing, attempt, retryOfDelivery: retryOfDelivery ?? null, attemptNumber, replayed: true };
       }
-      return { ...lineage, delivery: existing, attempt, replayed: true };
+      return { ...lineage, delivery: existing, attempt, retryOfDelivery: retryOfDelivery ?? null, attemptNumber, replayed: true };
     }
 
     await getDb().insert(activityPlans).values({
@@ -405,7 +427,9 @@ async function prepareDelivery(actor: Actor, request: AssetRuntimeRequest): Prom
       evidenceProvenance: lineage.evidenceProvenance,
       inputHash: lineage.activityPlanHash,
       createdBy: actor.userId,
-    });
+    }).onConflictDoNothing();
+    const [persistedPlan] = await getDb().select().from(activityPlans).where(eq(activityPlans.id, lineage.activityPlanId)).limit(1);
+    if (!persistedPlan || persistedPlan.inputHash !== lineage.activityPlanHash) throw new DomainInvariantError("Asset Runtime ActivityPlan replay conflicts with exact Product State", "ASSET_RUNTIME_REPLAY_INTEGRITY");
     const [delivery] = await getDb().insert(runtimeDeliveries).values({
       id: lineage.deliveryId,
       institutionId: actor.institutionId,
@@ -414,6 +438,8 @@ async function prepareDelivery(actor: Actor, request: AssetRuntimeRequest): Prom
       episodeId: lineage.scope.episode.id,
       learnerId: lineage.scope.task.learnerId,
       activityPlanId: lineage.activityPlanId,
+      retryOfDeliveryId: request.retryOfDeliveryId,
+      attemptNumber,
       capabilityId: lineage.capability.id,
       capabilityVersionId: lineage.version.id,
       capabilityVersionContentHash: lineage.version.contentHash,
@@ -426,6 +452,7 @@ async function prepareDelivery(actor: Actor, request: AssetRuntimeRequest): Prom
       deadlineMs: request.deadlineMs,
     }).returning();
     const attemptContentHash = assetRuntimeHash({ prompt: request.prompt, response: request.response, structuredInput: request.structuredInput });
+    const [retryAttempt] = retryOfDelivery ? await getDb().select({ id: learnerAttempts.id }).from(learnerAttempts).where(eq(learnerAttempts.runtimeDeliveryId, retryOfDelivery.id)).limit(1) : [];
     const [attempt] = await getDb().insert(learnerAttempts).values({
       id: lineage.attemptId,
       taskId: lineage.scope.task.id,
@@ -448,8 +475,10 @@ async function prepareDelivery(actor: Actor, request: AssetRuntimeRequest): Prom
         ...lineage.evidenceProvenance,
         plannedParameters: lineage.stage.parameters,
         supportExposure: [],
-        priorAttemptIds: [lineage.sourceAttempt.id],
-        recoveryState: "INITIAL_SUBMISSION",
+        priorAttemptIds: [lineage.sourceAttempt.id, ...(retryAttempt ? [retryAttempt.id] : [])],
+        recoveryState: retryOfDelivery ? "BOUNDED_RUNTIME_RETRY" : "INITIAL_SUBMISSION",
+        retryOfDeliveryId: retryOfDelivery?.id ?? null,
+        runtimeAttemptNumber: attemptNumber,
       },
     }).returning();
     const refs = evidenceRefs(lineage);
@@ -506,7 +535,7 @@ async function prepareDelivery(actor: Actor, request: AssetRuntimeRequest): Prom
     const [running] = await getDb().update(runtimeDeliveries).set({ status: "RUNNING" })
       .where(and(eq(runtimeDeliveries.id, delivery.id), eq(runtimeDeliveries.status, "PENDING"))).returning();
     if (!running) throw new DomainInvariantError("RuntimeDelivery did not enter RUNNING state", "ASSET_RUNTIME_STATE_CONFLICT");
-    return { ...lineage, delivery: running, attempt, replayed: false };
+    return { ...lineage, delivery: running, attempt, retryOfDelivery: retryOfDelivery ?? null, attemptNumber, replayed: false };
   });
 }
 
@@ -604,7 +633,7 @@ async function executeAssetStageWithMode(
       if (!adapter || !adapter.replaySafe) {
         throw new DomainInvariantError("No registered executable adapter matches the exact Registry runtime contract", "ASSET_RUNTIME_ADAPTER_UNAVAILABLE");
       }
-      const output = await adapter.execute(request.structuredInput, control);
+      const output = await adapter.execute(request.structuredInput, control, prepared.version.contract);
       assertExecutionActive(control);
       const delivery = await finalizeDelivery(prepared, { status: "SUCCEEDED", output });
       return { delivery, attempt: prepared.attempt, replayed: prepared.replayed };
@@ -635,4 +664,29 @@ export async function executeAssetStageResult(
   dependencies: AssetRuntimeDependencies = defaultDependencies,
 ) {
   return executeAssetStageWithMode(actor, rawRequest, dependencies, "RETURN");
+}
+
+/**
+ * Reconciles a request/timeout stop after LangGraph has stopped awaiting its
+ * node. It revalidates exact current authority and request lineage, then makes
+ * the already-started canonical delivery terminal without invoking the asset.
+ */
+export async function reconcileStoppedAssetStage(
+  actor: Actor,
+  rawRequest: AssetRuntimeRequest,
+  stopped: "ABORTED" | "TIMED_OUT",
+) {
+  const request = AssetRuntimeRequest.parse(rawRequest);
+  const prepared = await prepareDelivery(actor, request, true);
+  if (TERMINAL.has(prepared.delivery.status)) {
+    return { delivery: prepared.delivery, attempt: prepared.attempt, replayed: true };
+  }
+  const stoppedError = new DomainInvariantError(
+    stopped === "TIMED_OUT" ? "Workflow execution exceeded its bounded deadline" : "Workflow execution was aborted by the request",
+    stopped === "TIMED_OUT" ? "EXECUTION_TIMED_OUT" : "EXECUTION_ABORTED",
+  );
+  const normalized = normalizeRuntimeError(stoppedError);
+  const status = terminalStatusForError(normalized) as Exclude<AssetRuntimeTerminalStatus, "SUCCEEDED">;
+  const delivery = await finalizeDelivery(prepared, { status, error: normalized });
+  return { delivery, attempt: prepared.attempt, replayed: prepared.replayed };
 }

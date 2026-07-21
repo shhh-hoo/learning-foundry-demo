@@ -6,6 +6,7 @@ import { executeAssetStage } from "@/application/asset-runtime";
 import { planActivityForResolution } from "@/application/activity-planning";
 import { resolveCapabilityForDiagnosis } from "@/application/capability-resolution";
 import { assertExecutionActive, runWithExecutionControl } from "@/application/execution-control";
+import { startWorkflow } from "@/application/workflow-service";
 import { closeDb, getDb, withTenantDatabase } from "@/db/client";
 import { SEED } from "@/db/ids";
 import {
@@ -26,6 +27,7 @@ import {
   runtimeDeliveries,
   teacherReviews,
   users,
+  workflowRuns,
 } from "@/db/schema";
 import { getAssetRuntimeAdapter, type AssetRuntimeAdapter } from "@/reference-packs/capability-runtime";
 import { buildAssetRuntimeGraph } from "@/workflows/asset-runtime";
@@ -303,6 +305,90 @@ describe.sequential("CAP-04 PostgreSQL Asset Stage Runtime", () => {
     }))).rejects.toMatchObject({ code: "EXECUTION_ABORTED" });
     const [cancelled] = await getDb().select().from(runtimeDeliveries).where(eq(runtimeDeliveries.idempotencyKey, cancelInput.idempotencyKey));
     expect(cancelled).toMatchObject({ status: "CANCELLED", normalizedError: { code: "ASSET_RUNTIME_CANCELLED" } });
+  });
+
+  it("commits cancelled and timed-out terminal evidence through the actual workflow transaction before returning an error", async () => {
+    const cancelledFixture = await readyFixture("workflow-cancel");
+    const cancelledInput = request(cancelledFixture, "workflow-cancel");
+    const cancellation = new AbortController();
+    const cancelledWorkflow = await withTenantDatabase(cancelledFixture.actor, () => startWorkflow({
+      kind: "ASSET_RUNTIME",
+      actor: cancelledFixture.actor,
+      taskId: cancelledFixture.taskId,
+      episodeId: cancelledFixture.episodeId,
+      state: cancelledInput,
+      execution: { signal: cancellation.signal, deadlineMs: 2_000 },
+      testFaults: {
+        assetRuntime: {
+          getAdapter: getAssetRuntimeAdapter,
+          afterDeliveryStarted() { cancellation.abort(); },
+        },
+      },
+    }));
+    expect(cancelledWorkflow).toMatchObject({ status: "CANCELLED", failureCode: "ASSET_RUNTIME_CANCELLED", result: { runtimeStatus: "CANCELLED" } });
+    const [cancelledDelivery] = await getDb().select().from(runtimeDeliveries).where(eq(runtimeDeliveries.idempotencyKey, cancelledInput.idempotencyKey));
+    expect(cancelledDelivery).toMatchObject({ status: "CANCELLED", attemptNumber: 1, normalizedError: { code: "ASSET_RUNTIME_CANCELLED", retryable: true } });
+    expect(await getDb().select().from(learnerAttempts).where(eq(learnerAttempts.runtimeDeliveryId, cancelledDelivery.id))).toHaveLength(1);
+    expect((await getDb().select().from(learningEvents).where(eq(learningEvents.runtimeDeliveryId, cancelledDelivery.id))).map((event) => event.eventType)).toEqual(expect.arrayContaining(["RUNTIME_CANCELLED", "DELIVERY_CANCELLED"]));
+    expect(await getDb().select().from(workflowRuns).where(eq(workflowRuns.id, cancelledWorkflow.runId))).toEqual([
+      expect.objectContaining({ status: "CANCELLED", productLinks: expect.objectContaining({ runtimeDeliveryId: cancelledDelivery.id, failureCode: "ASSET_RUNTIME_CANCELLED" }) }),
+    ]);
+
+    const cancelledReplay = await withTenantDatabase(cancelledFixture.actor, () => startWorkflow({
+      kind: "ASSET_RUNTIME",
+      actor: cancelledFixture.actor,
+      taskId: cancelledFixture.taskId,
+      episodeId: cancelledFixture.episodeId,
+      state: cancelledInput,
+    }));
+    expect(cancelledReplay).toMatchObject({ status: "CANCELLED", result: { runtimeDeliveryId: cancelledDelivery.id, runtimeStatus: "CANCELLED" } });
+    expect(await getDb().select().from(runtimeDeliveries).where(eq(runtimeDeliveries.idempotencyKey, cancelledInput.idempotencyKey))).toHaveLength(1);
+
+    const boundedRetry = {
+      ...cancelledInput,
+      retryOfDeliveryId: cancelledDelivery.id,
+      idempotencyKey: `cap04:workflow-cancel-retry:${randomUUID()}`,
+    };
+    const retriedWorkflow = await withTenantDatabase(cancelledFixture.actor, () => startWorkflow({
+      kind: "ASSET_RUNTIME",
+      actor: cancelledFixture.actor,
+      taskId: cancelledFixture.taskId,
+      episodeId: cancelledFixture.episodeId,
+      state: boundedRetry,
+    }));
+    expect(retriedWorkflow).toMatchObject({ status: "COMPLETED", result: { runtimeStatus: "SUCCEEDED" } });
+    const deliveriesAfterRetry = await getDb().select().from(runtimeDeliveries).where(eq(runtimeDeliveries.activityPlanId, cancelledDelivery.activityPlanId));
+    expect(deliveriesAfterRetry.map((delivery) => [delivery.attemptNumber, delivery.status]).sort()).toEqual([[1, "CANCELLED"], [2, "SUCCEEDED"]]);
+
+    const timedOutFixture = await readyFixture("workflow-timeout");
+    const timedOutInput = request(timedOutFixture, "workflow-timeout");
+    const timedOutWorkflow = await withTenantDatabase(timedOutFixture.actor, () => startWorkflow({
+      kind: "ASSET_RUNTIME",
+      actor: timedOutFixture.actor,
+      taskId: timedOutFixture.taskId,
+      episodeId: timedOutFixture.episodeId,
+      state: timedOutInput,
+      execution: { deadlineMs: 500 },
+      testFaults: {
+        assetRuntime: {
+          getAdapter: () => ({
+            implementationKey: "chemistry.molar-concentration.v1",
+            runtimeKind: "TRUSTED_DETERMINISTIC_ADAPTER",
+            replaySafe: true,
+            async execute(_input, control) {
+              await new Promise((resolve) => setTimeout(resolve, 650));
+              assertExecutionActive(control);
+              return { status: "SHOULD_NOT_COMPLETE" };
+            },
+          }),
+        },
+      },
+    }));
+    expect(timedOutWorkflow).toMatchObject({ status: "TIMED_OUT", failureCode: "ASSET_RUNTIME_TIMED_OUT", result: { runtimeStatus: "TIMED_OUT" } });
+    const [timedOutDelivery] = await getDb().select().from(runtimeDeliveries).where(eq(runtimeDeliveries.idempotencyKey, timedOutInput.idempotencyKey));
+    expect(timedOutDelivery).toMatchObject({ status: "TIMED_OUT", normalizedError: { code: "ASSET_RUNTIME_TIMED_OUT", retryable: true } });
+    expect(await getDb().select().from(learnerAttempts).where(eq(learnerAttempts.runtimeDeliveryId, timedOutDelivery.id))).toHaveLength(1);
+    expect((await getDb().select().from(learningEvents).where(eq(learningEvents.runtimeDeliveryId, timedOutDelivery.id))).map((event) => event.eventType)).toEqual(expect.arrayContaining(["RUNTIME_TIMED_OUT", "DELIVERY_TIMED_OUT"]));
   });
 
   it("refuses altered, disabled, stale and cross-tenant input before a delivery", async () => {

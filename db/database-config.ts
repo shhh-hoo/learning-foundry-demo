@@ -5,6 +5,8 @@ export type DatabaseEnvironment = {
   CHECKPOINT_DATABASE_URL?: string;
   AUTH_DATABASE_URL?: string;
   WORKER_DATABASE_URL?: string;
+  /** Forbidden in the product web process; declared only so configuration rejects it explicitly. */
+  COMPONENT_EXECUTOR_DATABASE_URL?: string;
   MIGRATION_DATABASE_URL?: string;
   CHECKPOINT_MIGRATION_DATABASE_URL?: string;
 };
@@ -13,6 +15,7 @@ export const RUNTIME_DATABASE_ROLES = {
   product: "foundry_product_runtime",
   auth: "foundry_auth_bootstrap",
   worker: "foundry_worker",
+  componentExecutor: "foundry_component_executor",
   checkpoint: "foundry_checkpoint_runtime",
 } as const;
 
@@ -83,6 +86,9 @@ function assertDistinctProductionRole(name: string, value: string, others: Array
 }
 
 export function resolveAuthorityDatabaseUrls(environment: DatabaseEnvironment = process.env) {
+  if (environment.COMPONENT_EXECUTOR_DATABASE_URL) {
+    throw new Error("COMPONENT_EXECUTOR_DATABASE_URL is forbidden in the product web process; run the separate Component Executor service instead");
+  }
   const runtime = resolveDatabaseUrls(environment);
   const authDatabaseUrl = resolveDedicatedUrl("AUTH_DATABASE_URL", environment, runtime.productDatabaseUrl);
   const workerDatabaseUrl = resolveDedicatedUrl("WORKER_DATABASE_URL", environment, runtime.productDatabaseUrl);

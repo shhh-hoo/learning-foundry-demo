@@ -160,12 +160,12 @@ describe.sequential("Complete governed Component Asset Loop", () => {
     const publicationPayload = { expectedVersion: publishRun.expectedVersion, action: "APPROVE" as const, rationale: "Two current reviewed Attempts and all system gates support publication.", rubric, idempotencyKey: publicationKey };
     await expect(resumeWorkflow(expert, publishRun.threadId, publicationPayload, { testFaults: { afterGraphCompletion() { throw new WorkflowProcessCrashForTests(); } } })).rejects.toBeInstanceOf(WorkflowProcessCrashForTests);
     const [crashedRun] = await getDb().select().from(workflowRuns).where(eq(workflowRuns.id, publishRun.runId));
-    expect(crashedRun.status).toBe("RESUMING");
-    const [originalDecision] = await getDb().select().from(publicationDecisions).where(eq(publicationDecisions.componentVersionId, successor.componentVersionId));
-    expect(originalDecision?.id).toBeTruthy();
-    await getDb().update(workflowRuns).set({ resumeLeaseExpiresAt: new Date(Date.now() - 1) }).where(eq(workflowRuns.id, publishRun.runId));
+    expect(crashedRun.status).toBe("INTERRUPTED");
+    expect(await getDb().select().from(publicationDecisions).where(eq(publicationDecisions.componentVersionId, successor.componentVersionId))).toHaveLength(0);
     const published = await resumeWorkflow(expert, publishRun.threadId, publicationPayload);
     expect(published.status).toBe("COMPLETED");
+    const [originalDecision] = await getDb().select().from(publicationDecisions).where(eq(publicationDecisions.componentVersionId, successor.componentVersionId));
+    expect(originalDecision?.id).toBeTruthy();
     expect(String((published.result as Record<string, unknown>).decisionId)).toBe(originalDecision.id);
     expect(await getDb().select().from(publicationDecisions).where(eq(publicationDecisions.componentVersionId, successor.componentVersionId))).toEqual([originalDecision]);
     const evaluationId = String((publishRun.result as Record<string, unknown>).evaluationId);

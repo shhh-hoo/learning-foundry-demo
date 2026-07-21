@@ -139,7 +139,7 @@ function jsonRecords(value: unknown[]): Array<Record<string, unknown>> {
 }
 
 async function compileAndPersist(actor: Actor, input: CompileAuthorizedContextInput): Promise<CompiledContext> {
-  requireRole(actor, ["LEARNER", "TEACHER", "ADMIN"]);
+  requireRole(actor, ["LEARNER", "TEACHER", "EXPERT", "ADMIN"]);
   const learnerOriginated = actor.roles.includes("LEARNER") && !actor.roles.some((role) => role === "TEACHER" || role === "ADMIN");
   const scope = await requireTaskEpisodeScope(actor, {
     taskId: input.taskId,

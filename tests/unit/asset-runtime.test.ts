@@ -5,6 +5,7 @@ import {
   assetRuntimeHash,
   assetRuntimeId,
   normalizeRuntimeError,
+  runtimeDeliveryPresentation,
   stableAssetRuntimeJson,
   terminalStatusForError,
 } from "@/domain/asset-runtime";
@@ -54,5 +55,15 @@ describe("CAP-04 Asset Runtime boundary", () => {
     expect(terminalStatusForError(timeout)).toBe("TIMED_OUT");
     expect(terminalStatusForError(cancelled)).toBe("CANCELLED");
     expect(terminalStatusForError(failed)).toBe("FAILED");
+  });
+
+  it("allows completion evidence only for success and offers only bounded retryable recovery", () => {
+    expect(runtimeDeliveryPresentation({ status: "SUCCEEDED", attemptNumber: 1, normalizedError: null })).toEqual({ mode: "SUCCEEDED", completionEvidenceAllowed: true, retryAllowed: false });
+    for (const status of ["FAILED", "TIMED_OUT", "CANCELLED"] as const) {
+      expect(runtimeDeliveryPresentation({ status, attemptNumber: 1, normalizedError: { retryable: true } })).toEqual({ mode: "FAILED", completionEvidenceAllowed: false, retryAllowed: true });
+      expect(runtimeDeliveryPresentation({ status, attemptNumber: 3, normalizedError: { retryable: true } })).toEqual({ mode: "FAILED", completionEvidenceAllowed: false, retryAllowed: false });
+      expect(runtimeDeliveryPresentation({ status, attemptNumber: 1, normalizedError: { retryable: false } })).toEqual({ mode: "FAILED", completionEvidenceAllowed: false, retryAllowed: false });
+    }
+    expect(runtimeDeliveryPresentation({ status: "RUNNING", attemptNumber: 1, normalizedError: null })).toEqual({ mode: "IN_PROGRESS", completionEvidenceAllowed: false, retryAllowed: false });
   });
 });

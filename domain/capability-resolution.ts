@@ -70,6 +70,7 @@ export type CapabilityResolutionNeed = {
   courseId: string;
   referencePackKey: string;
   taskGoal: string;
+  diagnosticObservationId?: string;
   taskType?: string;
   curriculum?: string;
   learnerLevel?: string;
@@ -99,6 +100,7 @@ export type RegistryCapabilityVersion = {
   versionStatus: string;
   contentHash: string;
   contract: unknown;
+  sourceDiagnosticObservationId?: string | null;
 };
 
 export type CompatibilityCheck = {
@@ -264,6 +266,8 @@ function evaluateCandidate(need: CapabilityResolutionNeed, candidate: RegistryCa
   const compositionOverlap = intersectCount(contract.composition.contributes, [...relevantSignals, ...need.compositionRequiredTags]);
   const adaptationOverlap = intersectCount(contract.adaptation.signals, relevantSignals);
   const currentMatch = candidate.capabilityId === need.currentCapabilityId;
+  const sourceGapMatch = Boolean(need.diagnosticObservationId
+    && candidate.sourceDiagnosticObservationId === need.diagnosticObservationId);
   const requiredMatch = requiredKeys.has(capabilityKey);
   const referencePackMatch = candidate.referencePackKey === need.referencePackKey;
 
@@ -300,13 +304,13 @@ function evaluateCandidate(need: CapabilityResolutionNeed, candidate: RegistryCa
   addCheck("provider", providerState === "AVAILABLE" || providerState === "NOT_REQUIRED", `Provider state is ${providerState}.`, "PROVIDER_UNAVAILABLE");
 
   let matchMode: CapabilityCandidateDecision["matchMode"] = "NONE";
-  if (currentMatch || requiredMatch || exactOverlap > 0) matchMode = "EXACT";
+  if (currentMatch || requiredMatch || sourceGapMatch || exactOverlap > 0) matchMode = "EXACT";
   else if (contract.parameterization.supported && parameterOverlap > 0) matchMode = "PARAMETERIZE";
   else if (contract.composition.supported && compositionOverlap > 0) matchMode = "COMPOSE";
   else if (contract.adaptation.reviewed && adaptationOverlap > 0) matchMode = "ADAPT";
   else reasons.push("NO_MATCH");
 
-  const score = (requiredMatch ? 1_000 : 0) + (currentMatch ? 500 : 0) + exactOverlap * 20 + parameterOverlap * 10 + compositionOverlap * 5 + adaptationOverlap * 2;
+  const score = (sourceGapMatch ? 2_000 : 0) + (requiredMatch ? 1_000 : 0) + (currentMatch ? 500 : 0) + exactOverlap * 20 + parameterOverlap * 10 + compositionOverlap * 5 + adaptationOverlap * 2;
   const exclusionReasons = uniqueReasons(reasons);
   const eligibility = exclusionReasons.length === 0 ? "ELIGIBLE" : "EXCLUDED";
   return {

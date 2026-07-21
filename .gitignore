@@ -13,6 +13,7 @@ evals/results/
 .env.local
 .env.*.local
 .agent-eval-results/
+graphify-out/
 .local-data/
 .runtime-parity-results/
 private-sources/

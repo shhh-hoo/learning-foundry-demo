@@ -224,7 +224,7 @@ try {
       (SELECT count(*)::int FROM foundry_private.writable_lineage_catalog i JOIN guarded g ON g.nspname=i.schema_name AND g.relname=i.table_name) AS guard_count,
       (SELECT count(*)::int FROM foundry_private.writable_lineage_catalog WHERE schema_name='foundry_product' AND table_name=ANY(${newWritableTables.map((key) => key.split(".")[1])}::text[])) AS rw03_direct_count
   `;
-  if (!inventory || inventory.catalog_count !== 37 || inventory.grant_count !== 37 || inventory.guard_count !== 37 || inventory.rw03_direct_count !== 8) {
+  if (!inventory || inventory.catalog_count !== 49 || inventory.grant_count !== 49 || inventory.guard_count !== 49 || inventory.rw03_direct_count !== 8) {
     throw new Error(`RW-03 writable inventory mismatch: ${JSON.stringify(inventory)}`);
   }
 

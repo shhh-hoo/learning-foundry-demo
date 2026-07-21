@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useRef, useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
 function useAction() {
@@ -17,7 +17,7 @@ function useAction() {
     try {
       const response = await fetch(url, { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
       const data = await response.json();
-      if (!response.ok) throw new Error(data.error ?? "Request failed");
+      if (!response.ok) { startTransition(() => router.refresh()); throw new Error(data.error ?? "Request failed"); }
       setMessage("Saved");
       startTransition(() => router.refresh());
       return data;
@@ -54,6 +54,14 @@ function useStableCommandKey(prefix: string) {
     current: () => key.current!,
     regenerate: () => { key.current = randomKey(prefix); },
   };
+}
+
+const subscribeHydration = () => () => undefined;
+const clientHydrated = () => true;
+const serverNotHydrated = () => false;
+
+function useHydrated() {
+  return useSyncExternalStore(subscribeHydration, clientHydrated, serverNotHydrated);
 }
 
 export function CreateTaskForm({ courseId }: { courseId: string }) {
@@ -534,6 +542,57 @@ export function CandidateForm({ observationId, evidenceOptions = [] }: { observa
   </form>;
 }
 
+export function GapSupplyButton({ capabilityResolutionId }: { capabilityResolutionId: string }) {
+  const action = useAction();
+  const commandKey = useStableCommandKey("cap07-proposal");
+  return <div><button data-testid="gap-supply-button" disabled={action.pending} onClick={async () => {
+    try { await action.run("/api/capability-supply", { capabilityResolutionId, idempotencyKey: commandKey.current() }); commandKey.regenerate(); }
+    catch (error) { action.setMessage(error instanceof Error ? error.message : "Unable to propose a bounded Web ComponentAsset"); }
+  }}>Create bounded Web ComponentAsset proposal</button><FormStatus value={action.message}/></div>;
+}
+
+type WebAssetChoice = { id: string; label: string };
+
+export function WebComponentPreviewForm({ componentId, componentVersionId, prompt, choices }: { componentId: string; componentVersionId: string; prompt: string; choices: WebAssetChoice[] }) {
+  const action = useAction();
+  const commandKey = useStableCommandKey("cap07-preview");
+  const hydrated = useHydrated();
+  const [selectedChoiceId, setSelectedChoiceId] = useState("");
+  const runPreview = async () => {
+    try { await action.run(`/api/components/${componentId}/preview`, { componentVersionId, selectedChoiceId, idempotencyKey: commandKey.current() }); commandKey.regenerate(); }
+    catch (error) { action.setMessage(error instanceof Error ? error.message : "Exact learner preview failed"); }
+  };
+  return <form className="stack compact" data-testid="web-component-preview-form" data-hydrated={hydrated ? "true" : "false"} onSubmit={(event) => { event.preventDefault(); if (selectedChoiceId) void runPreview(); }}>
+    <p><strong>{prompt}</strong></p>
+    {choices.map((choice) => <label className="choice-option" key={choice.id}><input type="radio" name="selectedChoiceId" value={choice.id} checked={selectedChoiceId === choice.id} onChange={() => setSelectedChoiceId(choice.id)} required/><span>{choice.label}</span></label>)}
+    <button type="button" data-hydrated={hydrated ? "true" : "false"} disabled={!hydrated || !selectedChoiceId || action.pending} onClick={runPreview}>Run exact learner preview</button><FormStatus value={action.message}/>
+    <small>Preview executes this exact Draft package. It creates no RuntimeDelivery, LearnerAttempt, Diagnosis, TeacherReview or LearningOutcome.</small>
+  </form>;
+}
+
+export function LearnerWebComponentAssetForm({ taskId, episodeId, activityPlanProposalId, prompt, choices, retryOfDeliveryId }: { taskId: string; episodeId: string; activityPlanProposalId: string; prompt: string; choices: WebAssetChoice[]; retryOfDeliveryId?: string }) {
+  const action = useAction();
+  const commandKey = useStableCommandKey(retryOfDeliveryId ? "cap07-delivery-retry" : "cap07-delivery");
+  const hydrated = useHydrated();
+  return <form className="stack compact" data-testid={retryOfDeliveryId ? "learner-web-component-asset-retry" : "learner-web-component-asset"} data-hydrated={hydrated ? "true" : "false"} onSubmit={async (event) => {
+    event.preventDefault(); const form = new FormData(event.currentTarget); const selectedChoiceId = String(form.get("selectedChoiceId") ?? "");
+    try { await action.run("/api/asset-runtime", { taskId, episodeId, activityPlanProposalId, retryOfDeliveryId, selectedChoiceId, idempotencyKey: commandKey.current() }); commandKey.regenerate(); }
+    catch (error) { action.setMessage(error instanceof Error ? error.message : "ComponentAsset delivery failed"); }
+  }}>
+    <p><strong>{prompt}</strong></p>
+    {choices.map((choice) => <label className="choice-option" key={choice.id}><input type="radio" name="selectedChoiceId" value={choice.id} required/><span>{choice.label}</span></label>)}
+    <button data-hydrated={hydrated ? "true" : "false"} disabled={!hydrated || action.pending}>{retryOfDeliveryId ? "Retry exact learner runtime" : "Submit through exact learner runtime"}</button><FormStatus value={action.message}/>
+  </form>;
+}
+
+export function CapabilityResolutionButton({ taskId, episodeId, diagnosticObservationId }: { taskId: string; episodeId: string; diagnosticObservationId: string }) {
+  const action = useAction();
+  return <div><button className="secondary" data-testid="capability-resolution-button" disabled={action.pending} onClick={async () => {
+    try { await action.run("/api/capability-resolution", { taskId, episodeId, diagnosticObservationId }); }
+    catch (error) { action.setMessage(error instanceof Error ? error.message : "Capability Resolution failed"); }
+  }}>Resolve capability and plan next activity</button><FormStatus value={action.message}/></div>;
+}
+
 export function ComponentVersionForm({ componentId, versionId, contract, content, evidenceOptions = [] }: { componentId: string; versionId: string; contract: Record<string, unknown>; content: Record<string, unknown>; evidenceOptions?: EvidenceOption[] }) {
   const action = useAction();
   const currentEvidence = Array.isArray(content.evidenceRefs) ? content.evidenceRefs[0] as { evidenceUnitId?: string; attribution?: string } | undefined : undefined;
@@ -562,8 +621,11 @@ export function ComponentEvaluationButton({ componentId, versionId }: { componen
 
 export function PublicationReviewForm({ threadId, expectedVersion, approvalAllowed }: { threadId: string; expectedVersion: number; approvalAllowed: boolean }) {
   const action = useAction();
-  const [decision, setDecision] = useState<"APPROVE" | "REJECT">(approvalAllowed ? "APPROVE" : "REJECT");
-  return <form className="stack compact" data-testid="publication-review-form" onSubmit={async (event) => {
+  const commandKey = useStableCommandKey("publication");
+  const hydrated = useHydrated();
+  const [decisionOverride, setDecisionOverride] = useState<"APPROVE" | "REJECT" | null>(null);
+  const decision = approvalAllowed ? decisionOverride ?? "APPROVE" : "REJECT";
+  return <form className="stack compact" data-testid="publication-review-form" data-hydrated={hydrated ? "true" : "false"} onSubmit={async (event) => {
     event.preventDefault(); const form = new FormData(event.currentTarget);
     try { await action.run(`/api/workflows/${encodeURIComponent(threadId)}/resume`, {
       expectedVersion,
@@ -576,14 +638,14 @@ export function PublicationReviewForm({ threadId, expectedVersion, approvalAllow
         reuseReadiness: form.get("reuseReadiness"),
         notes: form.get("notes"),
       },
-      idempotencyKey: randomKey("publication"),
-    }); } catch (error) { action.setMessage(error instanceof Error ? error.message : "Unable to record publication decision"); }
+      idempotencyKey: commandKey.current(),
+    }); commandKey.regenerate(); } catch (error) { action.setMessage(error instanceof Error ? error.message : "Unable to record publication decision"); }
   }}>
-    <label>Decision<select value={decision} onChange={(event) => setDecision(event.target.value as "APPROVE" | "REJECT")}><option value="APPROVE" disabled={!approvalAllowed}>APPROVE</option><option value="REJECT">REJECT</option></select></label>
+    <label>Decision<select value={decision} onChange={(event) => setDecisionOverride(event.target.value as "APPROVE" | "REJECT")}><option value="APPROVE" disabled={!approvalAllowed}>APPROVE</option><option value="REJECT">REJECT</option></select></label>
     {(["domainCorrectness", "pedagogy", "safety", "reuseReadiness"] as const).map((field) => <label key={field}>{field}<select name={field} defaultValue="PASS"><option>PASS</option><option>FAIL</option></select></label>)}
     <label>Expert rubric notes<textarea name="notes" required minLength={5}/></label>
     <label>Immutable decision rationale<textarea name="rationale" required minLength={5}/></label>
-    <button disabled={action.pending}>{decision === "APPROVE" ? "Approve and publish immutable version" : "Reject immutable version"}</button><FormStatus value={action.message}/>
+    <button data-hydrated={hydrated ? "true" : "false"} disabled={!hydrated || action.pending}>{decision === "APPROVE" ? "Approve and publish immutable version" : "Reject immutable version"}</button><FormStatus value={action.message}/>
   </form>;
 }
 
@@ -606,4 +668,4 @@ export function RunFrameworkContractChecksButton() {
   return <div><button data-testid="run-framework-contract-checks" disabled={action.pending} onClick={async () => { try { await action.run("/api/evals", {}); } catch (error) { action.setMessage(error instanceof Error ? error.message : "Framework contract checks failed"); } }}>Run framework/core contract checks</button><FormStatus value={action.message}/></div>;
 }
 
-function FormStatus({ value }: { value: string }) { return value ? <small className={value === "Saved" ? "form-success" : "form-error"}>{value}</small> : null; }
+function FormStatus({ value }: { value: string }) { return <small role="status" aria-live="polite" aria-atomic="true" className={value === "Saved" ? "form-success" : "form-error"}>{value}</small>; }
