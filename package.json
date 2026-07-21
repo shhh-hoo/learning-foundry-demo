@@ -16,6 +16,7 @@
     "showcase:status": "node scripts/showcase.mjs status",
     "showcase:stop": "node scripts/showcase.mjs stop",
     "showcase:destroy": "node scripts/showcase.mjs destroy",
+    "showcase:check": "node --check scripts/showcase.mjs",
     "lint": "eslint . --max-warnings=0",
     "check": "tsc --noEmit --pretty false",
     "test": "vitest run",
@@ -40,7 +41,7 @@
     "db:checkpoint": "node --import tsx db/setup-checkpoint.ts",
     "contract:check": "node --import tsx evals/run.ts",
     "legacy:scan": "node --import tsx scripts/scan-legacy-imports.ts",
-    "validate": "npm run lint && npm run check && npm test && npm run build && npm run legacy:scan"
+    "validate": "npm run showcase:check && npm run lint && npm run check && npm test && npm run build && npm run legacy:scan"
   },
   "dependencies": {
     "@langchain/cohere": "1.1.0",
