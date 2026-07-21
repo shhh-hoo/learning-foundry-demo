@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import type { Sql } from "postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { desc, eq } from "drizzle-orm";
 import { resolveCapabilityForDiagnosis, resolveCapabilityForSupplyRelation } from "@/application/capability-resolution";
@@ -6,6 +7,7 @@ import { planActivityForResolution } from "@/application/activity-planning";
 import { createWebComponentAssetProposal, previewWebComponentAsset } from "@/application/capability-supply";
 import { executeAssetStageResult } from "@/application/asset-runtime";
 import { deriveWebComponentAssetRuntimeRequest } from "@/application/web-component-runtime";
+import { createAssetOptimizationProposal, decideAssetOptimizationProposal, getAssetOptimizationWorkspace } from "@/application/asset-optimization";
 import { commandRequestHash } from "@/application/commands";
 import {
   resumeWorkflow,
@@ -16,6 +18,8 @@ import { closeDb, getDb, getSql, withTenantDatabase } from "@/db/client";
 import { SEED } from "@/db/ids";
 import {
   activityPlanProposals,
+  assetOptimizationDecisions,
+  assetOptimizationProposals,
   capabilities,
   capabilityAvailabilityDecisions,
   capabilityResolutions,
@@ -87,6 +91,21 @@ async function expectNoRegistration(): Promise<void> {
   const [version] = await getDb().select().from(componentVersions).where(eq(componentVersions.id, proposalVersionId)).limit(1);
   expect(component).toMatchObject({ status: "CANDIDATE", activeVersionId: null, registeredCapabilityId: null, registeredCapabilityVersionId: null });
   expect(version?.status).toBe("DRAFT");
+}
+
+async function withRuntimeActor<T>(actor: Actor, operation: (transaction: Sql) => Promise<T>): Promise<T> {
+  return getSql().begin(async (transaction) => {
+    await transaction`
+      SELECT set_config('foundry.institution_id',${actor.institutionId},true),
+        set_config('foundry.user_id',${actor.userId},true),
+        set_config('foundry.session_id',${actor.sessionId},true),
+        set_config('foundry.auth_method',${actor.authMethod},true),
+        set_config('foundry.roles',${actor.roles.join(",")},true),
+        set_config('foundry.course_ids',${actor.courseIds.join(",")},true)
+    `;
+    await transaction.unsafe("SET LOCAL ROLE foundry_product_runtime");
+    return operation(transaction as unknown as Sql);
+  }) as Promise<T>;
 }
 
 beforeAll(async () => {
@@ -362,14 +381,15 @@ describe.sequential("CAP-07 capability gap and supply", () => {
   });
 
   it("derives immutable learner prose server-side, persists honest failure evidence, and succeeds only through a bounded exact retry", async () => {
+    const incorrectChoice = componentPackage.choices.find((choice) => choice.id !== componentPackage.correctChoiceId)!;
     const initialRequest = await deriveWebComponentAssetRuntimeRequest(learner, {
       taskId: SEED.task,
       episodeId: SEED.episode,
       activityPlanProposalId: readyPlanId,
-      selectedChoiceId: componentPackage.correctChoiceId,
+      selectedChoiceId: incorrectChoice.id,
       idempotencyKey: `cap07-delivery:${randomUUID()}`,
     });
-    expect(initialRequest).toMatchObject({ prompt: componentPackage.prompt, response: componentPackage.choices.find((choice) => choice.id === componentPackage.correctChoiceId)!.label, structuredInput: { selectedChoiceId: componentPackage.correctChoiceId } });
+    expect(initialRequest).toMatchObject({ prompt: componentPackage.prompt, response: incorrectChoice.label, structuredInput: { selectedChoiceId: incorrectChoice.id } });
     const failed = await executeAssetStageResult(learner, initialRequest, {
       getAdapter: () => ({
         implementationKey: "foundry.web.pause-predict",
@@ -382,19 +402,19 @@ describe.sequential("CAP-07 capability gap and supply", () => {
     const failedReplay = await executeAssetStageResult(learner, initialRequest);
     expect(failedReplay).toMatchObject({ replayed: true, delivery: { id: failed.delivery.id, status: "FAILED" } });
     const [failedAttempt] = await getDb().select().from(learnerAttempts).where(eq(learnerAttempts.runtimeDeliveryId, failed.delivery.id)).limit(1);
-    expect(failedAttempt).toMatchObject({ prompt: componentPackage.prompt, response: initialRequest.response, structuredInput: { assetRuntimeInput: { selectedChoiceId: componentPackage.correctChoiceId } } });
+    expect(failedAttempt).toMatchObject({ prompt: componentPackage.prompt, response: initialRequest.response, structuredInput: { assetRuntimeInput: { selectedChoiceId: incorrectChoice.id } } });
 
     const retryRequest = await deriveWebComponentAssetRuntimeRequest(learner, {
       taskId: SEED.task,
       episodeId: SEED.episode,
       activityPlanProposalId: readyPlanId,
       retryOfDeliveryId: failed.delivery.id,
-      selectedChoiceId: componentPackage.correctChoiceId,
+      selectedChoiceId: incorrectChoice.id,
       idempotencyKey: `cap07-delivery-retry:${randomUUID()}`,
     });
     const delivered = await executeAssetStageResult(learner, retryRequest);
     expect(delivered.delivery).toMatchObject({ status: "SUCCEEDED", retryOfDeliveryId: failed.delivery.id, attemptNumber: 2, capabilityVersionId: registeredCapabilityVersionId });
-    expect(delivered.delivery.normalizedOutput).toMatchObject({ componentCompleted: true, correct: true });
+    expect(delivered.delivery.normalizedOutput).toMatchObject({ componentCompleted: true, correct: false });
     await expect(executeAssetStageResult(learner, {
       ...retryRequest,
       retryOfDeliveryId: delivered.delivery.id,
@@ -405,6 +425,123 @@ describe.sequential("CAP-07 capability gap and supply", () => {
     expect(deliveries.map((delivery) => [delivery.attemptNumber, delivery.status])).toEqual([[2, "SUCCEEDED"], [1, "FAILED"]]);
     expect((await getDb().select().from(learningEvents).where(eq(learningEvents.runtimeDeliveryId, failed.delivery.id))).map((event) => event.eventType)).toEqual(expect.arrayContaining(["RUNTIME_FAILED", "DELIVERY_FAILED"]));
     expect((await getDb().select().from(learningEvents).where(eq(learningEvents.runtimeDeliveryId, delivered.delivery.id))).map((event) => event.eventType)).toEqual(expect.arrayContaining(["CAPABILITY_RESULT", "DELIVERY_SUCCEEDED"]));
+    expect(await getDb().select().from(teacherReviews).where(eq(teacherReviews.observationId, SEED.observation))).toHaveLength(0);
+    expect(await getDb().select().from(learningOutcomes).where(eq(learningOutcomes.taskId, SEED.task))).toHaveLength(0);
+
+    const proposalKey = `cap08a-proposal:${randomUUID()}`;
+    const [created, concurrent] = await Promise.all([
+      createAssetOptimizationProposal(expert, { runtimeDeliveryId: delivered.delivery.id, idempotencyKey: proposalKey }),
+      createAssetOptimizationProposal(expert, { runtimeDeliveryId: delivered.delivery.id, idempotencyKey: proposalKey }),
+    ]);
+    expect(created.proposal.id).toBe(concurrent.proposal.id);
+    expect([created.replayed, concurrent.replayed].sort()).toEqual([false, true]);
+    expect(created.proposal).toMatchObject({
+      proposalType: "ASSET",
+      signalKind: "INCORRECT_ATTEMPT",
+      state: "PENDING_GOVERNANCE",
+      runtimeDeliveryId: delivered.delivery.id,
+      learnerAttemptId: delivered.attempt.id,
+      componentVersionId: proposalVersionId,
+      capabilityVersionId: registeredCapabilityVersionId,
+      confidence: 0.35,
+    });
+    expect(created.proposal.limitations).toEqual(expect.arrayContaining(["ONE_ATTEMPT_ONLY", "NO_EFFECTIVENESS_CLAIM", "NO_ROUTING_OPTIMIZATION", "NO_LEARNING_STRATEGY_OPTIMIZATION"]));
+    expect(created.proposal.proposedChange).toMatchObject({ optimizationDomain: "ASSET", changeKind: "ADD_DISTRACTOR_SPECIFIC_RETRY_FEEDBACK", selectedChoiceId: incorrectChoice.id, currentRetryFeedback: componentPackage.retryFeedback, successorCreated: false, checksRun: false, availabilityChanged: false });
+    expect(created.proposal.evidenceSnapshot).toMatchObject({ runtimeDeliveryId: delivered.delivery.id, learnerAttemptId: delivered.attempt.id, componentVersionId: proposalVersionId, correct: false });
+    expect(await getDb().select().from(assetOptimizationProposals).where(eq(assetOptimizationProposals.runtimeDeliveryId, delivered.delivery.id))).toHaveLength(1);
+    expect(await withRuntimeActor(learner, (transaction) => transaction`SELECT id FROM foundry_product.asset_optimization_proposals`)).toHaveLength(0);
+    expect(await withRuntimeActor(expert, (transaction) => transaction`SELECT id FROM foundry_product.asset_optimization_proposals WHERE id=${created.proposal.id}::uuid`)).toHaveLength(1);
+    await expect(withRuntimeActor(expert, async (transaction) => {
+      await transaction`
+        INSERT INTO foundry_product.asset_optimization_proposals
+          (id,institution_id,course_id,component_id,component_version_id,component_version_content_hash,
+           capability_id,capability_version_id,capability_version_content_hash,capability_supply_relation_id,
+           runtime_delivery_id,learner_attempt_id,learner_attempt_content_hash,proposal_type,signal_kind,rationale,
+           proposed_change,evidence_snapshot,evidence_refs,evidence_hash,limitations,rule_key,rule_version,confidence,
+           state,requested_by,requester_provenance,request_hash)
+        SELECT ${randomUUID()}::uuid,institution_id,course_id,component_id,component_version_id,component_version_content_hash,
+          capability_id,capability_version_id,capability_version_content_hash,capability_supply_relation_id,
+          runtime_delivery_id,learner_attempt_id,learner_attempt_content_hash,proposal_type,signal_kind,rationale,
+          proposed_change,evidence_snapshot || jsonb_build_object('activityPlanId',${randomUUID()}::text),
+          evidence_refs,evidence_hash,limitations,rule_key,rule_version,confidence,state,requested_by,requester_provenance,${`tampered:${randomUUID()}`}
+        FROM foundry_product.asset_optimization_proposals WHERE id=${created.proposal.id}::uuid
+      `;
+    })).rejects.toThrow(/evidence snapshot is not bound to the exact delivered lineage/);
+    await expect(withRuntimeActor(expert, async (transaction) => {
+      await transaction`
+        INSERT INTO foundry_product.asset_optimization_proposals
+          (id,institution_id,course_id,component_id,component_version_id,component_version_content_hash,
+           capability_id,capability_version_id,capability_version_content_hash,capability_supply_relation_id,
+           runtime_delivery_id,learner_attempt_id,learner_attempt_content_hash,proposal_type,signal_kind,rationale,
+           proposed_change,evidence_snapshot,evidence_refs,evidence_hash,limitations,rule_key,rule_version,confidence,
+           state,requested_by,requester_provenance,request_hash)
+        SELECT ${randomUUID()}::uuid,institution_id,course_id,component_id,component_version_id,component_version_content_hash,
+          capability_id,capability_version_id,capability_version_content_hash,capability_supply_relation_id,
+          runtime_delivery_id,learner_attempt_id,learner_attempt_content_hash,proposal_type,signal_kind,
+          'This proves effectiveness and should change routing.',proposed_change || '{"effectivenessProven":true,"routingOptimization":true}'::jsonb,
+          evidence_snapshot,evidence_refs,evidence_hash,limitations,rule_key,rule_version,confidence,state,requested_by,requester_provenance,${`tampered:${randomUUID()}`}
+        FROM foundry_product.asset_optimization_proposals WHERE id=${created.proposal.id}::uuid
+      `;
+    })).rejects.toThrow(/widened beyond the bounded Asset-only evidence claim/);
+    await expect(withRuntimeActor(expert, async (transaction) => {
+      await transaction`
+        INSERT INTO foundry_product.asset_optimization_proposals
+          (id,institution_id,course_id,component_id,component_version_id,component_version_content_hash,
+           capability_id,capability_version_id,capability_version_content_hash,capability_supply_relation_id,
+           runtime_delivery_id,learner_attempt_id,learner_attempt_content_hash,proposal_type,signal_kind,rationale,
+           proposed_change,evidence_snapshot,evidence_refs,evidence_hash,limitations,rule_key,rule_version,confidence,
+           state,requested_by,requester_provenance,request_hash)
+        SELECT ${randomUUID()}::uuid,institution_id,course_id,component_id,component_version_id,component_version_content_hash,
+          capability_id,capability_version_id,capability_version_content_hash,capability_supply_relation_id,
+          runtime_delivery_id,learner_attempt_id,learner_attempt_content_hash,proposal_type,signal_kind,rationale,
+          proposed_change,evidence_snapshot,evidence_refs || jsonb_build_array(jsonb_build_object('kind','FAKE','id',${randomUUID()}::text)),
+          evidence_hash || 'tampered',limitations,rule_key,rule_version,confidence,state,requested_by,requester_provenance,${`tampered:${randomUUID()}`}
+        FROM foundry_product.asset_optimization_proposals WHERE id=${created.proposal.id}::uuid
+      `;
+    })).rejects.toThrow(/evidence snapshot is not bound to the exact delivered lineage/);
+    await expect(withRuntimeActor(expert, async (transaction) => {
+      await transaction`UPDATE foundry_product.idempotency_keys SET key=key WHERE institution_id=${expert.institutionId}::uuid AND command_type='CREATE_ASSET_OPTIMIZATION_PROPOSAL' AND key=${proposalKey}`;
+    })).rejects.toThrow(/Asset Optimization idempotency reservation is immutable/);
+    await expect(createAssetOptimizationProposal(learner, { runtimeDeliveryId: delivered.delivery.id, idempotencyKey: `cap08a-learner-denied:${randomUUID()}` }))
+      .rejects.toMatchObject({ code: "FORBIDDEN_ROLE" });
+    await expect(createAssetOptimizationProposal({ ...expert, institutionId: randomUUID(), courseIds: [] }, { runtimeDeliveryId: delivered.delivery.id, idempotencyKey: `cap08a-tenant-denied:${randomUUID()}` }))
+      .rejects.toMatchObject({ code: "ASSET_OPTIMIZATION_LINEAGE_NOT_FOUND" });
+    await expect(createAssetOptimizationProposal(expert, { runtimeDeliveryId: failed.delivery.id, idempotencyKey: `cap08a-failure-ineligible:${randomUUID()}` }))
+      .rejects.toMatchObject({ code: "ASSET_OPTIMIZATION_SIGNAL_INELIGIBLE" });
+
+    await expect(getSql().begin(async (transaction) => {
+      await transaction.unsafe("SET LOCAL session_replication_role = replica");
+      await transaction`UPDATE foundry_product.components SET active_version_id=NULL WHERE id=${proposalId}::uuid`;
+      await transaction.unsafe("SET LOCAL session_replication_role = origin");
+      await transaction`SELECT set_config('foundry.institution_id',${expert.institutionId},true),set_config('foundry.user_id',${expert.userId},true),set_config('foundry.session_id',${expert.sessionId},true),set_config('foundry.auth_method',${expert.authMethod},true),set_config('foundry.roles','EXPERT',true),set_config('foundry.course_ids',${SEED.course},true)`;
+      await transaction.unsafe("SET LOCAL ROLE foundry_product_runtime");
+      await transaction`
+        INSERT INTO foundry_product.asset_optimization_decisions
+          (id,institution_id,course_id,proposal_id,component_id,component_version_id,action,rationale,decided_by,actor_provenance,idempotency_key,request_hash)
+        VALUES (${randomUUID()}::uuid,${expert.institutionId}::uuid,${SEED.course}::uuid,${created.proposal.id}::uuid,${proposalId}::uuid,${proposalVersionId}::uuid,
+          'KEEP_CURRENT','Stale exact-version decision must fail.',${expert.userId}::uuid,
+          ${JSON.stringify({ userId: expert.userId, institutionId: expert.institutionId, roles: expert.roles, authMethod: expert.authMethod, sessionId: expert.sessionId, authenticatedAt: new Date().toISOString() })}::jsonb,
+          ${`cap08a-stale:${randomUUID()}`},${`sha256:${randomUUID()}`})
+      `;
+    })).rejects.toThrow(/source is no longer the active exact version/);
+
+    const versionCountBeforeDecision = (await getDb().select().from(componentVersions).where(eq(componentVersions.componentId, proposalId))).length;
+    const decisionKey = `cap08a-decision:${randomUUID()}`;
+    const decisionInput = { proposalId: created.proposal.id, action: "REQUEST_SUCCESSOR" as const, rationale: "Request bounded successor exploration because the exact incorrect Attempt supports reviewing distractor-specific retry feedback.", idempotencyKey: decisionKey };
+    const decided = await decideAssetOptimizationProposal(expert, decisionInput);
+    expect(decided).toMatchObject({ replayed: false, decision: { proposalId: created.proposal.id, componentVersionId: proposalVersionId, action: "REQUEST_SUCCESSOR" } });
+    expect(await decideAssetOptimizationProposal(expert, decisionInput)).toMatchObject({ replayed: true, decision: { id: decided.decision.id } });
+    await expect(decideAssetOptimizationProposal(expert, { ...decisionInput, action: "KEEP_CURRENT", idempotencyKey: `cap08a-conflict:${randomUUID()}` }))
+      .rejects.toMatchObject({ code: "ASSET_OPTIMIZATION_ALREADY_GOVERNED" });
+    expect(await getDb().select().from(assetOptimizationDecisions).where(eq(assetOptimizationDecisions.proposalId, created.proposal.id))).toHaveLength(1);
+    expect(await withRuntimeActor(learner, (transaction) => transaction`SELECT id FROM foundry_product.asset_optimization_decisions`)).toHaveLength(0);
+    await expect(withRuntimeActor(expert, async (transaction) => {
+      await transaction`DELETE FROM foundry_product.idempotency_keys WHERE institution_id=${expert.institutionId}::uuid AND command_type='DECIDE_ASSET_OPTIMIZATION_PROPOSAL' AND key=${decisionKey}`;
+    })).rejects.toThrow(/Asset Optimization idempotency reservation is immutable/);
+    expect(await getDb().select().from(componentVersions).where(eq(componentVersions.componentId, proposalId))).toHaveLength(versionCountBeforeDecision);
+    const workshop = await getAssetOptimizationWorkspace(expert);
+    expect(workshop.candidates).toHaveLength(0);
+    expect(workshop.proposals[0]).toMatchObject({ proposal_id: created.proposal.id, decision_action: "REQUEST_SUCCESSOR" });
     expect(await getDb().select().from(teacherReviews).where(eq(teacherReviews.observationId, SEED.observation))).toHaveLength(0);
     expect(await getDb().select().from(learningOutcomes).where(eq(learningOutcomes.taskId, SEED.task))).toHaveLength(0);
   });

@@ -85,6 +85,13 @@
       "when": 1785024000000,
       "tag": "0011_capability_gap_supply",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1785110400000,
+      "tag": "0012_asset_optimization",
+      "breakpoints": true
     }
   ]
 }
