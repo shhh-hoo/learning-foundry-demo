@@ -27,7 +27,7 @@ describe("fresh migration contract", () => {
   it("keeps the clean rewrite history and adds governed Asset Loop enforcement", async () => {
     const directory = new URL("../../db/migrations/", import.meta.url);
     const migrations = (await readdir(directory)).filter((name) => name.endsWith(".sql"));
-    expect(migrations).toEqual(["0000_full_framework.sql", "0001_full_framework.sql", "0002_recoverable_resume_claims.sql", "0003_production_auth_tenant_enforcement.sql", "0004_canonical_identity_context_evidence.sql", "0005_authoritative_context_compiler.sql", "0006_diagnosis_capability_resolution.sql", "0007_activity_planning.sql", "0008_asset_stage_runtime.sql", "0009_teacher_assignment_intervention.sql", "0010_governed_followup.sql", "0011_capability_gap_supply.sql", "0012_asset_optimization.sql"]);
+    expect(migrations).toEqual(["0000_full_framework.sql", "0001_full_framework.sql", "0002_recoverable_resume_claims.sql", "0003_production_auth_tenant_enforcement.sql", "0004_canonical_identity_context_evidence.sql", "0005_authoritative_context_compiler.sql", "0006_diagnosis_capability_resolution.sql", "0007_activity_planning.sql", "0008_asset_stage_runtime.sql", "0009_teacher_assignment_intervention.sql", "0010_governed_followup.sql", "0011_capability_gap_supply.sql", "0012_asset_optimization.sql", "0013_routing_optimization.sql"]);
     const migration = await readFile(new URL("../../db/migrations/0000_full_framework.sql", import.meta.url), "utf8");
     const assetMigration = await readFile(new URL("../../db/migrations/0001_full_framework.sql", import.meta.url), "utf8");
     expect(migration).not.toMatch(/migrated-legacy-record|legacy-review|legacy-outcome|legacy-publication|HUMAN_COMMAND/);
@@ -69,6 +69,27 @@ describe("fresh migration contract", () => {
     const rehearsal = await readFile(new URL("../../scripts/test-cap08a-upgrade.ts", import.meta.url), "utf8");
     expect(rehearsal).toContain("CAP08A_UPGRADE_VERIFIED");
     expect(rehearsal).toContain("preservedPriorIdempotencyBehavior");
+  });
+
+  it("adds bounded evidence-driven Routing Optimization without asset, strategy, Outcome, or automatic policy authority", async () => {
+    const migration = await readFile(new URL("../../db/migrations/0013_routing_optimization.sql", import.meta.url), "utf8");
+    expect(migration).toContain('CREATE TABLE "foundry_product"."routing_optimization_proposals"');
+    expect(migration).toContain('CREATE TABLE "foundry_product"."routing_optimization_decisions"');
+    expect(migration).toContain("explicit teacher exclusion of the exact selected Capability, independent of Attempt correctness");
+    expect(migration).toContain("exact Context, Diagnosis, Resolution, Plan, Delivery, Attempt or Intervention lineage mismatch");
+    expect(migration).toContain("no current-policy decision can be recorded from stale evidence");
+    expect(migration).toContain("Routing Optimization evidence and governance are append-only");
+    expect(migration).toContain("WHEN 'CREATE_ROUTING_OPTIMIZATION_PROPOSAL'");
+    expect(migration).toContain("WHEN 'DECIDE_ROUTING_OPTIMIZATION_PROPOSAL'");
+    expect(migration).toContain("Routing Optimization idempotency reservation is immutable");
+    expect(migration).toContain("expected_evidence_hash:=encode(public.digest");
+    expect(migration).toContain("NEW.proposed_change IS DISTINCT FROM expected_change");
+    expect(migration).toContain("ATTEMPT_LINEAGE_NOT_ROUTING_VERDICT");
+    expect(migration.match(/CREATE TRIGGER "_authority_tenant_lineage_guard"/g)).toHaveLength(2);
+    expect(migration).not.toMatch(/CREATE TABLE[^;]*(learning_strategy|routing_policy|ranking_rule)/i);
+    expect(migration).not.toMatch(/INSERT INTO\s+"foundry_product"\."(teacher_reviews|learning_outcomes|component_versions|capability_versions|capability_resolutions)"/i);
+    expect(migration).not.toMatch(/UPDATE\s+"?foundry_product"?\."?(capability_resolutions|capability_versions|activity_plans)"?/i);
+    expect(migration).not.toMatch(/CREATE TABLE[^;]*(cms|page|article|content_entries)/i);
   });
 
   it("adds bounded CAP-07 gap supply without generic CMS or automatic human authority", async () => {

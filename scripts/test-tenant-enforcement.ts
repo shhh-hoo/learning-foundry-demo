@@ -958,6 +958,24 @@ try {
     directlyProbedWritableTables.add(`foundry_product.${tableName}`);
   }
 
+  await product.begin(async (transaction) => {
+    await transaction`SELECT set_config('foundry.institution_id',${tenantA},true),set_config('foundry.user_id',${learnerA},true),set_config('foundry.session_id','tenant-harness-cap08b-learner',true),set_config('foundry.auth_method','tenant-harness',true),set_config('foundry.roles','LEARNER',true),set_config('foundry.course_ids',${courseA},true)`;
+    await transaction.unsafe("SET LOCAL ROLE foundry_product_runtime");
+    const [visibility] = await transaction<Array<{ proposal_count: number; decision_count: number }>>`
+      SELECT (SELECT count(*)::int FROM foundry_product.routing_optimization_proposals) AS proposal_count,
+        (SELECT count(*)::int FROM foundry_product.routing_optimization_decisions) AS decision_count
+    `;
+    if (visibility?.proposal_count !== 0 || visibility.decision_count !== 0) throw new Error("Learner can read protected Routing Optimization evidence");
+  });
+  for (const tableName of ["routing_optimization_proposals", "routing_optimization_decisions"] as const) {
+    await expectRoleTransactionDenied(`Routing Optimization ${tableName} is append-only`, product, RUNTIME_DATABASE_ROLES.product, tenantA, async (transaction) => {
+      await transaction`SELECT set_config('foundry.user_id',${teacherA},true),set_config('foundry.session_id','tenant-harness-cap08b-teacher',true),set_config('foundry.auth_method','tenant-harness',true),set_config('foundry.roles','TEACHER',true),set_config('foundry.course_ids',${courseA},true)`;
+      const updated = await transaction.unsafe(`UPDATE foundry_product.${tableName} SET course_id=$1::uuid WHERE ctid=(SELECT ctid FROM foundry_product.${tableName} LIMIT 1)`, [courseB]);
+      if (updated.count !== 1) throw new Error(`Routing Optimization ${tableName} probe requires one teacher-visible fixture`);
+    }, /Routing Optimization evidence and governance are append-only|permission denied for table routing_optimization/);
+    directlyProbedWritableTables.add(`foundry_product.${tableName}`);
+  }
+
   await expectRoleTransactionDenied("IdempotencyKey update to tenant B result", product, RUNTIME_DATABASE_ROLES.product, tenantA, async (transaction) => {
     const updated = await transaction`
       UPDATE foundry_product.idempotency_keys

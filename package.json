@@ -25,6 +25,7 @@
     "test:cap06-upgrade": "node --import tsx scripts/test-cap06-upgrade.ts",
     "test:cap07-upgrade": "node --import tsx scripts/test-cap07-upgrade.ts",
     "test:cap08a-upgrade": "node --import tsx scripts/test-cap08a-upgrade.ts",
+    "test:cap08b-upgrade": "node --import tsx scripts/test-cap08b-upgrade.ts",
     "test:migration-upgrade": "node --import tsx scripts/rehearse-component-upgrade.ts",
     "test:e2e:setup": "node --import tsx scripts/setup-e2e.ts",
     "test:e2e": "npm run test:e2e:setup && playwright test",
