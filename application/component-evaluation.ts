@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { and, desc, eq, inArray, isNull } from "drizzle-orm";
 import type { Actor } from "@/domain/model";
 import { ComponentContent, ComponentContract } from "@/domain/component";
@@ -24,9 +24,18 @@ import {
   teacherReviews,
 } from "@/db/schema";
 import { assertExecutionActive, rethrowIfExecutionStopped } from "@/application/execution-control";
+import { runWebComponentEvaluation } from "@/application/capability-supply";
 
 export const COMPONENT_EVALUATOR_KEY = "foundry-component-system-gates";
 export const COMPONENT_EVALUATOR_VERSION = "1.0.0";
+
+function evaluationIdFromInputHash(inputHash: string): string {
+  const raw = createHash("sha256").update(`COMPONENT_EVALUATION:${inputHash}`).digest("hex").slice(0, 32).split("");
+  raw[12] = "5";
+  raw[16] = ((Number.parseInt(raw[16] ?? "0", 16) & 0x3) | 0x8).toString(16);
+  const value = raw.join("");
+  return `${value.slice(0, 8)}-${value.slice(8, 12)}-${value.slice(12, 16)}-${value.slice(16, 20)}-${value.slice(20, 32)}`;
+}
 
 export type ComponentSystemCheck = {
   id: string;
@@ -77,6 +86,9 @@ export async function runComponentEvaluation(actor: Actor, componentVersionId: s
     .limit(1);
   if (!row) throw new DomainInvariantError("Component version is outside the active institution", "TENANT_ISOLATION");
   if (row.version.status !== "DRAFT") throw new DomainInvariantError("Only a mutable Draft can be evaluated", "VERSION_IMMUTABLE");
+  if (row.component.assetType === "WEB_COMPONENT_ASSET") return runWebComponentEvaluation(actor, componentVersionId);
+  const componentCapabilityId = row.component.capabilityId;
+  if (!componentCapabilityId) throw new DomainInvariantError("Teaching-support Component has no Capability binding", "COMPONENT_BINDING_INVALID");
 
   const [courseBinding] = await db.select({ course: courses, subject: subjects })
     .from(courses)
@@ -89,7 +101,7 @@ export async function runComponentEvaluation(actor: Actor, componentVersionId: s
       eq(capabilityVersions.id, capabilities.activeVersionId),
       eq(capabilityVersions.capabilityId, capabilities.id),
     ))
-    .where(eq(capabilities.id, row.component.capabilityId))
+    .where(eq(capabilities.id, componentCapabilityId))
     .limit(1);
 
   const parsedContract = ComponentContract.safeParse(row.version.contract);
@@ -118,7 +130,7 @@ export async function runComponentEvaluation(actor: Actor, componentVersionId: s
     .where(and(
       eq(learningTasks.institutionId, actor.institutionId),
       eq(learningTasks.courseId, row.component.courseId),
-      eq(learnerAttempts.capabilityId, row.component.capabilityId),
+      eq(learnerAttempts.capabilityId, componentCapabilityId),
       eq(diagnosticObservations.observationSource, "CAPABILITY"),
       eq(diagnosticObservations.failureCode, row.component.failureCode),
       isNull(diagnosticObservations.supersededById),
@@ -216,7 +228,7 @@ export async function runComponentEvaluation(actor: Actor, componentVersionId: s
     sourceAttemptIds: [...distinctAttemptIds].sort(),
     evidenceChecks,
   })).digest("hex");
-  const evaluationId = randomUUID();
+  const evaluationId = evaluationIdFromInputHash(evaluationInputHash);
   assertExecutionActive();
   const evaluation = await db.transaction(async (tx) => {
     const [locked] = await tx.select().from(componentVersions).where(eq(componentVersions.id, row.version.id)).for("update").limit(1);

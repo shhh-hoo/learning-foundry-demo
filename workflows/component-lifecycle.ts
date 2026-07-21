@@ -1,11 +1,11 @@
 import { BaseCheckpointSaver, END, START, StateGraph, StateSchema, interrupt } from "@langchain/langgraph";
 import { z } from "zod";
 import { runComponentEvaluation } from "@/application/component-evaluation";
-import { decidePublication } from "@/application/commands";
+import { decidePublication, type PublicationDependencies } from "@/application/commands";
 import { ComponentHumanRubric } from "@/domain/component";
 import { ActorSchema } from "@/domain/model";
 
-const ExpertPublicationResume = z.object({
+export const ExpertPublicationResume = z.object({
   actor: ActorSchema,
   action: z.enum(["APPROVE", "REJECT"]),
   rationale: z.string().trim().min(5),
@@ -24,9 +24,13 @@ export const ComponentLifecycleState = new StateSchema({
   providerChecks: z.record(z.string(), z.unknown()).default({}),
   decisionId: z.string().uuid().optional(),
   decision: z.enum(["APPROVE", "REJECT"]).optional(),
+  capabilityResolutionId: z.string().uuid().optional(),
+  activityPlanProposalId: z.string().uuid().optional(),
+  registeredCapabilityId: z.string().uuid().optional(),
+  registeredCapabilityVersionId: z.string().uuid().optional(),
 });
 
-export function buildComponentLifecycleGraph(checkpointer?: BaseCheckpointSaver) {
+export function buildComponentLifecycleGraph(checkpointer?: BaseCheckpointSaver, dependencies?: PublicationDependencies) {
   return new StateGraph(ComponentLifecycleState)
     .addNode("system_evaluation", async (state) => {
       const result = await runComponentEvaluation(state.actor, state.componentVersionId);
@@ -58,8 +62,15 @@ export function buildComponentLifecycleGraph(checkpointer?: BaseCheckpointSaver)
         rationale: resume.rationale,
         rubric: resume.rubric,
         idempotencyKey: resume.idempotencyKey,
-      });
-      return { decisionId: result.decisionId, decision: resume.action };
+      }, dependencies);
+      return {
+        decisionId: result.decisionId,
+        decision: resume.action,
+        registeredCapabilityId: result.registeredCapabilityId ?? undefined,
+        registeredCapabilityVersionId: result.registeredCapabilityVersionId ?? undefined,
+        capabilityResolutionId: result.capabilityResolutionId ?? undefined,
+        activityPlanProposalId: result.activityPlanProposalId ?? undefined,
+      };
     })
     .addEdge(START, "system_evaluation")
     .addEdge("system_evaluation", "expert_publication_interrupt")

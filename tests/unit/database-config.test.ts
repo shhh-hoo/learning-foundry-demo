@@ -43,7 +43,7 @@ describe("database connection boundaries", () => {
     })).toThrow(/PRODUCT_DATABASE_URL/);
   });
 
-  it("requires separate auth, worker and migration identities in production", () => {
+  it("requires separate auth, worker and migration identities in the product process", () => {
     expect(() => resolveAuthorityDatabaseUrls({
       NODE_ENV: "production",
       PRODUCT_DATABASE_URL: "postgresql://product:one@db.example/foundry",
@@ -55,11 +55,19 @@ describe("database connection boundaries", () => {
       CHECKPOINT_DATABASE_URL: "postgresql://checkpoint:two@db.example/checkpoint",
       AUTH_DATABASE_URL: "postgresql://auth:three@db.example/foundry",
       WORKER_DATABASE_URL: "postgresql://worker:four@db.example/foundry",
-      MIGRATION_DATABASE_URL: "postgresql://migrator:five@db.example/foundry",
-      CHECKPOINT_MIGRATION_DATABASE_URL: "postgresql://checkpoint_migrator:six@db.example/checkpoint",
+      MIGRATION_DATABASE_URL: "postgresql://migrator:six@db.example/foundry",
+      CHECKPOINT_MIGRATION_DATABASE_URL: "postgresql://checkpoint_migrator:seven@db.example/checkpoint",
     });
     expect(resolved.authDatabaseUrl).toContain("auth");
     expect(resolved.workerDatabaseUrl).toContain("worker");
+  });
+
+  it("rejects the Component Executor database credential in product configuration", () => {
+    expect(() => resolveAuthorityDatabaseUrls({
+      NODE_ENV: "test",
+      DATABASE_URL: "postgresql://product:one@db.example/foundry",
+      COMPONENT_EXECUTOR_DATABASE_URL: "postgresql://executor:two@db.example/foundry",
+    })).toThrow(/forbidden in the product web process/);
   });
 
   it("preserves startup options while appending exact runtime role and tenant settings", () => {
@@ -78,8 +86,8 @@ describe("database connection boundaries", () => {
       CHECKPOINT_DATABASE_URL: "postgresql://checkpoint_login:two@db.example/checkpoint",
       AUTH_DATABASE_URL: "postgresql://auth_login:three@db.example/foundry",
       WORKER_DATABASE_URL: "postgresql://worker_login:four@db.example/foundry",
-      MIGRATION_DATABASE_URL: "postgresql://migrator_login:five@db.example/foundry",
-      CHECKPOINT_MIGRATION_DATABASE_URL: "postgresql://checkpoint_migrator_login:six@db.example/checkpoint",
+      MIGRATION_DATABASE_URL: "postgresql://migrator_login:six@db.example/foundry",
+      CHECKPOINT_MIGRATION_DATABASE_URL: "postgresql://checkpoint_migrator_login:seven@db.example/checkpoint",
     });
     expect(new URL(resolved.productDatabaseUrl).searchParams.get("options")).toContain("role=foundry_product_runtime");
     expect(new URL(resolved.authDatabaseUrl).searchParams.get("options")).toContain("role=foundry_auth_bootstrap");

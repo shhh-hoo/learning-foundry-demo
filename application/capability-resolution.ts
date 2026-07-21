@@ -3,6 +3,7 @@ import { getDb, withTenantDatabase } from "@/db/client";
 import {
   capabilities,
   capabilityResolutions,
+  capabilitySupplyRelations,
   capabilityVersions,
   diagnosticObservations,
   learnerAttempts,
@@ -98,6 +99,7 @@ function buildNeed(input: {
     courseId: input.courseId,
     referencePackKey: input.referencePackKey,
     taskGoal: input.taskGoal,
+    diagnosticObservationId: input.observation.id,
     taskType: firstString(payloads.flatMap((payload) => strings(payload.taskType))),
     curriculum: firstString(payloads.flatMap((payload) => [...strings(payload.curriculum), ...strings(payload.curriculumKey)])),
     learnerLevel: firstString(payloads.flatMap((payload) => [...strings(payload.learnerLevel), ...strings(payload.level)])),
@@ -135,6 +137,7 @@ async function resolveInTenant(actor: Actor, input: {
   taskId: string;
   episodeId: string;
   diagnosticObservationId: string;
+  supplyRelationId?: string;
 }) {
   assertExecutionActive();
   const learnerOriginated = actor.roles.includes("LEARNER") && !actor.roles.some((role) => role === "TEACHER" || role === "ADMIN");
@@ -188,6 +191,20 @@ async function resolveInTenant(actor: Actor, input: {
     throw new DomainInvariantError("Task course has no authorized Subject/Reference Pack", "CAPABILITY_REFERENCE_PACK_MISSING");
   }
 
+  let supplyTargetVersionId: string | null = null;
+  if (input.supplyRelationId) {
+    const [relation] = await getDb().select().from(capabilitySupplyRelations).where(and(
+      eq(capabilitySupplyRelations.id, input.supplyRelationId),
+      eq(capabilitySupplyRelations.institutionId, actor.institutionId),
+      eq(capabilitySupplyRelations.courseId, scope.course.id),
+      eq(capabilitySupplyRelations.sourceDiagnosticObservationId, diagnosis.observation.id),
+    )).limit(1);
+    if (!relation) {
+      throw new DomainInvariantError("Targeted capability re-resolution requires its protected authorized supply relation", "CAPABILITY_SUPPLY_RELATION_DENIED");
+    }
+    supplyTargetVersionId = relation.registeredCapabilityVersionId;
+  }
+
   const registryRows = await getDb().select({ capability: capabilities, version: capabilityVersions })
     .from(capabilities)
     .innerJoin(capabilityVersions, eq(capabilityVersions.capabilityId, capabilities.id));
@@ -202,6 +219,9 @@ async function resolveInTenant(actor: Actor, input: {
     versionStatus: version.status,
     contentHash: version.contentHash,
     contract: version.contract,
+    sourceDiagnosticObservationId: input.supplyRelationId && version.id === supplyTargetVersionId
+      ? diagnosis.observation.id
+      : null,
   }));
   const need = buildNeed({
     actor,
@@ -272,4 +292,24 @@ export function resolveCapabilityForDiagnosis(actor: Actor, input: {
   diagnosticObservationId: string;
 }) {
   return withTenantDatabase(actor, () => resolveInTenant(actor, input));
+}
+
+/** Uses protected supply lineage to target the newly registered exact version. */
+export function resolveCapabilityForSupplyRelation(actor: Actor, input: { supplyRelationId: string }) {
+  return withTenantDatabase(actor, async () => {
+    const [relation] = await getDb().select().from(capabilitySupplyRelations).where(and(
+      eq(capabilitySupplyRelations.id, input.supplyRelationId),
+      eq(capabilitySupplyRelations.institutionId, actor.institutionId),
+    )).limit(1);
+    if (!relation) throw new DomainInvariantError("Capability supply relation is outside the actor's authorized course", "CAPABILITY_SUPPLY_RELATION_DENIED");
+    const [source] = await getDb().select({ resolution: capabilityResolutions }).from(capabilityResolutions)
+      .where(eq(capabilityResolutions.id, relation.sourceCapabilityResolutionId)).limit(1);
+    if (!source) throw new DomainInvariantError("Capability supply relation lost its exact CAP-02 source", "CAPABILITY_SUPPLY_RELATION_STALE");
+    return resolveInTenant(actor, {
+      taskId: source.resolution.taskId,
+      episodeId: source.resolution.episodeId,
+      diagnosticObservationId: relation.sourceDiagnosticObservationId,
+      supplyRelationId: relation.id,
+    });
+  });
 }

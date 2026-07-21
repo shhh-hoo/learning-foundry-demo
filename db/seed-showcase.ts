@@ -1,10 +1,13 @@
 import { createHash } from "node:crypto";
 import { hash } from "bcryptjs";
+import { sql } from "drizzle-orm";
 import { closeDb, getDb } from "@/db/client";
 import { SEED } from "@/db/ids";
 import {
   capabilities,
   capabilityVersions,
+  componentVersions,
+  components,
   conversationEvents,
   courseEnrollments,
   courses,
@@ -22,6 +25,13 @@ import {
 import { CHEMISTRY_CAPABILITIES } from "@/reference-packs/chemistry/capabilities";
 import { startWorkflow } from "@/application/workflow-service";
 import { closeWorkflowCheckpointer } from "@/workflows/checkpointer";
+import {
+  SourceWebComponentAssetContract,
+  SourceWebComponentAssetPackage,
+  WEB_COMPONENT_ASSET_IMPLEMENTATION_KEY,
+  WEB_COMPONENT_ASSET_RUNTIME_KIND,
+  webComponentAssetHash,
+} from "@/domain/web-component-asset";
 
 if (process.env.SYNTHETIC_SHOWCASE_MODE !== "true") {
   throw new Error("Refusing to seed: SYNTHETIC_SHOWCASE_MODE=true is required.");
@@ -88,6 +98,7 @@ const capabilityIds = [
 ] as const;
 for (const [index, definition] of CHEMISTRY_CAPABILITIES.entries()) {
   const [capabilityId, versionId] = capabilityIds[index];
+  if (capabilityId === SEED.chemistryPercentageYield) continue;
   await db.insert(capabilities).values({
     id: capabilityId,
     key: definition.key,
@@ -113,6 +124,130 @@ for (const [index, definition] of CHEMISTRY_CAPABILITIES.entries()) {
       contentHash: digest(JSON.stringify(definition)),
     },
   });
+}
+
+const percentageYieldDefinition = CHEMISTRY_CAPABILITIES.find((definition) => definition.key === "chemistry-percentage-yield");
+if (!percentageYieldDefinition) throw new Error("Percentage yield Registry fixture is missing");
+const percentageYieldSourceContract = SourceWebComponentAssetContract.parse({
+  contractType: "WEB_COMPONENT_ASSET",
+  contractVersion: "cap-07.1",
+  title: "Percentage yield source check",
+  purpose: "Execute the reviewed percentage-yield relation as a bounded interactive source Web ComponentAsset.",
+  referencePackKey: "chemistry-caie-9701",
+  origin: "REVIEWED_REFERENCE_PACK",
+  templateKey: "foundry.web.pause-predict.v1",
+  implementationKey: WEB_COMPONENT_ASSET_IMPLEMENTATION_KEY,
+  runtimeKind: WEB_COMPONENT_ASSET_RUNTIME_KIND,
+  arbitraryCodeAllowed: false,
+  availabilityScope: "INSTITUTION_COURSE_PRIVATE",
+});
+const percentageYieldSourcePackage = SourceWebComponentAssetPackage.parse({
+  packageType: "DECLARATIVE_WEB_COMPONENT_ASSET",
+  packageRole: "SOURCE",
+  templateKey: "foundry.web.pause-predict.v1",
+  title: "Percentage yield source check",
+  purpose: "Check which relation correctly calculates percentage yield from actual and theoretical product masses.",
+  instructions: "Choose the reviewed relation that uses actual and theoretical product masses in the correct order.",
+  prompt: "Which relation calculates percentage yield from actual and theoretical product masses?",
+  choices: [
+    { id: "actual-over-theoretical", label: "actual yield ÷ theoretical yield × 100" },
+    { id: "theoretical-over-actual", label: "theoretical yield ÷ actual yield × 100" },
+    { id: "difference-only", label: "theoretical yield − actual yield" },
+  ],
+  correctChoiceId: "actual-over-theoretical",
+  correctFeedback: "Correct. Percentage yield uses actual yield divided by theoretical yield, multiplied by 100.",
+  retryFeedback: "Use the reviewed relation with actual yield in the numerator and theoretical yield in the denominator.",
+  language: "en",
+  interactionMode: "STATELESS_ONE_SHOT",
+  accessibility: { keyboardOperable: true, visibleLabels: true, statusAnnouncement: true, reducedMotionSafe: true },
+  eventContract: ["COMPONENT_STARTED", "LEARNER_RESPONSE_SUBMITTED", "COMPONENT_COMPLETED"],
+  rights: { basis: "FOUNDRY_INTERNAL_TEMPLATE", status: "NOT_REQUIRED" },
+  externalDependencies: [],
+  provider: null,
+});
+const percentageYieldComponentHash = webComponentAssetHash(percentageYieldSourceContract, percentageYieldSourcePackage);
+const percentageYieldResolution = {
+  ...(percentageYieldDefinition.contract as Record<string, unknown>).resolution as Record<string, unknown>,
+  availability: { status: "AVAILABLE", institutionIds: [SEED.institution], courseIds: [SEED.course], rights: "NOT_REQUIRED", dependencies: [], provider: null },
+  runtime: {
+    kind: WEB_COMPONENT_ASSET_RUNTIME_KIND,
+    input: { type: "object", required: ["selectedChoiceId"], properties: { selectedChoiceId: { type: "string" } } },
+    parameters: { componentAssetVersionId: SEED.chemistryPercentageYieldComponentVersion, templateKey: percentageYieldSourcePackage.templateKey },
+    state: { mode: "STATELESS_ONE_SHOT" },
+    output: { type: "object", required: ["componentCompleted", "correct", "feedback", "events"] },
+    events: percentageYieldSourcePackage.eventContract,
+  },
+};
+const percentageYieldCapabilityContract = {
+  resolution: percentageYieldResolution,
+  componentAsset: {
+    componentId: SEED.chemistryPercentageYieldComponent,
+    versionId: SEED.chemistryPercentageYieldComponentVersion,
+    version: "1.0.0",
+    contentHash: percentageYieldComponentHash,
+    contract: percentageYieldSourceContract,
+    package: percentageYieldSourcePackage,
+  },
+};
+await db.execute(sql`SET session_replication_role = replica`);
+try {
+  await db.insert(capabilities).values({
+    id: SEED.chemistryPercentageYield,
+    institutionId: SEED.institution,
+    courseId: SEED.course,
+    key: percentageYieldDefinition.key,
+    name: percentageYieldDefinition.name,
+    referencePackKey: "chemistry-caie-9701",
+    kind: "WEB_COMPONENT_ASSET",
+    activeVersionId: null,
+  }).onConflictDoUpdate({ target: capabilities.id, set: { name: percentageYieldDefinition.name, activeVersionId: null } });
+  await db.insert(components).values({
+    id: SEED.chemistryPercentageYieldComponent,
+    institutionId: SEED.institution,
+    courseId: SEED.course,
+    capabilityId: SEED.chemistryPercentageYield,
+    assetType: "WEB_COMPONENT_ASSET",
+    registeredCapabilityId: SEED.chemistryPercentageYield,
+    registeredCapabilityVersionId: null,
+    referencePackKey: "chemistry-caie-9701",
+    key: "reference-pack.percentage-yield-source",
+    title: percentageYieldSourceContract.title,
+    status: "PUBLISHED",
+    sourceSignal: { kind: "REVIEWED_REFERENCE_PACK_COMPONENT", referencePackKey: "chemistry-caie-9701" },
+    activeVersionId: SEED.chemistryPercentageYieldComponentVersion,
+    createdBy: SEED.expert,
+  }).onConflictDoNothing();
+  await db.insert(componentVersions).values({
+    id: SEED.chemistryPercentageYieldComponentVersion,
+    componentId: SEED.chemistryPercentageYieldComponent,
+    version: "1.0.0",
+    contract: percentageYieldSourceContract,
+    content: percentageYieldSourcePackage,
+    sourceObservationIds: [],
+    sourceReviewIds: [],
+    validation: { status: "REVIEWED_REFERENCE_PACK_SOURCE" },
+    evalResult: { status: "PASSED", provenance: "SYNTHETIC_SHOWCASE_REFERENCE_PACK" },
+    status: "PUBLISHED",
+    contentHash: percentageYieldComponentHash,
+    createdBy: SEED.expert,
+  }).onConflictDoUpdate({ target: componentVersions.id, set: { contract: percentageYieldSourceContract, content: percentageYieldSourcePackage, contentHash: percentageYieldComponentHash } });
+  const percentageYieldCapabilityHash = digest(JSON.stringify(percentageYieldCapabilityContract));
+  await db.insert(capabilityVersions).values({
+    id: SEED.chemistryPercentageYieldVersion,
+    capabilityId: SEED.chemistryPercentageYield,
+    institutionId: SEED.institution,
+    courseId: SEED.course,
+    componentAssetVersionId: SEED.chemistryPercentageYieldComponentVersion,
+    version: "1.0.0",
+    contract: percentageYieldCapabilityContract,
+    implementationKey: WEB_COMPONENT_ASSET_IMPLEMENTATION_KEY,
+    status: "ACTIVE",
+    contentHash: percentageYieldCapabilityHash,
+  }).onConflictDoUpdate({ target: capabilityVersions.id, set: { contract: percentageYieldCapabilityContract, implementationKey: WEB_COMPONENT_ASSET_IMPLEMENTATION_KEY, status: "ACTIVE", contentHash: percentageYieldCapabilityHash } });
+  await db.update(components).set({ registeredCapabilityVersionId: SEED.chemistryPercentageYieldVersion }).where(sql`${components.id}=${SEED.chemistryPercentageYieldComponent}`);
+  await db.update(capabilities).set({ activeVersionId: SEED.chemistryPercentageYieldVersion }).where(sql`${capabilities.id}=${SEED.chemistryPercentageYield}`);
+} finally {
+  await db.execute(sql`SET session_replication_role = origin`);
 }
 
 await db.insert(sourceRecords).values({

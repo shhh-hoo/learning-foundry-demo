@@ -1,5 +1,7 @@
 import { readFile, readdir } from "node:fs/promises";
+import { getTableConfig } from "drizzle-orm/pg-core";
 import { describe, expect, it } from "vitest";
+import { componentAssetPreviews, componentEvaluations } from "@/db/schema";
 
 describe("fresh migration contract", () => {
   it("allows Drizzle to pre-create its migration schema", async () => {
@@ -25,7 +27,7 @@ describe("fresh migration contract", () => {
   it("keeps the clean rewrite history and adds governed Asset Loop enforcement", async () => {
     const directory = new URL("../../db/migrations/", import.meta.url);
     const migrations = (await readdir(directory)).filter((name) => name.endsWith(".sql"));
-    expect(migrations).toEqual(["0000_full_framework.sql", "0001_full_framework.sql", "0002_recoverable_resume_claims.sql", "0003_production_auth_tenant_enforcement.sql", "0004_canonical_identity_context_evidence.sql", "0005_authoritative_context_compiler.sql", "0006_diagnosis_capability_resolution.sql", "0007_activity_planning.sql", "0008_asset_stage_runtime.sql", "0009_teacher_assignment_intervention.sql", "0010_governed_followup.sql"]);
+    expect(migrations).toEqual(["0000_full_framework.sql", "0001_full_framework.sql", "0002_recoverable_resume_claims.sql", "0003_production_auth_tenant_enforcement.sql", "0004_canonical_identity_context_evidence.sql", "0005_authoritative_context_compiler.sql", "0006_diagnosis_capability_resolution.sql", "0007_activity_planning.sql", "0008_asset_stage_runtime.sql", "0009_teacher_assignment_intervention.sql", "0010_governed_followup.sql", "0011_capability_gap_supply.sql"]);
     const migration = await readFile(new URL("../../db/migrations/0000_full_framework.sql", import.meta.url), "utf8");
     const assetMigration = await readFile(new URL("../../db/migrations/0001_full_framework.sql", import.meta.url), "utf8");
     expect(migration).not.toMatch(/migrated-legacy-record|legacy-review|legacy-outcome|legacy-publication|HUMAN_COMMAND/);
@@ -41,6 +43,56 @@ describe("fresh migration contract", () => {
     expect(assetMigration).toContain("PRE_EVAL_DRAFT_QUARANTINED");
     expect(assetMigration).toContain("Component versions must begin as governed Drafts");
     expect(assetMigration).toContain("Components must begin as governed Candidates without an active version");
+  });
+
+  it("adds bounded CAP-07 gap supply without generic CMS or automatic human authority", async () => {
+    const migration = await readFile(new URL("../../db/migrations/0011_capability_gap_supply.sql", import.meta.url), "utf8");
+    expect(migration).toContain('CREATE TABLE "foundry_product"."component_asset_previews"');
+    expect(migration).toContain('CREATE TABLE "foundry_product"."capability_availability_decisions"');
+    expect(migration).toContain('"component_asset_version_id" uuid REFERENCES "foundry_product"."component_versions"');
+    expect(migration).toContain("Web ComponentAsset confirmation requires exact authenticated checks-bound learner preview");
+    expect(migration).toContain("Tenant-private CapabilityVersion exact ComponentAsset lineage mismatch");
+    expect(migration).toContain('CREATE TRIGGER "0_cap07_source_freshness_lock" BEFORE INSERT ON foundry_product.capability_resolutions');
+    expect(migration).toContain('CREATE TRIGGER "0_cap07_source_freshness_lock" BEFORE INSERT ON foundry_product.activity_plan_proposals');
+    expect(migration).toContain("lock_cap07_publication_source");
+    expect(migration).toContain("CREATE ROLE foundry_component_executor NOLOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS");
+    expect(migration).toContain("Web ComponentAsset evaluation requires the dedicated trusted executor identity");
+    expect(migration).toContain("Web ComponentAsset preview requires the dedicated trusted executor identity");
+    expect(migration).toContain("CREATE OR REPLACE FUNCTION foundry_private.assert_component_evaluation_tenant_lineage()");
+    expect(migration).toContain("executor_command:=TG_OP='INSERT' AND COALESCE(current_setting('foundry.executor_purpose',true),'')='WEB_COMPONENT_EVALUATION'");
+    expect(migration).toContain('DROP TRIGGER IF EXISTS "_authority_tenant_lineage_guard" ON foundry_product.component_evaluations');
+    expect(migration).toContain("GRANT EXECUTE ON FUNCTION foundry_product.record_web_component_evaluation(uuid,uuid,text,text,jsonb,jsonb,jsonb,jsonb) TO foundry_component_executor");
+    expect(migration).toContain("GRANT EXECUTE ON FUNCTION foundry_product.record_component_asset_preview(uuid,uuid,uuid,uuid,text,jsonb,jsonb,jsonb,text,text,text) TO foundry_component_executor");
+    expect(migration).not.toContain("GRANT EXECUTE ON FUNCTION foundry_product.record_web_component_evaluation(uuid,uuid,text,text,jsonb,jsonb,jsonb,jsonb) TO foundry_product_runtime");
+    expect(migration).not.toContain("GRANT EXECUTE ON FUNCTION foundry_product.record_component_asset_preview(uuid,uuid,uuid,uuid,text,jsonb,jsonb,jsonb,text,text,text) TO foundry_product_runtime");
+    expect(migration).toContain('c.id="capability_versions"."capability_id"');
+    expect(migration).toContain('v.id="component_asset_previews"."component_version_id"');
+    expect(migration).not.toContain('GRANT UPDATE ON "foundry_product"."capability_resolutions"');
+    expect(migration).not.toContain('GRANT UPDATE ON "foundry_product"."activity_plan_proposals"');
+    expect(migration).toContain("INSTITUTION_COURSE_PRIVATE");
+    expect(migration).not.toMatch(/CREATE TABLE[^;]*(cms|page|article|content_entries)/i);
+    expect(migration).not.toMatch(/INSERT INTO\s+"foundry_product"\."(teacher_reviews|learning_outcomes)"/i);
+    const rehearsal = await readFile(new URL("../../scripts/test-cap07-upgrade.ts", import.meta.url), "utf8");
+    expect(rehearsal).toContain("CAP07_UPGRADE_VERIFIED");
+    expect(rehearsal).toContain("preservedGlobalRegistryVersion");
+  });
+
+  it("binds a preview to its evaluation without making evaluations self-referential", async () => {
+    const evaluationConfig = getTableConfig(componentEvaluations);
+    const previewConfig = getTableConfig(componentAssetPreviews);
+    expect(evaluationConfig.columns.map((column) => column.name)).not.toContain("component_evaluation_id");
+    expect(previewConfig.columns.find((column) => column.name === "component_evaluation_id")?.notNull).toBe(true);
+    expect(previewConfig.foreignKeys.some((foreignKey) => {
+      const reference = foreignKey.reference();
+      return reference.columns.map((column) => column.name).join(",") === "component_evaluation_id"
+        && getTableConfig(reference.foreignTable).name === "component_evaluations"
+        && reference.foreignColumns.map((column) => column.name).join(",") === "id";
+    })).toBe(true);
+
+    const migration = await readFile(new URL("../../db/migrations/0011_capability_gap_supply.sql", import.meta.url), "utf8");
+    const previewTable = migration.match(/CREATE TABLE "foundry_product"\."component_asset_previews" \(([\s\S]*?)\n\);/)?.[1];
+    expect(previewTable).toContain('"component_evaluation_id" uuid NOT NULL REFERENCES "foundry_product"."component_evaluations"("id")');
+    expect(migration).not.toMatch(/ALTER TABLE "foundry_product"\."component_evaluations" ADD COLUMN "component_evaluation_id"/);
   });
 
   it("adds a typed, forward-only CAP-06 follow-up envelope without creating Outcome authority", async () => {

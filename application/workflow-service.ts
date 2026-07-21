@@ -5,7 +5,7 @@ import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import type { Actor } from "@/domain/model";
 import { GovernedFollowupAttempt, GovernedFollowupReview, GovernedFollowupStart } from "@/domain/governed-followup";
-import { commandRequestHash } from "@/application/commands";
+import { commandRequestHash, decidePublication, type PublicationDependencies } from "@/application/commands";
 import {
   createGovernedFollowup,
   executeGovernedFollowup,
@@ -16,7 +16,8 @@ import {
 } from "@/application/governed-followup";
 import { DomainInvariantError, requireCourseAccess, requireRole } from "@/domain/invariants";
 import { getDb, getSql, withTenantDatabase } from "@/db/client";
-import { componentVersions, components, diagnosticObservations, learnerAttempts, workflowRuns } from "@/db/schema";
+import { activityPlanProposals, activityPlans, capabilities, capabilityAvailabilityDecisions, capabilityResolutions, capabilityVersions, componentAssetPreviews, componentEvaluations, componentVersions, components, diagnosticObservations, learnerAttempts, publicationDecisions, runtimeDeliveries, workflowRuns } from "@/db/schema";
+import { runComponentEvaluation } from "@/application/component-evaluation";
 import { getWorkflowCheckpointer } from "@/workflows/checkpointer";
 import { buildLearnerTaskGraph } from "@/workflows/learner-task";
 import { buildExplanationGraph } from "@/workflows/explanation";
@@ -24,11 +25,15 @@ import { buildDiagnosisGraph } from "@/workflows/diagnosis";
 import { buildAssetRuntimeGraph } from "@/workflows/asset-runtime";
 import { buildTeacherReviewGraph } from "@/workflows/teacher-review";
 import { buildGovernedFollowupGraph } from "@/workflows/governed-followup";
-import { buildComponentLifecycleGraph } from "@/workflows/component-lifecycle";
+import { buildComponentLifecycleGraph, ExpertPublicationResume } from "@/workflows/component-lifecycle";
+import { ComponentHumanRubric, humanRubricPasses } from "@/domain/component";
+import { stableAssetRuntimeJson, type NormalizedRuntimeError } from "@/domain/asset-runtime";
+import { reconcileStoppedAssetStage, type AssetRuntimeDependencies } from "@/application/asset-runtime";
 import { traced } from "@/application/telemetry";
 import { requireGovernedFollowupScope, requireTaskEpisodeScope } from "@/application/task-scope";
 import {
   assertExecutionActive,
+  executionStopStatus,
   operationalFailureStatus,
   runWithExecutionControl,
   type ExecutionControlInput,
@@ -52,6 +57,8 @@ type InvokableGraph = {
 export type WorkflowServiceTestFaults = LearnerTaskFaultHooks & {
   afterGraphCompletion?: (input: { kind: WorkflowKind; runId: string; threadId: string; result: unknown }) => Promise<void> | void;
   governedFollowupPlanning?: GovernedFollowupPlanningDependencies;
+  componentPublication?: PublicationDependencies;
+  assetRuntime?: AssetRuntimeDependencies;
 };
 
 /** Test-only sentinel that models process loss: no catch-path operational write may run. */
@@ -108,6 +115,7 @@ const AssetRuntimeWorkflowStart = z.object({
   taskId: z.string().uuid(),
   episodeId: z.string().uuid(),
   activityPlanProposalId: z.string().uuid(),
+  retryOfDeliveryId: z.string().uuid().optional(),
   prompt: z.string().min(1).max(4_000),
   response: z.string().min(1).max(20_000),
   structuredInput: z.record(z.string(), z.unknown()),
@@ -121,6 +129,7 @@ const ComponentLifecycleWorkflowStart = z.object({
   componentId: z.string().uuid(),
   componentVersionId: z.string().uuid(),
 }).strict();
+const ComponentPublicationPayload = ExpertPublicationResume.omit({ actor: true });
 
 function assertWorkflowBinding(label: string, supplied: string | undefined, persisted: string): void {
   if (supplied && supplied !== persisted) {
@@ -236,10 +245,10 @@ function graphFor(kind: WorkflowKind, institutionId: string, testFaults?: Workfl
   if (kind === "LEARNER_TASK") return buildLearnerTaskGraph(checkpointer, testFaults) as unknown as InvokableGraph;
   if (kind === "EXPLANATION") return buildExplanationGraph(checkpointer, testFaults?.explanation) as unknown as InvokableGraph;
   if (kind === "DIAGNOSIS") return buildDiagnosisGraph(checkpointer) as unknown as InvokableGraph;
-  if (kind === "ASSET_RUNTIME") return buildAssetRuntimeGraph(checkpointer) as unknown as InvokableGraph;
+  if (kind === "ASSET_RUNTIME") return buildAssetRuntimeGraph(checkpointer, testFaults?.assetRuntime) as unknown as InvokableGraph;
   if (kind === "TEACHER_REVIEW") return buildTeacherReviewGraph(checkpointer) as unknown as InvokableGraph;
   if (kind === "GOVERNED_FOLLOWUP") return buildGovernedFollowupGraph(checkpointer, testFaults?.governedFollowupPlanning) as unknown as InvokableGraph;
-  if (kind === "COMPONENT_LIFECYCLE") return buildComponentLifecycleGraph(checkpointer) as unknown as InvokableGraph;
+  if (kind === "COMPONENT_LIFECYCLE") return buildComponentLifecycleGraph(checkpointer, testFaults?.componentPublication) as unknown as InvokableGraph;
   throw new DomainInvariantError(`Workflow kind ${String(kind)} is not supported by this application version`, "WORKFLOW_KIND_UNSUPPORTED");
 }
 
@@ -307,6 +316,29 @@ function advancedGovernedCheckpoint(
   throw new DomainInvariantError("Governed checkpoint progress conflicts with the persisted workflow interrupt", "WORKFLOW_REPLAY_INTEGRITY");
 }
 
+function advancedComponentCheckpoint(
+  run: typeof workflowRuns.$inferSelect,
+  snapshot: GraphStateSnapshot,
+): { result: Record<string, unknown>; nextInterrupt: null } | null {
+  const currentInterrupt = checkpointInterruptType(snapshot);
+  if (currentInterrupt === run.interruptType) return null;
+  const checkpoint = snapshot.values;
+  const complete = currentInterrupt === null && snapshot.next.length === 0;
+  if (!complete || run.interruptType !== "EXPERT_PUBLICATION_REVIEW_REQUIRED"
+    || checkpoint.componentId !== run.productLinks.componentId
+    || checkpoint.componentVersionId !== run.productLinks.componentVersionId
+    || checkpoint.evaluationId !== run.productLinks.evaluationId
+    || typeof checkpoint.decisionId !== "string"
+    || (checkpoint.decision !== "APPROVE" && checkpoint.decision !== "REJECT")) {
+    throw new DomainInvariantError("Component lifecycle checkpoint progress conflicts with its exact persisted interrupt", "WORKFLOW_REPLAY_INTEGRITY");
+  }
+  if (checkpoint.decision === "APPROVE" && typeof checkpoint.registeredCapabilityVersionId === "string"
+    && (typeof checkpoint.registeredCapabilityId !== "string" || typeof checkpoint.capabilityResolutionId !== "string" || typeof checkpoint.activityPlanProposalId !== "string")) {
+    throw new DomainInvariantError("Completed ComponentAsset checkpoint lacks exact Registry and READY planning lineage", "WORKFLOW_REPLAY_INTEGRITY");
+  }
+  return { result: checkpoint, nextInterrupt: null };
+}
+
 function governedWorkflowIdentity(actor: Actor, assignment: z.infer<typeof GovernedFollowupStart>) {
   const requestHash = commandRequestHash(actor, "START_GOVERNED_FOLLOWUP_WORKFLOW", assignment);
   const digest = createHash("sha256")
@@ -317,6 +349,15 @@ function governedWorkflowIdentity(actor: Actor, assignment: z.infer<typeof Gover
     requestHash,
     threadId: `${actor.institutionId}:governed_followup:${digest}`,
   };
+}
+
+function componentWorkflowIdentity(actor: Actor, state: z.infer<typeof ComponentLifecycleWorkflowStart>) {
+  const requestHash = commandRequestHash(actor, "START_COMPONENT_LIFECYCLE_WORKFLOW", state);
+  const digest = createHash("sha256")
+    .update(`${actor.institutionId}:${state.componentId}:${state.componentVersionId}`)
+    .digest("hex")
+    .slice(0, 32);
+  return { requestHash, threadId: `${actor.institutionId}:component_lifecycle:${digest}` };
 }
 
 function governedTerminal(result: unknown): { status: "FAILED" | "CANCELLED"; failure: string; code: string } | null {
@@ -338,6 +379,17 @@ function governedTerminal(result: unknown): { status: "FAILED" | "CANCELLED"; fa
   return null;
 }
 
+function assetRuntimeTerminal(result: unknown): { status: "FAILED" | "CANCELLED" | "TIMED_OUT"; failure: string; code: string } | null {
+  const state = result as Record<string, unknown>;
+  if (!new Set(["FAILED", "CANCELLED", "TIMED_OUT"]).has(String(state.runtimeStatus))) return null;
+  const runtimeStatus = state.runtimeStatus as "FAILED" | "CANCELLED" | "TIMED_OUT";
+  return {
+    status: runtimeStatus,
+    failure: typeof state.failureReason === "string" ? state.failureReason : `Asset Runtime ended in ${runtimeStatus}`,
+    code: typeof state.failureCode === "string" ? state.failureCode : `ASSET_RUNTIME_${runtimeStatus}`,
+  };
+}
+
 function replayedWorkflowRun(run: typeof workflowRuns.$inferSelect) {
   return {
     runId: run.id,
@@ -346,6 +398,7 @@ function replayedWorkflowRun(run: typeof workflowRuns.$inferSelect) {
     interruptType: run.interruptType,
     expectedVersion: run.interruptVersion,
     failure: run.failure,
+    failureCode: run.productLinks.failureCode,
     result: run.productLinks,
     replayed: true,
   };
@@ -513,6 +566,97 @@ async function replayGovernedResumeIfExact(
   };
 }
 
+function componentResumeReceiptKey(expectedVersion: number, field: string): string {
+  return `componentResumeReplay:${expectedVersion}:${field}`;
+}
+
+function componentResumeRequestHash(actor: Actor, threadId: string, expectedVersion: number, payload: Record<string, unknown>): string {
+  return commandRequestHash(actor, "RESUME_COMPONENT_LIFECYCLE_WORKFLOW", {
+    threadId,
+    expectedVersion,
+    payload: ComponentPublicationPayload.parse(payload),
+  });
+}
+
+function componentResumeReceipt(run: typeof workflowRuns.$inferSelect, expectedVersion: number): { actorUserId: string; requestHash: string; result: Record<string, string> } | null {
+  const value = (field: string) => run.productLinks[componentResumeReceiptKey(expectedVersion, field)];
+  const actorUserId = value("actorUserId");
+  const requestHash = value("requestHash");
+  if (!actorUserId || !requestHash || value("status") !== "COMPLETED") return null;
+  try {
+    const parsed = JSON.parse(value("result") ?? "null") as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) || Object.values(parsed).some((item) => typeof item !== "string")) return null;
+    return { actorUserId, requestHash, result: parsed as Record<string, string> };
+  } catch {
+    return null;
+  }
+}
+
+function componentResumeReceiptLinks(input: { actor: Actor; threadId: string; expectedVersion: number; resumePayload: Record<string, unknown>; result: unknown }): Record<string, string> {
+  const key = (field: string) => componentResumeReceiptKey(input.expectedVersion, field);
+  return {
+    [key("actorUserId")]: input.actor.userId,
+    [key("requestHash")]: componentResumeRequestHash(input.actor, input.threadId, input.expectedVersion, input.resumePayload),
+    [key("status")]: "COMPLETED",
+    [key("result")]: JSON.stringify(extractProductLinks(input.result)),
+  };
+}
+
+async function requireCanonicalComponentPublication(actor: Actor, run: typeof workflowRuns.$inferSelect, result: Record<string, string>): Promise<void> {
+  const componentId = run.productLinks.componentId;
+  const componentVersionId = run.productLinks.componentVersionId;
+  const evaluationId = run.productLinks.evaluationId;
+  if (!componentId || !componentVersionId || !evaluationId || !result.decisionId || (result.decision !== "APPROVE" && result.decision !== "REJECT")) {
+    throw new DomainInvariantError("Component lifecycle receipt lacks exact decision lineage", "WORKFLOW_REPLAY_INTEGRITY");
+  }
+  const [binding] = await getDb().select({ component: components, version: componentVersions, evaluation: componentEvaluations, decision: publicationDecisions })
+    .from(components)
+    .innerJoin(componentVersions, and(eq(componentVersions.id, componentVersionId), eq(componentVersions.componentId, components.id)))
+    .innerJoin(componentEvaluations, and(eq(componentEvaluations.id, evaluationId), eq(componentEvaluations.componentVersionId, componentVersions.id)))
+    .innerJoin(publicationDecisions, and(eq(publicationDecisions.id, result.decisionId), eq(publicationDecisions.componentVersionId, componentVersions.id), eq(publicationDecisions.evaluationId, componentEvaluations.id)))
+    .where(eq(components.id, componentId)).limit(1);
+  if (!binding || binding.component.institutionId !== actor.institutionId || binding.decision.action !== result.decision || binding.decision.expertId !== actor.userId) {
+    throw new DomainInvariantError("Component lifecycle receipt conflicts with canonical confirmation", "WORKFLOW_REPLAY_INTEGRITY");
+  }
+  requireCourseAccess(actor, binding.component.institutionId, binding.component.courseId);
+  if (result.decision === "REJECT") {
+    if (binding.version.status !== "REJECTED") throw new DomainInvariantError("Rejected Component lifecycle receipt is not terminal in Product State", "WORKFLOW_REPLAY_INTEGRITY");
+    return;
+  }
+  if (binding.version.status !== "PUBLISHED" || binding.component.activeVersionId !== binding.version.id || binding.component.status !== "PUBLISHED") {
+    throw new DomainInvariantError("Approved Component lifecycle receipt is not published in Product State", "WORKFLOW_REPLAY_INTEGRITY");
+  }
+  if (binding.component.assetType !== "WEB_COMPONENT_ASSET") return;
+  if (!result.registeredCapabilityId || !result.registeredCapabilityVersionId || !result.capabilityResolutionId || !result.activityPlanProposalId
+    || binding.component.registeredCapabilityId !== result.registeredCapabilityId || binding.component.registeredCapabilityVersionId !== result.registeredCapabilityVersionId) {
+    throw new DomainInvariantError("Approved ComponentAsset receipt lacks exact Registry and planning lineage", "WORKFLOW_REPLAY_INTEGRITY");
+  }
+  const [registration] = await getDb().select({ capability: capabilities, version: capabilityVersions, availability: capabilityAvailabilityDecisions, resolution: capabilityResolutions, plan: activityPlanProposals })
+    .from(capabilities)
+    .innerJoin(capabilityVersions, and(eq(capabilityVersions.id, result.registeredCapabilityVersionId), eq(capabilityVersions.capabilityId, capabilities.id)))
+    .innerJoin(capabilityAvailabilityDecisions, and(eq(capabilityAvailabilityDecisions.capabilityVersionId, capabilityVersions.id), eq(capabilityAvailabilityDecisions.confirmationDecisionId, binding.decision.id)))
+    .innerJoin(capabilityResolutions, and(eq(capabilityResolutions.id, result.capabilityResolutionId), eq(capabilityResolutions.selectedCapabilityId, capabilities.id), eq(capabilityResolutions.selectedCapabilityVersionId, capabilityVersions.id)))
+    .innerJoin(activityPlanProposals, and(eq(activityPlanProposals.id, result.activityPlanProposalId), eq(activityPlanProposals.capabilityResolutionId, capabilityResolutions.id), eq(activityPlanProposals.selectedCapabilityVersionId, capabilityVersions.id)))
+    .where(eq(capabilities.id, result.registeredCapabilityId)).limit(1);
+  if (!registration || registration.capability.activeVersionId !== registration.version.id || registration.availability.availabilityStatus !== "AVAILABLE"
+    || registration.resolution.decision !== "EXISTING" || registration.plan.state !== "READY") {
+    throw new DomainInvariantError("Approved ComponentAsset receipt does not match active exact Registry availability and READY planning", "WORKFLOW_REPLAY_INTEGRITY");
+  }
+}
+
+async function replayComponentResumeIfExact(actor: Actor, run: typeof workflowRuns.$inferSelect, threadId: string, expectedVersion: number, resumePayload: Record<string, unknown>) {
+  const receipt = componentResumeReceipt(run, expectedVersion);
+  if (!receipt) return null;
+  if (run.status === "FAILED" || run.status === "CANCELLED") throw new DomainInvariantError("A failed or cancelled Component lifecycle cannot be revived by replay", "WORKFLOW_NOT_INTERRUPTED");
+  if (receipt.actorUserId !== actor.userId) throw new DomainInvariantError("Component lifecycle replay belongs to another confirming actor", "WORKFLOW_OWNERSHIP");
+  if (componentResumeRequestHash(actor, threadId, expectedVersion, resumePayload) !== receipt.requestHash) {
+    throw new DomainInvariantError("Component lifecycle replay changed the exact resume payload, thread or interrupt version", "WORKFLOW_REPLAY_IDEMPOTENCY_MISMATCH");
+  }
+  requireRole(actor, ["EXPERT", "ADMIN"]);
+  await requireCanonicalComponentPublication(actor, run, receipt.result);
+  return { runId: run.id, threadId: run.threadId, status: "COMPLETED" as const, interruptType: null, expectedVersion, result: receipt.result, replayed: true };
+}
+
 function assertReconciledLink(label: string, checkpointValue: unknown, canonicalValue: string): void {
   if (checkpointValue !== undefined && checkpointValue !== canonicalValue) {
     throw new DomainInvariantError(`${label} checkpoint conflicts with canonical Product State`, "WORKFLOW_REPLAY_INTEGRITY");
@@ -581,6 +725,121 @@ async function reconcileGovernedResume(
   return result;
 }
 
+async function reconcileComponentStart(actor: Actor, state: Record<string, unknown>, result: unknown): Promise<unknown> {
+  const parsed = ComponentLifecycleWorkflowStart.parse(state);
+  const canonical = await runComponentEvaluation(actor, parsed.componentVersionId);
+  const checkpoint = result as Record<string, unknown>;
+  assertReconciledLink("Component lifecycle evaluation", checkpoint.evaluationId, canonical.evaluation.id);
+  if (checkpoint.componentId !== parsed.componentId || checkpoint.componentVersionId !== parsed.componentVersionId) {
+    throw new DomainInvariantError("Component lifecycle checkpoint changed its exact ComponentAssetVersion binding", "WORKFLOW_REPLAY_INTEGRITY");
+  }
+  return {
+    ...checkpoint,
+    componentId: parsed.componentId,
+    componentVersionId: parsed.componentVersionId,
+    evaluationId: canonical.evaluation.id,
+    systemStatus: canonical.systemStatus,
+    systemChecks: canonical.systemChecks,
+    providerChecks: canonical.providerChecks,
+  };
+}
+
+async function reconcileAssetRuntimeStart(actor: Actor, state: Record<string, unknown>, result: unknown): Promise<unknown> {
+  const request = AssetRuntimeWorkflowStart.parse(state);
+  const checkpoint = result as Record<string, unknown>;
+  const [canonical] = await getDb().select({
+    delivery: runtimeDeliveries,
+    plan: activityPlans,
+    attempt: learnerAttempts,
+  }).from(runtimeDeliveries)
+    .innerJoin(activityPlans, eq(activityPlans.id, runtimeDeliveries.activityPlanId))
+    .innerJoin(learnerAttempts, eq(learnerAttempts.runtimeDeliveryId, runtimeDeliveries.id))
+    .where(and(
+      eq(runtimeDeliveries.institutionId, actor.institutionId),
+      eq(runtimeDeliveries.taskId, request.taskId),
+      eq(runtimeDeliveries.episodeId, request.episodeId),
+      eq(runtimeDeliveries.idempotencyKey, request.idempotencyKey),
+    )).limit(1);
+  if (!canonical) {
+    throw new DomainInvariantError("Asset Runtime checkpoint conflicts with exact persisted Product State (MISSING_DELIVERY)", "WORKFLOW_REPLAY_INTEGRITY");
+  }
+  const attemptInput = canonical?.attempt.structuredInput as Record<string, unknown> | null;
+  const mismatches = [
+    checkpoint.activityPlanId !== undefined && canonical.delivery.activityPlanId !== checkpoint.activityPlanId ? "CHECKPOINT_PLAN" : null,
+    checkpoint.runtimeDeliveryId !== undefined && canonical.delivery.id !== checkpoint.runtimeDeliveryId ? "CHECKPOINT_DELIVERY" : null,
+    checkpoint.attemptId !== undefined && canonical.attempt.id !== checkpoint.attemptId ? "CHECKPOINT_ATTEMPT" : null,
+    checkpoint.runtimeStatus !== undefined && canonical.delivery.status !== checkpoint.runtimeStatus ? "CHECKPOINT_STATUS" : null,
+    !new Set(["SUCCEEDED", "FAILED", "TIMED_OUT", "CANCELLED"]).has(canonical.delivery.status) ? "NON_TERMINAL_DELIVERY" : null,
+    canonical.plan.activityPlanProposalId !== request.activityPlanProposalId ? "PLAN_PROPOSAL" : null,
+    canonical.delivery.idempotencyKey !== request.idempotencyKey ? "IDEMPOTENCY_KEY" : null,
+    canonical.delivery.retryOfDeliveryId !== (request.retryOfDeliveryId ?? null) ? "RETRY_LINEAGE" : null,
+    canonical.delivery.deadlineMs !== request.deadlineMs ? "DEADLINE" : null,
+    canonical.attempt.prompt !== request.prompt ? "PROMPT" : null,
+    canonical.attempt.response !== request.response ? "RESPONSE" : null,
+    canonical.attempt.modality !== request.modality ? "MODALITY" : null,
+    stableAssetRuntimeJson(attemptInput?.assetRuntimeInput) !== stableAssetRuntimeJson(request.structuredInput) ? "STRUCTURED_INPUT" : null,
+  ].filter((item): item is string => Boolean(item));
+  if (mismatches.length) {
+    throw new DomainInvariantError(`Asset Runtime checkpoint conflicts with exact persisted Product State (${mismatches.join(",")})`, "WORKFLOW_REPLAY_INTEGRITY");
+  }
+  const normalizedError = canonical.delivery.normalizedError as NormalizedRuntimeError | null;
+  if (canonical.delivery.status !== "SUCCEEDED" && (!normalizedError?.code || !normalizedError.message)) {
+    throw new DomainInvariantError("Terminal Asset Runtime failure lacks normalized durable evidence", "WORKFLOW_REPLAY_INTEGRITY");
+  }
+  return {
+    ...checkpoint,
+    activityPlanId: canonical.plan.id,
+    runtimeDeliveryId: canonical.delivery.id,
+    attemptId: canonical.attempt.id,
+    runtimeStatus: canonical.delivery.status,
+    failureCode: normalizedError?.code,
+    failureReason: normalizedError?.message,
+  };
+}
+
+async function reconcileComponentResume(
+  actor: Actor,
+  run: typeof workflowRuns.$inferSelect,
+  resumePayload: Record<string, unknown>,
+  result: unknown,
+  dependencies?: PublicationDependencies,
+): Promise<unknown> {
+  const payload = ComponentPublicationPayload.parse(resumePayload);
+  const componentVersionId = run.productLinks.componentVersionId;
+  const evaluationId = run.productLinks.evaluationId;
+  if (!componentVersionId || !evaluationId) throw new DomainInvariantError("Component lifecycle lacks its exact evaluated version links", "WORKFLOW_REPLAY_INTEGRITY");
+  const canonical = await decidePublication(actor, {
+    componentVersionId,
+    evaluationId,
+    workflowThreadId: run.threadId,
+    action: payload.action,
+    rationale: payload.rationale,
+    rubric: payload.rubric,
+    idempotencyKey: payload.idempotencyKey,
+  }, dependencies);
+  const checkpoint = result as Record<string, unknown>;
+  assertReconciledLink("Component publication decision", checkpoint.decisionId, canonical.decisionId);
+  if (checkpoint.decision !== undefined && checkpoint.decision !== canonical.action) {
+    throw new DomainInvariantError("Component publication checkpoint changed the human decision", "WORKFLOW_REPLAY_INTEGRITY");
+  }
+  if (canonical.registeredCapabilityId) assertReconciledLink("Registered Capability", checkpoint.registeredCapabilityId, canonical.registeredCapabilityId);
+  if (canonical.registeredCapabilityVersionId) assertReconciledLink("Registered CapabilityVersion", checkpoint.registeredCapabilityVersionId, canonical.registeredCapabilityVersionId);
+  if (canonical.capabilityResolutionId) assertReconciledLink("Re-resolved Capability", checkpoint.capabilityResolutionId, canonical.capabilityResolutionId);
+  if (canonical.activityPlanProposalId) assertReconciledLink("READY ActivityPlanProposal", checkpoint.activityPlanProposalId, canonical.activityPlanProposalId);
+  return {
+    ...checkpoint,
+    componentId: canonical.componentId,
+    componentVersionId: canonical.componentVersionId,
+    evaluationId,
+    decisionId: canonical.decisionId,
+    decision: canonical.action,
+    registeredCapabilityId: canonical.registeredCapabilityId ?? undefined,
+    registeredCapabilityVersionId: canonical.registeredCapabilityVersionId ?? undefined,
+    capabilityResolutionId: canonical.capabilityResolutionId ?? undefined,
+    activityPlanProposalId: canonical.activityPlanProposalId ?? undefined,
+  };
+}
+
 async function startWorkflowInTenant(input: { kind: WorkflowKind; actor: Actor; state: Record<string, unknown>; taskId?: string; episodeId?: string; threadId?: string } & WorkflowExecutionOptions) {
   return runWithExecutionControl(input.execution, async (control) => {
     const authorized = await authorizeWorkflowStart(input);
@@ -592,22 +851,26 @@ async function startWorkflowInTenant(input: { kind: WorkflowKind; actor: Actor; 
     const governedIdentity = input.kind === "GOVERNED_FOLLOWUP"
       ? governedWorkflowIdentity(input.actor, (state as { assignment: z.infer<typeof GovernedFollowupStart> }).assignment)
       : null;
-    if (governedIdentity && input.threadId && input.threadId !== governedIdentity.threadId) {
-      throw new DomainInvariantError("Governed follow-up thread identity is derived from its assignment key", "WORKFLOW_IDEMPOTENCY_MISMATCH");
+    const componentIdentity = input.kind === "COMPONENT_LIFECYCLE"
+      ? componentWorkflowIdentity(input.actor, state as z.infer<typeof ComponentLifecycleWorkflowStart>)
+      : null;
+    const stableIdentity = governedIdentity ?? componentIdentity;
+    if (stableIdentity && input.threadId && input.threadId !== stableIdentity.threadId) {
+      throw new DomainInvariantError(`${input.kind === "COMPONENT_LIFECYCLE" ? "Component lifecycle" : "Governed follow-up"} thread identity is derived from exact canonical lineage`, "WORKFLOW_IDEMPOTENCY_MISMATCH");
     }
-    const threadId = governedIdentity?.threadId ?? input.threadId ?? `${expectedThreadPrefix}${input.kind.toLowerCase()}:${randomUUID()}`;
-    if (governedIdentity) {
+    const threadId = stableIdentity?.threadId ?? input.threadId ?? `${expectedThreadPrefix}${input.kind.toLowerCase()}:${randomUUID()}`;
+    if (stableIdentity) {
       await getSql()`SELECT pg_advisory_xact_lock(hashtextextended(${threadId},0))`;
     }
-    const [existingRun] = governedIdentity
+    const [existingRun] = stableIdentity
       ? await getDb().select().from(workflowRuns).where(eq(workflowRuns.threadId, threadId)).limit(1)
       : [];
     if (existingRun) {
       if (existingRun.workflowKind !== input.kind || existingRun.institutionId !== input.actor.institutionId
-        || existingRun.actorUserId !== input.actor.userId || existingRun.taskId !== taskId
-        || existingRun.episodeId !== episodeId
-        || existingRun.productLinks.startRequestHash !== governedIdentity!.requestHash) {
-        throw new DomainInvariantError("Governed follow-up workflow replay conflicts with persisted authority", "WORKFLOW_IDEMPOTENCY_MISMATCH");
+        || existingRun.actorUserId !== input.actor.userId || existingRun.taskId !== (taskId ?? null)
+        || existingRun.episodeId !== (episodeId ?? null)
+        || existingRun.productLinks.startRequestHash !== stableIdentity!.requestHash) {
+        throw new DomainInvariantError("Workflow replay conflicts with persisted actor, tenant or exact start payload", "WORKFLOW_IDEMPOTENCY_MISMATCH");
       }
       if (existingRun.status !== "RUNNING") return replayedWorkflowRun(existingRun);
     }
@@ -615,6 +878,10 @@ async function startWorkflowInTenant(input: { kind: WorkflowKind; actor: Actor; 
     const initialProductLinks: Record<string, string> = governedIdentity ? {
       startRequestHash: governedIdentity.requestHash,
       assignmentIdempotencyKey: (state as { assignment: z.infer<typeof GovernedFollowupStart> }).assignment.assignmentIdempotencyKey,
+    } : componentIdentity ? {
+      startRequestHash: componentIdentity.requestHash,
+      componentId: (state as z.infer<typeof ComponentLifecycleWorkflowStart>).componentId,
+      componentVersionId: (state as z.infer<typeof ComponentLifecycleWorkflowStart>).componentVersionId,
     } : {};
     assertExecutionActive(control);
     if (!existingRun) {
@@ -634,13 +901,32 @@ async function startWorkflowInTenant(input: { kind: WorkflowKind; actor: Actor; 
     try {
       const eventState = input.kind === "EXPLANATION" ? { ...state, eventIdempotencyKey: (state as z.infer<typeof ExplanationWorkflowStart>).idempotencyKey } : state;
       const graphState = input.kind === "COMPONENT_LIFECYCLE" ? { ...eventState, workflowThreadId: threadId, actor: input.actor } : { ...eventState, actor: input.actor };
-      let result = await traced(`foundry.workflow.${input.kind.toLowerCase()}`, { userId: input.actor.userId, institutionId: input.actor.institutionId, taskId: taskId ?? "", "workflow.thread_id": threadId }, () => graphFor(input.kind, input.actor.institutionId, input.testFaults).invoke(graphState, { configurable: { thread_id: threadId }, recursionLimit: 50, signal: control.signal }));
+      let result: unknown;
+      try {
+        result = await traced(`foundry.workflow.${input.kind.toLowerCase()}`, { userId: input.actor.userId, institutionId: input.actor.institutionId, taskId: taskId ?? "", "workflow.thread_id": threadId }, () => graphFor(input.kind, input.actor.institutionId, input.testFaults).invoke(graphState, { configurable: { thread_id: threadId }, recursionLimit: 50, signal: control.signal }));
+      } catch (error) {
+        const stopped = executionStopStatus(error, control);
+        if (input.kind !== "ASSET_RUNTIME" || stopped === null) throw error;
+        const canonical = await reconcileStoppedAssetStage(input.actor, AssetRuntimeWorkflowStart.parse(state), stopped);
+        result = {
+          activityPlanId: canonical.delivery.activityPlanId,
+          runtimeDeliveryId: canonical.delivery.id,
+          attemptId: canonical.attempt.id,
+          runtimeStatus: canonical.delivery.status,
+        };
+      }
       if (input.kind === "GOVERNED_FOLLOWUP") {
         result = await reconcileGovernedStart(state, result, input.testFaults?.governedFollowupPlanning);
+      } else if (input.kind === "COMPONENT_LIFECYCLE") {
+        result = await reconcileComponentStart(input.actor, state, result);
+      } else if (input.kind === "ASSET_RUNTIME") {
+        result = await reconcileAssetRuntimeStart(input.actor, state, result);
       }
       await input.testFaults?.afterGraphCompletion?.({ kind: input.kind, runId, threadId, result });
       const interrupted = interruptType(result);
-      const terminal = input.kind === "GOVERNED_FOLLOWUP" ? governedTerminal(result) : null;
+      const terminal = input.kind === "GOVERNED_FOLLOWUP"
+        ? governedTerminal(result)
+        : input.kind === "ASSET_RUNTIME" ? assetRuntimeTerminal(result) : null;
       if (!terminal) assertExecutionActive(control);
       const status = interrupted ? "INTERRUPTED" : terminal?.status ?? "COMPLETED";
       const interruptVersion = interrupted ? 1 : 0;
@@ -661,12 +947,12 @@ async function startWorkflowInTenant(input: { kind: WorkflowKind; actor: Actor; 
       throw error;
     }
   }, {
-    acceptStoppedResult: (result) => result.status === "FAILED" || result.status === "CANCELLED",
+    acceptStoppedResult: (result) => result.status === "FAILED" || result.status === "CANCELLED" || result.status === "TIMED_OUT",
   });
 }
 
 export async function startWorkflow(input: { kind: WorkflowKind; actor: Actor; state: Record<string, unknown>; taskId?: string; episodeId?: string; threadId?: string } & WorkflowExecutionOptions) {
-  if (input.kind === "GOVERNED_FOLLOWUP") {
+  if (input.kind === "GOVERNED_FOLLOWUP" || input.kind === "COMPONENT_LIFECYCLE") {
     return withTenantDatabase(input.actor, () => startWorkflowInTenant(input));
   }
   return startWorkflowInTenant(input);
@@ -674,7 +960,7 @@ export async function startWorkflow(input: { kind: WorkflowKind; actor: Actor; s
 
 function extractProductLinks(result: unknown): Record<string, string> {
   const state = result as Record<string, unknown>;
-  const keys = ["taskId", "episodeId", "sourceEpisodeId", "targetEpisodeId", "activityId", "activityStatus", "failureCode", "failureReason", "activityPlanProposalId", "activityPlanId", "runtimeDeliveryId", "attemptId", "resultAttemptId", "observationId", "resultObservationId", "capabilityResolutionId", "selectedCapabilityVersionId", "reviewId", "resultReviewId", "componentId", "componentVersionId", "evaluationId", "decisionId"];
+  const keys = ["taskId", "episodeId", "sourceEpisodeId", "targetEpisodeId", "activityId", "activityStatus", "failureCode", "failureReason", "activityPlanProposalId", "activityPlanId", "runtimeDeliveryId", "attemptId", "resultAttemptId", "observationId", "resultObservationId", "capabilityResolutionId", "selectedCapabilityVersionId", "reviewId", "resultReviewId", "componentId", "componentVersionId", "evaluationId", "decisionId", "decision", "registeredCapabilityId", "registeredCapabilityVersionId"];
   return Object.fromEntries(keys.flatMap((key) => typeof state?.[key] === "string" ? [[key, state[key] as string]] : []));
 }
 
@@ -696,10 +982,41 @@ async function resumeWorkflowInTenant(actor: Actor, threadId: string, payload: R
   if (kind === "GOVERNED_FOLLOWUP") {
     const replay = await replayGovernedResumeIfExact(actor, run, threadId, expectedVersion, resumePayload);
     if (replay) return replay;
+  } else if (kind === "COMPONENT_LIFECYCLE") {
+    const replay = await replayComponentResumeIfExact(actor, run, threadId, expectedVersion, resumePayload);
+    if (replay) return replay;
   }
   if (run.interruptType === "TEACHER_REVIEW_REQUIRED" || run.interruptType === "FOLLOWUP_RESULT_REVIEW_REQUIRED") requireRole(actor, ["TEACHER", "ADMIN"]);
   if (run.interruptType === "LEARNER_FOLLOWUP_REQUIRED") requireRole(actor, ["LEARNER"]);
   if (run.interruptType === "EXPERT_PUBLICATION_REVIEW_REQUIRED") requireRole(actor, ["EXPERT", "ADMIN"]);
+  if (kind === "COMPONENT_LIFECYCLE") {
+    const componentId = run.productLinks.componentId;
+    const componentVersionId = run.productLinks.componentVersionId;
+    const evaluationId = run.productLinks.evaluationId;
+    if (!componentId || !componentVersionId || !evaluationId) throw new DomainInvariantError("Component lifecycle lacks exact ComponentAssetVersion links", "WORKFLOW_REPLAY_INTEGRITY");
+    const [binding] = await getDb().select({ component: components, version: componentVersions, evaluation: componentEvaluations }).from(components)
+      .innerJoin(componentVersions, and(eq(componentVersions.id, componentVersionId), eq(componentVersions.componentId, components.id)))
+      .innerJoin(componentEvaluations, and(eq(componentEvaluations.id, evaluationId), eq(componentEvaluations.componentVersionId, componentVersions.id)))
+      .where(eq(components.id, componentId)).limit(1);
+    if (!binding || binding.component.institutionId !== actor.institutionId) throw new DomainInvariantError("Component lifecycle is outside the active institution", "TENANT_ISOLATION");
+    requireCourseAccess(actor, binding.component.institutionId, binding.component.courseId);
+    const publication = ComponentPublicationPayload.parse(resumePayload);
+    if (publication.action === "APPROVE") {
+      if (binding.evaluation.systemStatus !== "PASSED") throw new DomainInvariantError("System evaluation gates block publication", "COMPONENT_SYSTEM_GATES_BLOCKED");
+      if (!humanRubricPasses(ComponentHumanRubric.parse(publication.rubric))) {
+        throw new DomainInvariantError("APPROVE requires PASS attestations for domain correctness, pedagogy, safety, and reuse readiness", "HUMAN_RUBRIC_BLOCKED");
+      }
+      if (binding.component.assetType === "WEB_COMPONENT_ASSET") {
+        const [preview] = await getDb().select({ id: componentAssetPreviews.id }).from(componentAssetPreviews).where(and(
+          eq(componentAssetPreviews.componentVersionId, binding.version.id),
+          eq(componentAssetPreviews.componentEvaluationId, binding.evaluation.id),
+          eq(componentAssetPreviews.contentHash, binding.version.contentHash),
+          eq(componentAssetPreviews.status, "SUCCEEDED"),
+        )).limit(1);
+        if (!preview) throw new DomainInvariantError("Authorized confirmation requires a successful exact-version learner preview", "COMPONENT_PREVIEW_REQUIRED");
+      }
+    }
+  }
   if (run.taskId && run.episodeId) {
     const followupEpisodeId = (run.interruptType === "LEARNER_FOLLOWUP_REQUIRED" || run.interruptType === "FOLLOWUP_RESULT_REVIEW_REQUIRED")
       && typeof run.productLinks.targetEpisodeId === "string" ? run.productLinks.targetEpisodeId : run.episodeId;
@@ -724,13 +1041,16 @@ async function resumeWorkflowInTenant(actor: Actor, threadId: string, payload: R
   try {
     const graph = graphFor(kind, actor.institutionId, options.testFaults);
     const graphConfig = { configurable: { thread_id: threadId }, recursionLimit: 50, signal: control.signal };
+    const snapshot = (kind === "GOVERNED_FOLLOWUP" || kind === "COMPONENT_LIFECYCLE") ? await graph.getState(graphConfig) : null;
     const advanced = kind === "GOVERNED_FOLLOWUP"
-      ? advancedGovernedCheckpoint(run, await graph.getState(graphConfig))
-      : null;
+      ? advancedGovernedCheckpoint(run, snapshot!)
+      : kind === "COMPONENT_LIFECYCLE" ? advancedComponentCheckpoint(run, snapshot!) : null;
     let result = advanced?.result
       ?? await graph.invoke(new Command({ resume: { ...resumePayload, actor } }), graphConfig);
     if (kind === "GOVERNED_FOLLOWUP") {
       result = await reconcileGovernedResume(actor, run, resumePayload, result);
+    } else if (kind === "COMPONENT_LIFECYCLE") {
+      result = await reconcileComponentResume(actor, run, resumePayload, result, options.testFaults?.componentPublication);
     }
     if (!advanced) {
       await options.testFaults?.afterGraphCompletion?.({ kind, runId: run.id, threadId, result });
@@ -754,7 +1074,9 @@ async function resumeWorkflowInTenant(actor: Actor, threadId: string, payload: R
         nextVersion,
         result,
       })
-      : {};
+      : kind === "COMPONENT_LIFECYCLE" && status === "COMPLETED"
+        ? componentResumeReceiptLinks({ actor, threadId, expectedVersion, resumePayload, result })
+        : {};
     await finalizeWorkflowResumeClaim(claim, {
       status,
       interruptType: nextInterrupt,
@@ -779,7 +1101,7 @@ async function resumeWorkflowInTenant(actor: Actor, threadId: string, payload: R
 export async function resumeWorkflow(actor: Actor, threadId: string, payload: Record<string, unknown>, options: WorkflowExecutionOptions = {}) {
   const [run] = await getDb().select({ workflowKind: workflowRuns.workflowKind }).from(workflowRuns)
     .where(and(eq(workflowRuns.threadId, threadId), eq(workflowRuns.institutionId, actor.institutionId))).limit(1);
-  if (run?.workflowKind === "GOVERNED_FOLLOWUP") {
+  if (run?.workflowKind === "GOVERNED_FOLLOWUP" || run?.workflowKind === "COMPONENT_LIFECYCLE") {
     return withTenantDatabase(actor, () => resumeWorkflowInTenant(actor, threadId, payload, options));
   }
   return resumeWorkflowInTenant(actor, threadId, payload, options);

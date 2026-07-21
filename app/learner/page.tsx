@@ -2,13 +2,21 @@ import Link from "next/link";
 import Image from "next/image";
 import { withWorkspaceActor } from "@/application/identity";
 import { getAuthorizedEvidenceCatalog, getLearnerCapabilitiesForCourse, getLearnerWorkspace, getTaskDetail } from "@/application/queries";
-import { AttemptForm, CancelFollowupForm, CloseTaskButton, CreateTaskForm, FollowupAttemptForm, ImageAttemptForm, ImmutableFollowupContract, MaterialUploadForm, MessageForm, type FollowupContractView } from "@/components/ClientActions";
+import { AttemptForm, CancelFollowupForm, CapabilityResolutionButton, CloseTaskButton, CreateTaskForm, FollowupAttemptForm, ImageAttemptForm, ImmutableFollowupContract, LearnerWebComponentAssetForm, MaterialUploadForm, MessageForm, type FollowupContractView } from "@/components/ClientActions";
 import { Badge, Card, Empty, SurfaceHeader, Timeline } from "@/components/ui";
+import { runtimeDeliveryPresentation } from "@/domain/asset-runtime";
 
 export const dynamic = "force-dynamic";
 
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+}
+
+function webChoices(value: unknown): Array<{ id: string; label: string }> {
+  return Array.isArray(value) ? value.flatMap((choice) => {
+    const item = asRecord(choice);
+    return typeof item?.id === "string" && typeof item.label === "string" ? [{ id: item.id, label: item.label }] : [];
+  }) : [];
 }
 
 function learnerContract(activityType: string, row: {
@@ -99,8 +107,30 @@ export default async function LearnerPage({ searchParams }: { searchParams: Prom
         <Card eyebrow="Authorized delivery" title="Authorized Evidence catalog"><p>These LEARNING-purpose sources are authorized for this Task/course. They are not necessarily used by an answer; answer-level sourceRefs and evidenceRefs appear with each conversation event.</p>{evidenceCatalog.map(({ evidence, source }) => <article className="evidence-card" key={evidence.id}><strong>{evidence.title}</strong><p>{evidence.content}</p>{evidence.structuredContent ? <pre>{JSON.stringify(evidence.structuredContent, null, 2)}</pre> : null}<small>{source.title} · v{source.version} · {evidence.locator} · {source.rights} · embedding {evidence.embeddingStatus}</small></article>)}{evidenceCatalog.length === 0 ? <Empty>No Evidence has explicit authorized LEARNING delivery and course/Reference Pack alignment for this Task.</Empty> : null}</Card>
         <Card eyebrow="Attempt" title="Capture learner reasoning">{writableEpisode ? <><AttemptForm taskId={detail.task.id} episodeId={writableEpisode.id} capabilities={learnerCapabilities}/><h3>Image or handwritten Attempt</h3><ImageAttemptForm taskId={detail.task.id} episodeId={writableEpisode.id}/></> : <Empty>Generic Attempts require an active general Episode.</Empty>}{detail.attempts.map((attempt) => {
           const asset = detail.assets.find((item) => item.id === attempt.fileAssetId);
-          return <article className="evidence-card" key={attempt.id}><strong>{attempt.prompt}</strong><p>{attempt.response}</p>{asset ? <><a href={`/api/files/${asset.id}`} target="_blank" rel="noreferrer">Open original {asset.originalName}</a>{asset.mediaType.startsWith("image/") ? <Image unoptimized src={`/api/files/${asset.id}`} alt={`Original learner Attempt: ${asset.originalName}`} width={640} height={480} style={{ width: "100%", height: "auto" }}/> : null}<small>Multimodal interpretation · {asset.interpretationStatus}</small></> : null}<Badge tone="warn">{detail.observations.find((item) => item.attemptId === attempt.id)?.status ?? "REVIEW_PENDING"}</Badge></article>;
+          const observation = detail.observations.find((item) => item.attemptId === attempt.id);
+          return <article className="evidence-card" key={attempt.id}><strong>{attempt.prompt}</strong><p>{attempt.response}</p>{asset ? <><a href={`/api/files/${asset.id}`} target="_blank" rel="noreferrer">Open original {asset.originalName}</a>{asset.mediaType.startsWith("image/") ? <Image unoptimized src={`/api/files/${asset.id}`} alt={`Original learner Attempt: ${asset.originalName}`} width={640} height={480} style={{ width: "100%", height: "auto" }}/> : null}<small>Multimodal interpretation · {asset.interpretationStatus}</small></> : null}<Badge tone="warn">{observation?.status ?? "REVIEW_PENDING"}</Badge>{observation && detail.task.status === "OPEN" ? <CapabilityResolutionButton taskId={detail.task.id} episodeId={attempt.episodeId} diagnosticObservationId={observation.id}/> : null}</article>;
         })}</Card>
+        <Card eyebrow="Exact ComponentAsset runtime" title="Capability supplied from this Task's persisted gap">
+          {detail.webComponentActivities.slice(0, 1).map(({ proposal, capability, capabilityVersion, component, componentVersion, activityPlan, delivery }) => {
+            const content = asRecord(componentVersion.content) ?? {};
+            const output = asRecord(delivery?.normalizedOutput);
+            const runtimeError = asRecord(delivery?.normalizedError);
+            const presentation = runtimeDeliveryPresentation(delivery);
+            const succeeded = presentation.completionEvidenceAllowed;
+            const failed = presentation.mode === "FAILED";
+            const retryable = presentation.retryAllowed;
+            return <article className="evidence-card" data-testid="learner-web-component-activity" key={proposal.id}>
+              <div className="header-actions"><strong>{component.title}</strong><Badge tone="good">{capability.name}@{capabilityVersion.version}</Badge><Badge tone={succeeded ? "good" : failed ? "bad" : "info"}>{delivery?.status ?? "READY"}</Badge></div>
+              <p>{String(content.instructions ?? "")}</p>
+              {!delivery ? <LearnerWebComponentAssetForm taskId={proposal.taskId} episodeId={proposal.episodeId} activityPlanProposalId={proposal.id} prompt={String(content.prompt ?? component.title)} choices={webChoices(content.choices)}/> : succeeded ? <section className="stack compact" data-testid="learner-web-component-runtime-success" role="status" aria-live="polite" aria-atomic="true">
+                <p><strong>{String(output?.feedback ?? "The exact runtime finished without feedback text.")}</strong></p>
+                <small>RuntimeDelivery {delivery.id} · ActivityPlan {activityPlan?.id} · CapabilityVersion {capabilityVersion.id} · ComponentAssetVersion {componentVersion.id}</small>
+              </section> : failed ? <section data-testid="learner-web-component-runtime-failure" className="stack compact" role="status" aria-live="polite" aria-atomic="true"><p><strong>{String(runtimeError?.code ?? delivery.status)}:</strong> {String(runtimeError?.message ?? "The exact runtime did not complete.")}</p><small>RuntimeDelivery {delivery.id} · attempt {delivery.attemptNumber} of 2 · failure evidence retained</small>{retryable ? <LearnerWebComponentAssetForm taskId={proposal.taskId} episodeId={proposal.episodeId} activityPlanProposalId={proposal.id} retryOfDeliveryId={delivery.id} prompt={String(content.prompt ?? component.title)} choices={webChoices(content.choices)}/> : <small>{runtimeError?.retryable === true ? "The bounded retry limit has been reached." : "This failure is not retryable; ask the teacher or expert to inspect the exact runtime evidence."}</small>}</section> : <p role="status" aria-live="polite">The exact RuntimeDelivery is {delivery.status}; no completion evidence is claimed.</p>}
+              <small>{succeeded ? "Successful completion records a RuntimeDelivery, LearnerAttempt and LearningEvents through CAP-04." : "Runtime status and normalized failure evidence are shown without a completion claim."} No delivery creates a Diagnosis, TeacherReview or LearningOutcome.</small>
+            </article>;
+          })}
+          {detail.webComponentActivities.length === 0 ? <Empty>No confirmed gap-supplied exact ComponentAsset is READY for this Task.</Empty> : null}
+        </Card>
         <Card eyebrow="Governed follow-up" title="Retry · Transfer · Retention">{detail.retries.filter((activity) => Boolean(activity.idempotencyKey)).map((activity) => {
           const run = workspace.pendingWorkflows.find((candidate) => candidate.taskId === detail.task.id && candidate.productLinks.activityId === activity.id);
           const planned = detail.followupPlans.find((plan) => plan.activityId === activity.id);

@@ -3,7 +3,7 @@ import { constants } from "node:fs";
 import { join, relative } from "node:path";
 
 const root = process.cwd();
-const productionRoots = ["app", "application", "components", "db", "domain", "evals", "workflows"];
+const productionRoots = ["app", "application", "component-executor", "components", "db", "domain", "evals", "workflows"];
 const removedPaths = [
   "src/agent/run-agent.ts",
   "src/agent/gateway.ts",

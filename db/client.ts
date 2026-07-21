@@ -117,6 +117,7 @@ export async function withTenantDatabase<T>(actor: Actor, operation: () => Promi
         set_config('foundry.institution_id', ${actor.institutionId}, true),
         set_config('foundry.user_id', ${actor.userId}, true),
         set_config('foundry.session_id', ${actor.sessionId}, true),
+        set_config('foundry.auth_method', ${actor.authMethod}, true),
         set_config('foundry.roles', ${actor.roles.join(",")}, true),
         set_config('foundry.course_ids', ${actor.courseIds.join(",")}, true)
     `;

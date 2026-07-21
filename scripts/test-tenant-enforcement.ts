@@ -166,15 +166,24 @@ async function expectCrossTenantUuidUpdateDenied(
   foreignId: string,
   expectedMessage: RegExp,
   targetId?: string,
+  actorUserId?: string,
+  zeroRowsArePolicyDenial?: boolean,
 ): Promise<void> {
   const table = `${quoted(schemaName)}.${quoted(tableName)}`;
   const column = quoted(columnName);
   await expectRoleTransactionDenied(label, client, RUNTIME_DATABASE_ROLES.product, institutionId, async (transaction) => {
+    if (actorUserId) {
+      await transaction`SELECT set_config('foundry.user_id', ${actorUserId}, true)`;
+      await transaction`SELECT set_config('foundry.session_id', 'tenant-harness-course-read', true)`;
+      await transaction`SELECT set_config('foundry.auth_method', 'tenant-harness', true)`;
+      await transaction`SELECT set_config('foundry.roles', 'LEARNER', true)`;
+    }
     const predicate = targetId ? `"id" = $2::uuid` : `ctid = (SELECT ctid FROM ${table} LIMIT 1)`;
     const result = await transaction.unsafe(
       `UPDATE ${table} SET ${column} = $1::uuid WHERE ${predicate}`,
       targetId ? [foreignId, targetId] : [foreignId],
     );
+    if (result.count === 0 && zeroRowsArePolicyDenial) throw new Error(`${label} blocked before mutation by row policy`);
     if (result.count !== 1) throw new Error(`${label} requires one visible tenant-A fixture`);
   }, expectedMessage);
 }
@@ -185,9 +194,12 @@ const product = postgres(productUrl, { max: 1, prepare: false });
 const checkpoint = postgres(checkpointUrl, { max: 1, prepare: false });
 const tenantA = "10000000-0000-4000-8000-000000000001";
 const learnerA = "20000000-0000-4000-8000-000000000001";
+const teacherA = "20000000-0000-4000-8000-000000000002";
 const courseA = "40000000-0000-4000-8000-000000000001";
 const taskA = "80000000-0000-4000-8000-000000000001";
 const episodeA = "80000000-0000-4000-8000-000000000002";
+const attemptA = "90000000-0000-4000-8000-000000000001";
+const observationA = "90000000-0000-4000-8000-000000000002";
 const tenantB = randomUUID();
 const learnerB = randomUUID();
 const subjectB = randomUUID();
@@ -203,6 +215,8 @@ const reviewB = randomUUID();
 const retryB = randomUUID();
 const componentB = randomUUID();
 const componentVersionB = randomUUID();
+const tenantAReviewFixture = randomUUID();
+const tenantARetryFixture = randomUUID();
 const libraryFixtureA = randomUUID();
 const scheduleFixtureA = randomUUID();
 const transferFixtureA = randomUUID();
@@ -242,6 +256,7 @@ const productionLoginContracts = [
   { login: `rw02_product_login_${roleSuffix}`, runtime: RUNTIME_DATABASE_ROLES.product },
   { login: `rw02_auth_login_${roleSuffix}`, runtime: RUNTIME_DATABASE_ROLES.auth },
   { login: `rw02_worker_login_${roleSuffix}`, runtime: RUNTIME_DATABASE_ROLES.worker },
+  { login: `rw02_component_executor_login_${roleSuffix}`, runtime: RUNTIME_DATABASE_ROLES.componentExecutor },
   { login: `rw02_checkpoint_login_${roleSuffix}`, runtime: RUNTIME_DATABASE_ROLES.checkpoint },
 ] as const;
 const inheritingAuthLogin = `rw02_auth_inherit_${roleSuffix}`;
@@ -395,16 +410,24 @@ try {
         (${componentVersionB}::uuid, ${componentB}::uuid, '0.0.1', '{}'::jsonb, '{}'::jsonb, ARRAY[${observationB}::uuid], ARRAY[${reviewB}::uuid], '{}'::jsonb, ${`hash-${componentVersionB}`}, ${learnerB}::uuid)
     `;
   });
-  const [tenantARetry] = await product<Array<{ id: string }>>`
-    SELECT retry.id
-    FROM foundry_product.retry_attempts retry
-    JOIN foundry_product.learner_attempts attempt ON attempt.id=retry.original_attempt_id
-    JOIN foundry_product.learning_tasks task ON task.id=attempt.task_id
-    WHERE retry.idempotency_key IS NULL AND task.institution_id=${tenantA}::uuid
-    ORDER BY retry.created_at, retry.id LIMIT 1
+  await product`
+    INSERT INTO foundry_product.teacher_reviews
+      (id,observation_id,teacher_id,decision,teaching_support,actor_provenance,idempotency_key)
+    VALUES (${tenantAReviewFixture}::uuid,${observationA}::uuid,${teacherA}::uuid,'ACCEPT','Tenant harness lineage fixture',
+      jsonb_build_object(
+        'userId',${teacherA}::text,'institutionId',${tenantA}::text,'roles',jsonb_build_array('TEACHER'),
+        'authMethod','tenant-harness','sessionId',${`tenant-a-${tenantAReviewFixture}`}::text,'authenticatedAt',now()::text
+      ),${`tenant-a-review-${tenantAReviewFixture}`})
   `;
+  await product`
+    INSERT INTO foundry_product.retry_attempts
+      (id,original_attempt_id,reviewed_observation_id,teacher_review_id,activity_type,prompt,status)
+    VALUES (${tenantARetryFixture}::uuid,${attemptA}::uuid,${observationA}::uuid,${tenantAReviewFixture}::uuid,
+      'RETRY','Tenant harness legacy-lineage fixture','ASSIGNED')
+  `;
+  const tenantARetry = { id: tenantARetryFixture };
   const [tenantAEvidence] = await product<Array<{ id: string }>>`SELECT id FROM foundry_product.evidence_units WHERE institution_id=${tenantA}::uuid ORDER BY created_at LIMIT 1`;
-  if (!tenantARetry || !tenantAEvidence) throw new Error("Tenant harness requires a historical tenant A Retry and Evidence fixture");
+  if (!tenantAEvidence) throw new Error("Tenant harness requires tenant A Evidence");
   await product`INSERT INTO foundry_product.library_items (id, learner_id, course_id, evidence_unit_id, title, reason) VALUES (${libraryFixtureA}::uuid, ${learnerA}::uuid, ${courseA}::uuid, ${tenantAEvidence.id}::uuid, 'Harness library', 'Lineage probe')`;
   await product`INSERT INTO foundry_product.schedule_items (id, learner_id, task_id, activity_type, due_at) VALUES (${scheduleFixtureA}::uuid, ${learnerA}::uuid, ${taskA}::uuid, 'STUDY_REVIEW', now())`;
   await product`INSERT INTO foundry_product.transfer_activities (id, retry_id, target_concept, evidence_unit_id) VALUES (${transferFixtureA}::uuid, ${tenantARetry.id}::uuid, 'Harness transfer', ${tenantAEvidence.id}::uuid)`;
@@ -442,10 +465,30 @@ try {
 
   const roleRows = await product<Array<{ rolname: string; rolcanlogin: boolean; rolsuper: boolean; rolbypassrls: boolean }>>`
     SELECT rolname, rolcanlogin, rolsuper, rolbypassrls FROM pg_roles
-    WHERE rolname IN ('foundry_product_runtime','foundry_auth_bootstrap','foundry_worker','foundry_checkpoint_runtime')
+    WHERE rolname IN ('foundry_product_runtime','foundry_auth_bootstrap','foundry_worker','foundry_component_executor','foundry_checkpoint_runtime')
     ORDER BY rolname
   `;
-  if (roleRows.length !== 4 || roleRows.some((row) => row.rolcanlogin || row.rolsuper || row.rolbypassrls)) throw new Error("Runtime roles are missing, LOGIN, superuser or BYPASSRLS");
+  if (roleRows.length !== 5 || roleRows.some((row) => row.rolcanlogin || row.rolsuper || row.rolbypassrls)) throw new Error("Runtime roles are missing, LOGIN, superuser or BYPASSRLS");
+  const [executorBoundary] = await product<Array<{
+    product_evaluation_execute: boolean;
+    product_preview_execute: boolean;
+    executor_evaluation_execute: boolean;
+    executor_preview_execute: boolean;
+    executor_any_table_write: boolean;
+  }>>`
+    SELECT
+      has_function_privilege('foundry_product_runtime','foundry_product.record_web_component_evaluation(uuid,uuid,text,text,jsonb,jsonb,jsonb,jsonb)','EXECUTE') AS product_evaluation_execute,
+      has_function_privilege('foundry_product_runtime','foundry_product.record_component_asset_preview(uuid,uuid,uuid,uuid,text,jsonb,jsonb,jsonb,text,text,text)','EXECUTE') AS product_preview_execute,
+      has_function_privilege('foundry_component_executor','foundry_product.record_web_component_evaluation(uuid,uuid,text,text,jsonb,jsonb,jsonb,jsonb)','EXECUTE') AS executor_evaluation_execute,
+      has_function_privilege('foundry_component_executor','foundry_product.record_component_asset_preview(uuid,uuid,uuid,uuid,text,jsonb,jsonb,jsonb,text,text,text)','EXECUTE') AS executor_preview_execute,
+      EXISTS (
+        SELECT 1 FROM information_schema.role_table_grants grant_row
+        WHERE grant_row.grantee='foundry_component_executor' AND grant_row.privilege_type IN ('INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER')
+      ) AS executor_any_table_write`;
+  if (!executorBoundary || executorBoundary.product_evaluation_execute || executorBoundary.product_preview_execute
+    || !executorBoundary.executor_evaluation_execute || !executorBoundary.executor_preview_execute || executorBoundary.executor_any_table_write) {
+    throw new Error(`Trusted Component executor boundary is incomplete: ${JSON.stringify(executorBoundary)}`);
+  }
 
   const loginContractRows = await product<Array<{
     rolname: string;
@@ -502,7 +545,7 @@ try {
   const ownedTables = await product<Array<{ rolname: string; schema_name: string; table_name: string }>>`
     SELECT r.rolname, n.nspname AS schema_name, c.relname AS table_name
     FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace JOIN pg_roles r ON r.oid=c.relowner
-    WHERE r.rolname IN ('foundry_product_runtime','foundry_auth_bootstrap','foundry_worker','foundry_checkpoint_runtime')
+    WHERE r.rolname IN ('foundry_product_runtime','foundry_auth_bootstrap','foundry_worker','foundry_component_executor','foundry_checkpoint_runtime')
       AND n.nspname IN ('foundry_product','foundry_operational','langgraph_checkpoint') AND c.relkind IN ('r','p')
   `;
   if (ownedTables.length) throw new Error(`Runtime roles own governed tables: ${JSON.stringify(ownedTables)}`);
@@ -517,6 +560,7 @@ try {
     [RUNTIME_DATABASE_ROLES.product, postgres(withRuntimeDatabaseRole(productUrl, RUNTIME_DATABASE_ROLES.product), { max: 1, prepare: false })],
     [RUNTIME_DATABASE_ROLES.auth, postgres(withRuntimeDatabaseRole(productUrl, RUNTIME_DATABASE_ROLES.auth), { max: 1, prepare: false })],
     [RUNTIME_DATABASE_ROLES.worker, postgres(withRuntimeDatabaseRole(productUrl, RUNTIME_DATABASE_ROLES.worker), { max: 1, prepare: false })],
+    [RUNTIME_DATABASE_ROLES.componentExecutor, postgres(withRuntimeDatabaseRole(productUrl, RUNTIME_DATABASE_ROLES.componentExecutor), { max: 1, prepare: false })],
     [RUNTIME_DATABASE_ROLES.checkpoint, postgres(withRuntimeDatabaseRole(checkpointUrl, RUNTIME_DATABASE_ROLES.checkpoint), { max: 1, prepare: false })],
   ] as const;
   try {
@@ -667,6 +711,8 @@ try {
     foreignId: string;
     expectedMessage: RegExp;
     targetId?: string;
+    actorUserId?: string;
+    zeroRowsArePolicyDenial?: boolean;
   }) => {
     await expectCrossTenantUuidUpdateDenied(
       input.label,
@@ -678,6 +724,8 @@ try {
       input.foreignId,
       input.expectedMessage,
       input.targetId,
+      input.actorUserId,
+      input.zeroRowsArePolicyDenial,
     );
     directlyProbedWritableTables.add(`${input.schemaName}.${input.tableName}`);
   };
@@ -701,7 +749,7 @@ try {
       LIMIT 1
     `;
     if (inserted.count !== 1) throw new Error("CapabilityResolution probe requires one visible tenant-A fixture");
-  }, /CAP-02 CapabilityResolution Task\/Episode tenant lineage mismatch/);
+  }, /CAP-02 CapabilityResolution Task\/Episode tenant lineage mismatch|CAP-07 freshness lock requires the active Task tenant/);
   directlyProbedWritableTables.add("foundry_product.capability_resolutions");
 
   await expectRoleTransactionDenied("ActivityPlanProposal insert with tenant B Task", product, RUNTIME_DATABASE_ROLES.product, tenantA, async (transaction) => {
@@ -723,7 +771,7 @@ try {
       LIMIT 1
     `;
     if (inserted.count !== 1) throw new Error("ActivityPlanProposal probe requires one visible tenant-A fixture");
-  }, /CAP-03 ActivityPlanProposal Task\/Episode tenant lineage mismatch/);
+  }, /CAP-03 ActivityPlanProposal Task\/Episode tenant lineage mismatch|CAP-07 freshness lock requires the active Task tenant/);
   directlyProbedWritableTables.add("foundry_product.activity_plan_proposals");
 
   await expectRoleTransactionDenied("ActivityPlan insert with tenant B Task", product, RUNTIME_DATABASE_ROLES.product, tenantA, async (transaction) => {
@@ -867,10 +915,10 @@ try {
     `;
   }, /LearningOutcome tenant lineage mismatch|row-level security/);
   directlyProbedWritableTables.add("foundry_product.learning_outcomes");
-  await probeUuidLineage({ label: "Component update to tenant B course", schemaName: "foundry_product", tableName: "components", columnName: "course_id", foreignId: courseB, expectedMessage: /Component tenant lineage mismatch/ });
-  await probeUuidLineage({ label: "ComponentVersion update to tenant B component", schemaName: "foundry_product", tableName: "component_versions", columnName: "component_id", foreignId: componentB, expectedMessage: /ComponentVersion tenant lineage mismatch|Terminal Component versions are immutable/ });
-  await probeUuidLineage({ label: "ComponentEvaluation update to tenant B version", schemaName: "foundry_product", tableName: "component_evaluations", columnName: "component_version_id", foreignId: componentVersionB, expectedMessage: /ComponentEvaluation tenant lineage mismatch|Component evaluations are immutable/ });
-  await probeUuidLineage({ label: "PublicationDecision update to tenant B version", schemaName: "foundry_product", tableName: "publication_decisions", columnName: "component_version_id", foreignId: componentVersionB, expectedMessage: /PublicationDecision tenant lineage mismatch|Publication decisions are immutable/ });
+  await probeUuidLineage({ label: "Component update to tenant B course", schemaName: "foundry_product", tableName: "components", columnName: "course_id", foreignId: courseB, actorUserId: learnerA, expectedMessage: /Component tenant lineage mismatch|row-level security policy/ });
+  await probeUuidLineage({ label: "ComponentVersion update to tenant B component", schemaName: "foundry_product", tableName: "component_versions", columnName: "component_id", foreignId: componentB, actorUserId: learnerA, expectedMessage: /ComponentVersion tenant lineage mismatch|Terminal Component versions are immutable|row-level security policy/ });
+  await probeUuidLineage({ label: "ComponentEvaluation update to tenant B version", schemaName: "foundry_product", tableName: "component_evaluations", columnName: "component_version_id", foreignId: componentVersionB, actorUserId: learnerA, zeroRowsArePolicyDenial: true, expectedMessage: /ComponentEvaluation tenant lineage mismatch|Component evaluations are immutable|row-level security policy|blocked before mutation by row policy/ });
+  await probeUuidLineage({ label: "PublicationDecision update to tenant B version", schemaName: "foundry_product", tableName: "publication_decisions", columnName: "component_version_id", foreignId: componentVersionB, actorUserId: learnerA, zeroRowsArePolicyDenial: true, expectedMessage: /PublicationDecision tenant lineage mismatch|Publication decisions are immutable|row-level security policy|blocked before mutation by row policy/ });
 
   await expectRoleTransactionDenied("ComponentDelivery insert with tenant A scope and tenant B course", product, RUNTIME_DATABASE_ROLES.product, tenantA, async (transaction) => {
     const inserted = await transaction`
@@ -1121,12 +1169,15 @@ try {
     `;
   }, /Auth audit tenant lineage mismatch/);
 
+  // CAP-07's scoped Registry/supply writes have their own two-course, direct-bypass,
+  // and deferred-publication matrix in test-cap07-upgrade.ts.
   const expectedWritableTables = await product<Array<{ table_key: string }>>`
     SELECT schema_name || '.' || table_name AS table_key
     FROM foundry_private.writable_lineage_catalog
     WHERE NOT (schema_name='foundry_product' AND table_name=ANY(ARRAY[
       'learner_profiles','learner_strategy_versions','source_assets','source_asset_versions',
-      'source_processing_attempts','evidence_derivatives','context_items','context_carryover_relations'
+      'source_processing_attempts','evidence_derivatives','context_items','context_carryover_relations',
+      'capabilities','capability_versions','capability_availability_decisions','capability_supply_relations'
     ]::text[]))
     ORDER BY schema_name, table_name
   `;
@@ -1206,8 +1257,9 @@ try {
     deniedServiceWorkRolledBack: true,
     productionLoginContracts: loginContractRows.length,
     harnessLoginRolesCleaned,
-    runtimeRoleStartupAssumptions: 4,
+    runtimeRoleStartupAssumptions: 5,
     runtimeRoles: roleRows.map((row) => row.rolname),
+    trustedComponentExecutorBoundary: executorBoundary,
   }));
 } finally {
   try {
@@ -1227,6 +1279,8 @@ try {
     await product`DELETE FROM foundry_product.schedule_items WHERE id=${scheduleFixtureA}::uuid`;
     await product`DELETE FROM foundry_product.transfer_activities WHERE id=${transferFixtureA}::uuid`;
     await product`DELETE FROM foundry_product.retention_reviews WHERE id=${retentionFixtureA}::uuid`;
+    await product`DELETE FROM foundry_product.retry_attempts WHERE id=${tenantARetryFixture}::uuid`;
+    await product`DELETE FROM foundry_product.teacher_reviews WHERE id=${tenantAReviewFixture}::uuid`;
     await product`DELETE FROM foundry_product.component_versions WHERE id=${componentVersionB}::uuid`;
     await product`DELETE FROM foundry_product.components WHERE id=${componentB}::uuid`;
     await product`DELETE FROM foundry_product.retry_attempts WHERE id=${retryB}::uuid`;

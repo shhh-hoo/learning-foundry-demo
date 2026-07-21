@@ -491,6 +491,8 @@ export const contextCarryoverRelations = product.table(
 
 export const capabilities = product.table("capabilities", {
   id: id(),
+  institutionId: uuid("institution_id").references(() => institutions.id, { onDelete: "cascade" }),
+  courseId: uuid("course_id").references(() => courses.id, { onDelete: "cascade" }),
   key: text("key").notNull().unique(),
   name: text("name").notNull(),
   referencePackKey: text("reference_pack_key").notNull(),
@@ -502,6 +504,9 @@ export const capabilities = product.table("capabilities", {
 export const capabilityVersions = product.table("capability_versions", {
   id: id(),
   capabilityId: uuid("capability_id").notNull().references(() => capabilities.id, { onDelete: "cascade" }),
+  institutionId: uuid("institution_id").references(() => institutions.id, { onDelete: "cascade" }),
+  courseId: uuid("course_id").references(() => courses.id, { onDelete: "cascade" }),
+  componentAssetVersionId: uuid("component_asset_version_id").references((): AnyPgColumn => componentVersions.id),
   version: text("version").notNull(),
   contract: jsonb("contract").$type<Record<string, unknown>>().notNull(),
   implementationKey: text("implementation_key").notNull(),
@@ -694,6 +699,8 @@ export const runtimeDeliveries = product.table("runtime_deliveries", {
   episodeId: uuid("episode_id").notNull().references(() => learningEpisodes.id, { onDelete: "cascade" }),
   learnerId: uuid("learner_id").notNull().references(() => users.id),
   activityPlanId: uuid("activity_plan_id").notNull().references(() => activityPlans.id),
+  retryOfDeliveryId: uuid("retry_of_delivery_id").references((): AnyPgColumn => runtimeDeliveries.id),
+  attemptNumber: integer("attempt_number").default(1).notNull(),
   capabilityId: uuid("capability_id").notNull().references(() => capabilities.id),
   capabilityVersionId: uuid("capability_version_id").notNull().references(() => capabilityVersions.id),
   capabilityVersionContentHash: text("capability_version_content_hash").notNull(),
@@ -710,11 +717,13 @@ export const runtimeDeliveries = product.table("runtime_deliveries", {
   startedAt: timestamp("started_at", { withTimezone: true }).defaultNow().notNull(),
   finishedAt: timestamp("finished_at", { withTimezone: true }),
 }, (table) => [
-  uniqueIndex("runtime_delivery_activity_plan_uq").on(table.activityPlanId),
+  uniqueIndex("runtime_delivery_plan_attempt_uq").on(table.activityPlanId, table.attemptNumber),
+  uniqueIndex("runtime_delivery_retry_of_uq").on(table.retryOfDeliveryId).where(sql`${table.retryOfDeliveryId} IS NOT NULL`),
   uniqueIndex("runtime_delivery_replay_uq").on(table.institutionId, table.idempotencyKey),
   index("runtime_delivery_task_idx").on(table.taskId, table.episodeId, table.startedAt),
   check("runtime_delivery_status_ck", sql`${table.status} IN ('PENDING','RUNNING','SUCCEEDED','FAILED','TIMED_OUT','CANCELLED')`),
   check("runtime_delivery_deadline_ck", sql`${table.deadlineMs} > 0 AND ${table.deadlineMs} <= 120000`),
+  check("runtime_delivery_retry_ck", sql`(${table.attemptNumber}=1 AND ${table.retryOfDeliveryId} IS NULL) OR (${table.attemptNumber}=2 AND ${table.retryOfDeliveryId} IS NOT NULL)`),
   check("runtime_delivery_terminal_ck", sql`
     (${table.status} IN ('PENDING','RUNNING') AND ${table.finishedAt} IS NULL AND ${table.normalizedOutput} IS NULL AND ${table.normalizedError} IS NULL AND ${table.outputHash} IS NULL)
     OR (${table.status}='SUCCEEDED' AND ${table.finishedAt} IS NOT NULL AND ${table.normalizedOutput} IS NOT NULL AND ${table.normalizedError} IS NULL AND ${table.outputHash} IS NOT NULL)
@@ -1009,7 +1018,18 @@ export const components = product.table("components", {
   id: id(),
   institutionId: uuid("institution_id").notNull().references(() => institutions.id),
   courseId: uuid("course_id").notNull().references(() => courses.id),
-  capabilityId: uuid("capability_id").notNull().references(() => capabilities.id),
+  capabilityId: uuid("capability_id").references(() => capabilities.id),
+  assetType: text("asset_type").default("TEACHING_SUPPORT").notNull(),
+  sourceCapabilityResolutionId: uuid("source_capability_resolution_id").references(() => capabilityResolutions.id),
+  sourceActivityPlanProposalId: uuid("source_activity_plan_proposal_id").references(() => activityPlanProposals.id),
+  supplyStrategy: text("supply_strategy"),
+  adaptedFromCapabilityId: uuid("adapted_from_capability_id").references(() => capabilities.id),
+  adaptedFromCapabilityVersionId: uuid("adapted_from_capability_version_id").references(() => capabilityVersions.id),
+  adaptedFromContentHash: text("adapted_from_content_hash"),
+  adaptedFromComponentVersionId: uuid("adapted_from_component_version_id").references((): AnyPgColumn => componentVersions.id),
+  adaptedFromComponentContentHash: text("adapted_from_component_content_hash"),
+  registeredCapabilityId: uuid("registered_capability_id").references(() => capabilities.id),
+  registeredCapabilityVersionId: uuid("registered_capability_version_id").references(() => capabilityVersions.id),
   referencePackKey: text("reference_pack_key").notNull(),
   failureCode: text("failure_code"),
   key: text("key").notNull(),
@@ -1019,7 +1039,10 @@ export const components = product.table("components", {
   activeVersionId: uuid("active_version_id"),
   createdBy: uuid("created_by").notNull().references(() => users.id),
   createdAt: createdAt(),
-}, (table) => [uniqueIndex("components_institution_key_uq").on(table.institutionId, table.key)]);
+}, (table) => [
+  uniqueIndex("components_institution_key_uq").on(table.institutionId, table.key),
+  uniqueIndex("components_source_resolution_uq").on(table.sourceCapabilityResolutionId).where(sql`${table.sourceCapabilityResolutionId} IS NOT NULL`),
+]);
 
 export const componentVersions = product.table("component_versions", {
   id: id(),
@@ -1115,6 +1138,76 @@ export const libraryItems = product.table("library_items", {
   reason: text("reason").notNull(),
   createdAt: createdAt(),
 });
+
+/** Class B: exact proposed Web ComponentAsset execution; never a learner delivery or Attempt. */
+export const componentAssetPreviews = product.table("component_asset_previews", {
+  id: id(),
+  institutionId: uuid("institution_id").notNull().references(() => institutions.id, { onDelete: "cascade" }),
+  courseId: uuid("course_id").notNull().references(() => courses.id, { onDelete: "cascade" }),
+  componentVersionId: uuid("component_version_id").notNull().references(() => componentVersions.id),
+  componentEvaluationId: uuid("component_evaluation_id").notNull().references(() => componentEvaluations.id),
+  sourceCapabilityResolutionId: uuid("source_capability_resolution_id").notNull().references(() => capabilityResolutions.id),
+  contentHash: text("content_hash").notNull(),
+  requestHash: text("request_hash").notNull(),
+  learnerInput: jsonb("learner_input").$type<Record<string, unknown>>().notNull(),
+  runtimeOutput: jsonb("runtime_output").$type<Record<string, unknown>>().notNull(),
+  eventTrace: jsonb("event_trace").$type<Array<Record<string, unknown>>>().notNull(),
+  executorVersion: text("executor_version").notNull(),
+  executorReceiptHash: text("executor_receipt_hash").notNull(),
+  status: text("status").notNull(),
+  previewedBy: uuid("previewed_by").notNull().references(() => users.id),
+  actorProvenance: jsonb("actor_provenance").$type<{ userId: string; institutionId: string; roles: string[]; authMethod: string; sessionId: string; authenticatedAt: string }>().notNull(),
+  idempotencyKey: text("idempotency_key").notNull(),
+  createdAt: createdAt(),
+}, (table) => [
+  uniqueIndex("component_asset_preview_actor_key_uq").on(table.institutionId, table.previewedBy, table.idempotencyKey),
+  index("component_asset_preview_version_idx").on(table.componentVersionId, table.createdAt),
+  check("component_asset_preview_status_ck", sql`${table.status} IN ('SUCCEEDED','FAILED')`),
+]);
+
+/** Class A: human-authorized exact-version scoped availability; immutable and separate from Eval. */
+export const capabilityAvailabilityDecisions = product.table("capability_availability_decisions", {
+  id: id(),
+  institutionId: uuid("institution_id").notNull().references(() => institutions.id, { onDelete: "cascade" }),
+  courseId: uuid("course_id").notNull().references(() => courses.id, { onDelete: "cascade" }),
+  capabilityId: uuid("capability_id").notNull().references(() => capabilities.id),
+  capabilityVersionId: uuid("capability_version_id").notNull().references(() => capabilityVersions.id),
+  componentVersionId: uuid("component_version_id").notNull().references(() => componentVersions.id),
+  confirmationDecisionId: uuid("confirmation_decision_id").notNull().references(() => publicationDecisions.id),
+  availabilityStatus: text("availability_status").notNull(),
+  availabilityScope: jsonb("availability_scope").$type<Record<string, unknown>>().notNull(),
+  confirmedBy: uuid("confirmed_by").notNull().references(() => users.id),
+  actorProvenance: jsonb("actor_provenance").$type<{ userId: string; institutionId: string; roles: string[]; authMethod: string; sessionId: string; authenticatedAt: string }>().notNull(),
+  rationale: text("rationale").notNull(),
+  createdAt: createdAt(),
+}, (table) => [
+  uniqueIndex("capability_availability_confirmation_uq").on(table.confirmationDecisionId),
+  uniqueIndex("capability_availability_exact_version_uq").on(table.capabilityVersionId),
+  check("capability_availability_status_ck", sql`${table.availabilityStatus} IN ('AVAILABLE','DISABLED')`),
+]);
+
+/** Class A: protected learner-to-supply lineage; never embedded in a reusable Registry contract. */
+export const capabilitySupplyRelations = product.table("capability_supply_relations", {
+  id: id(),
+  institutionId: uuid("institution_id").notNull().references(() => institutions.id, { onDelete: "cascade" }),
+  courseId: uuid("course_id").notNull().references(() => courses.id, { onDelete: "cascade" }),
+  sourceCapabilityResolutionId: uuid("source_capability_resolution_id").notNull().references(() => capabilityResolutions.id),
+  sourceActivityPlanProposalId: uuid("source_activity_plan_proposal_id").notNull().references(() => activityPlanProposals.id),
+  sourceDiagnosticObservationId: uuid("source_diagnostic_observation_id").notNull().references(() => diagnosticObservations.id),
+  sourceAttemptId: uuid("source_attempt_id").notNull().references(() => learnerAttempts.id),
+  componentId: uuid("component_id").notNull().references(() => components.id),
+  componentVersionId: uuid("component_version_id").notNull().references(() => componentVersions.id),
+  registeredCapabilityId: uuid("registered_capability_id").notNull().references(() => capabilities.id),
+  registeredCapabilityVersionId: uuid("registered_capability_version_id").notNull().references(() => capabilityVersions.id),
+  confirmationDecisionId: uuid("confirmation_decision_id").notNull().references(() => publicationDecisions.id),
+  createdBy: uuid("created_by").notNull().references(() => users.id),
+  createdAt: createdAt(),
+}, (table) => [
+  uniqueIndex("capability_supply_relation_source_uq").on(table.sourceCapabilityResolutionId),
+  uniqueIndex("capability_supply_relation_version_uq").on(table.registeredCapabilityVersionId),
+  uniqueIndex("capability_supply_relation_confirmation_uq").on(table.confirmationDecisionId),
+  index("capability_supply_relation_course_idx").on(table.institutionId, table.courseId, table.createdAt),
+]);
 
 export const scheduleItems = product.table("schedule_items", {
   id: id(),

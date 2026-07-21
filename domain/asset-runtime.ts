@@ -8,6 +8,7 @@ export const AssetRuntimeRequest = z.object({
   taskId: z.string().uuid(),
   episodeId: z.string().uuid(),
   activityPlanProposalId: z.string().uuid(),
+  retryOfDeliveryId: z.string().uuid().optional(),
   prompt: z.string().trim().min(1).max(4_000),
   response: z.string().trim().min(1).max(20_000),
   structuredInput: z.record(z.string(), z.unknown()),
@@ -54,6 +55,26 @@ export type NormalizedRuntimeError = {
   message: string;
   retryable: boolean;
 };
+
+export function runtimeDeliveryPresentation(delivery: {
+  status: string;
+  attemptNumber: number;
+  normalizedError: unknown;
+} | null | undefined) {
+  if (!delivery) return { mode: "READY" as const, completionEvidenceAllowed: false, retryAllowed: false };
+  if (delivery.status === "SUCCEEDED") return { mode: "SUCCEEDED" as const, completionEvidenceAllowed: true, retryAllowed: false };
+  if (new Set(["FAILED", "TIMED_OUT", "CANCELLED"]).has(delivery.status)) {
+    const error = delivery.normalizedError && typeof delivery.normalizedError === "object" && !Array.isArray(delivery.normalizedError)
+      ? delivery.normalizedError as Record<string, unknown>
+      : null;
+    return {
+      mode: "FAILED" as const,
+      completionEvidenceAllowed: false,
+      retryAllowed: error?.retryable === true && delivery.attemptNumber < 2,
+    };
+  }
+  return { mode: "IN_PROGRESS" as const, completionEvidenceAllowed: false, retryAllowed: false };
+}
 
 function canonicalize(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalize);

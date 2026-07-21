@@ -30,6 +30,8 @@ export const SEED = {
   chemistryLimitingReagentProductVersion: "50000000-0000-4000-8000-000000000017",
   chemistryPercentageYield: "50000000-0000-4000-8000-000000000008",
   chemistryPercentageYieldVersion: "50000000-0000-4000-8000-000000000018",
+  chemistryPercentageYieldComponent: "51000000-0000-4000-8000-000000000008",
+  chemistryPercentageYieldComponentVersion: "51000000-0000-4000-8000-000000000018",
   chemistryCellPotential: "50000000-0000-4000-8000-000000000009",
   chemistryCellPotentialVersion: "50000000-0000-4000-8000-000000000019",
   chemistryWeakAcidKa: "50000000-0000-4000-8000-000000000010",
