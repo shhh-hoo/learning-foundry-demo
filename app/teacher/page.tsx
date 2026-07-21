@@ -1,6 +1,8 @@
 import Image from "next/image";
 import { withWorkspaceActor } from "@/application/identity";
 import { getTeacherWorkspace } from "@/application/queries";
+import { getAssetOptimizationWorkspace } from "@/application/asset-optimization";
+import { AssetOptimizationPanel } from "@/components/AssetOptimizationPanel";
 import { CandidateForm, ComponentDeliveryForm, FollowupResultReviewForm, GovernedFollowupForm, ImmutableFollowupContract, ReviewForm, SourceRightsForm, TeacherAssignmentForm, TeacherInterventionForm, type FollowupContractView, type TeacherCapabilityOption } from "@/components/ClientActions";
 import { Badge, Card, Empty, SurfaceHeader } from "@/components/ui";
 
@@ -57,7 +59,7 @@ function terminalFact(activity: Awaited<ReturnType<typeof getTeacherWorkspace>>[
 
 export default async function TeacherPage() {
   return withWorkspaceActor(["TEACHER", "ADMIN"], "Teacher Workspace", async (actor) => {
-  const workspace = await getTeacherWorkspace(actor);
+  const [workspace, assetOptimization] = await Promise.all([getTeacherWorkspace(actor), getAssetOptimizationWorkspace(actor)]);
   const assignmentCourses = workspace.assignmentCourses.map((row) => ({ id: String(row.id), code: String(row.code), name: String(row.name) }));
   const assignmentLearners = workspace.assignmentLearners.map((row) => ({ id: String(row.id), courseId: String(row.course_id), name: String(row.name) }));
   const assignmentCapabilities: TeacherCapabilityOption[] = workspace.assignmentCapabilities.map((row) => ({ id: String(row.id), courseId: String(row.course_id), key: String(row.key), name: String(row.name) }));
@@ -103,6 +105,7 @@ export default async function TeacherPage() {
         </article>;
       })}{workspace.runtimeInspections.length === 0 ? <Empty>No terminal RuntimeDelivery with exact Attempt and planning lineage is available in an authorized course.</Empty> : null}</div>
     </Card>
+    <AssetOptimizationPanel workspace={assetOptimization}/>
     <div className="stack">{workspace.queue.map((row) => {
       const observationId = String(row.observation_id);
       const reviewId = row.review_id ? String(row.review_id) : null;

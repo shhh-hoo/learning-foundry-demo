@@ -940,6 +940,24 @@ try {
   await probeUuidLineage({ label: "ScheduleItem update to tenant B task", schemaName: "foundry_product", tableName: "schedule_items", columnName: "task_id", foreignId: taskB, expectedMessage: /ScheduleItem tenant lineage mismatch/ });
   await probeUuidLineage({ label: "GovernanceEvent update to tenant B entity", schemaName: "foundry_product", tableName: "governance_events", columnName: "entity_id", foreignId: taskB, expectedMessage: /GovernanceEvent tenant lineage mismatch|GovernanceEvents are append-only/ });
 
+  await product.begin(async (transaction) => {
+    await transaction`SELECT set_config('foundry.institution_id',${tenantA},true),set_config('foundry.user_id',${learnerA},true),set_config('foundry.session_id','tenant-harness-cap08a-learner',true),set_config('foundry.auth_method','tenant-harness',true),set_config('foundry.roles','LEARNER',true),set_config('foundry.course_ids',${courseA},true)`;
+    await transaction.unsafe("SET LOCAL ROLE foundry_product_runtime");
+    const [visibility] = await transaction<Array<{ proposal_count: number; decision_count: number }>>`
+      SELECT (SELECT count(*)::int FROM foundry_product.asset_optimization_proposals) AS proposal_count,
+        (SELECT count(*)::int FROM foundry_product.asset_optimization_decisions) AS decision_count
+    `;
+    if (visibility?.proposal_count !== 0 || visibility.decision_count !== 0) throw new Error("Learner can read protected Asset Optimization evidence");
+  });
+  for (const tableName of ["asset_optimization_proposals", "asset_optimization_decisions"] as const) {
+    await expectRoleTransactionDenied(`Asset Optimization ${tableName} is append-only`, product, RUNTIME_DATABASE_ROLES.product, tenantA, async (transaction) => {
+      await transaction`SELECT set_config('foundry.user_id',${teacherA},true),set_config('foundry.session_id','tenant-harness-cap08a-teacher',true),set_config('foundry.auth_method','tenant-harness',true),set_config('foundry.roles','TEACHER',true),set_config('foundry.course_ids',${courseA},true)`;
+      const updated = await transaction.unsafe(`UPDATE foundry_product.${tableName} SET course_id=$1::uuid WHERE ctid=(SELECT ctid FROM foundry_product.${tableName} LIMIT 1)`, [courseB]);
+      if (updated.count !== 1) throw new Error(`Asset Optimization ${tableName} probe requires one teacher-visible fixture`);
+    }, /Asset Optimization evidence and governance are append-only|permission denied for table asset_optimization/);
+    directlyProbedWritableTables.add(`foundry_product.${tableName}`);
+  }
+
   await expectRoleTransactionDenied("IdempotencyKey update to tenant B result", product, RUNTIME_DATABASE_ROLES.product, tenantA, async (transaction) => {
     const updated = await transaction`
       UPDATE foundry_product.idempotency_keys

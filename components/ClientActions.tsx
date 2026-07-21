@@ -663,6 +663,38 @@ export function ComponentDeliveryForm({ observationId }: { observationId: string
   return <div><button data-testid="component-delivery-button" disabled={action.pending} onClick={async () => { try { await action.run("/api/components/deliveries", { observationId, idempotencyKey: randomKey("component-delivery") }); } catch (error) { action.setMessage(error instanceof Error ? error.message : "Unable to deliver Component support"); } }}>Deliver active Component support</button><FormStatus value={action.message}/></div>;
 }
 
+export function AssetOptimizationProposalButton({ runtimeDeliveryId }: { runtimeDeliveryId: string }) {
+  const action = useAction();
+  const commandKey = useStableCommandKey("cap08a-proposal");
+  return <div><button data-testid="asset-optimization-proposal-button" disabled={action.pending} onClick={async () => {
+    try {
+      await action.run("/api/asset-optimization/proposals", { runtimeDeliveryId, idempotencyKey: commandKey.current() });
+      commandKey.regenerate();
+    } catch (error) { action.setMessage(error instanceof Error ? error.message : "Unable to create the Asset Optimization Proposal"); }
+  }}>Create evidence-bound Asset proposal</button><FormStatus value={action.message}/></div>;
+}
+
+export function AssetOptimizationDecisionForm({ proposalId }: { proposalId: string }) {
+  const action = useAction();
+  const commandKey = useStableCommandKey("cap08a-decision");
+  const hydrated = useHydrated();
+  const [decision, setDecision] = useState<"REQUEST_SUCCESSOR" | "KEEP_CURRENT">("REQUEST_SUCCESSOR");
+  return <form className="stack compact" data-testid="asset-optimization-decision-form" data-hydrated={hydrated ? "true" : "false"} onSubmit={async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    try {
+      await action.run(`/api/asset-optimization/proposals/${proposalId}/decisions`, { action: decision, rationale: form.get("rationale"), idempotencyKey: commandKey.current() });
+      commandKey.regenerate();
+    } catch (error) { action.setMessage(error instanceof Error ? error.message : "Unable to govern the Asset Optimization Proposal"); }
+  }}>
+    <label>Next action<select value={decision} onChange={(event) => setDecision(event.target.value as "REQUEST_SUCCESSOR" | "KEEP_CURRENT")}><option value="REQUEST_SUCCESSOR">Request governed successor work</option><option value="KEEP_CURRENT">Keep current version</option></select></label>
+    <label>Human rationale<textarea name="rationale" required minLength={5} placeholder="Explain why this evidence warrants successor work or no change."/></label>
+    <button data-hydrated={hydrated ? "true" : "false"} disabled={!hydrated || action.pending}>Record append-only decision</button>
+    <FormStatus value={action.message}/>
+    <small>This decision does not create, check, confirm, publish or activate a successor version.</small>
+  </form>;
+}
+
 export function RunFrameworkContractChecksButton() {
   const action = useAction();
   return <div><button data-testid="run-framework-contract-checks" disabled={action.pending} onClick={async () => { try { await action.run("/api/evals", {}); } catch (error) { action.setMessage(error instanceof Error ? error.message : "Framework contract checks failed"); } }}>Run framework/core contract checks</button><FormStatus value={action.message}/></div>;

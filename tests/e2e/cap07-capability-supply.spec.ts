@@ -4,10 +4,12 @@ import { SEED } from "@/db/ids";
 
 const password = process.env.E2E_SHOWCASE_PASSWORD ?? "";
 
-async function openRole(browser: Browser, account: "learner" | "expert"): Promise<{ context: BrowserContext; page: Page }> {
+async function openRole(browser: Browser, account: "learner" | "teacher" | "expert"): Promise<{ context: BrowserContext; page: Page }> {
   const identity = account === "learner"
     ? { email: "learner@showcase.invalid", route: "/learner", heading: "Learn from a governed evidence chain" }
-    : { email: "expert@showcase.invalid", route: "/foundry", heading: "Resolve real gaps into governed exact-version assets" };
+    : account === "teacher"
+      ? { email: "teacher@showcase.invalid", route: "/teacher", heading: "Assign, inspect and intervene" }
+      : { email: "expert@showcase.invalid", route: "/foundry", heading: "Resolve real gaps into governed exact-version assets" };
   const context = await browser.newContext({ viewport: { width: 1440, height: 1100 } });
   const page = await context.newPage();
   await page.goto("/sign-in");
@@ -20,7 +22,7 @@ async function openRole(browser: Browser, account: "learner" | "expert"): Promis
   return { context, page };
 }
 
-test("CAP-07 supplies a real CAP-02 gap and delivers its confirmed exact Web ComponentAsset", async ({ browser }, testInfo) => {
+test("CAP-07 supplies a real exact Web ComponentAsset and CAP-08A governs one Attempt-driven Asset proposal", async ({ browser }, testInfo) => {
   test.skip(testInfo.project.name === "mobile", "The bounded stateless CAP-07 path runs once on desktop.");
   test.setTimeout(180_000);
   const opened: BrowserContext[] = [];
@@ -228,6 +230,87 @@ test("CAP-07 supplies a real CAP-02 gap and delivers its confirmed exact Web Com
         outcome_count: baselineHumanRows.outcome_count,
       });
       expect(proof?.learning_event_count).toBeGreaterThanOrEqual(10);
+
+      const [versionBaseline] = await sql<Array<{ count: number }>>`
+        SELECT count(*)::int AS count FROM foundry_product.component_versions version
+        JOIN foundry_product.components component ON component.id=version.component_id
+        WHERE component.asset_type='WEB_COMPONENT_ASSET' AND component.supply_strategy='ADAPT'
+      `;
+      await expert.page.reload();
+      const optimizationCandidate = expert.page.getByTestId("asset-optimization-candidate");
+      await expect(optimizationCandidate).toHaveCount(1);
+      await expect(optimizationCandidate).toContainText("INCORRECT ATTEMPT · REVIEWABLE SIGNAL");
+      await expect(optimizationCandidate).toContainText("correct: false");
+      await expect(optimizationCandidate).toContainText("One Attempt can support only a bounded proposal");
+      await optimizationCandidate.getByTestId("asset-optimization-proposal-button").click();
+
+      const optimizationProposal = expert.page.getByTestId("asset-optimization-proposal");
+      await expect(optimizationProposal).toHaveCount(1);
+      await expect(optimizationProposal).toContainText("PENDING GOVERNANCE");
+      await expect(optimizationProposal).toContainText("ASSET · NOT ROUTING · NOT STRATEGY");
+      await expect(optimizationProposal).toContainText("adding bounded retry feedback specific to the selected incorrect choice");
+      await expect(optimizationProposal).toContainText("does not establish an asset defect");
+      await expect(optimizationProposal.getByText("Exact delivered-version and Attempt lineage")).toBeVisible();
+
+      const teacher = await openRole(browser, "teacher");
+      opened.push(teacher.context);
+      const teacherProposal = teacher.page.getByTestId("asset-optimization-proposal");
+      await expect(teacherProposal).toHaveCount(1);
+      await expect(teacherProposal).toContainText("PENDING GOVERNANCE");
+      const decisionForm = teacherProposal.getByTestId("asset-optimization-decision-form");
+      await expect(decisionForm).toHaveAttribute("data-hydrated", "true");
+      await decisionForm.getByLabel("Human rationale").fill("Request bounded successor exploration from this exact Attempt while retaining the current version and all non-claims.");
+      await decisionForm.getByRole("button", { name: "Record append-only decision" }).click();
+      const teacherDecision = teacherProposal.getByTestId("asset-optimization-decision");
+      await expect(teacherDecision).toContainText("REQUEST_SUCCESSOR");
+      await expert.page.reload();
+      const governedProposal = expert.page.getByTestId("asset-optimization-proposal");
+      const optimizationDecision = governedProposal.getByTestId("asset-optimization-decision");
+      await expect(optimizationDecision).toContainText("REQUEST_SUCCESSOR");
+      await expect(optimizationDecision).toContainText("Recorded by");
+      await expect(optimizationDecision).toContainText("current exact version remains active");
+      await expect(optimizationDecision).toContainText("No successor, check, confirmation, availability, Outcome, routing or strategy record was created");
+
+      const [optimizationProof] = await sql<Array<{
+        proposal_type: string;
+        signal_kind: string;
+        correct: string;
+        exact_component_version: boolean;
+        exact_capability_version: boolean;
+        decision_action: string;
+        version_count: number;
+        review_count: number;
+        outcome_count: number;
+      }>>`
+        SELECT proposal.proposal_type, proposal.signal_kind,
+          proposal.evidence_snapshot->>'correct' AS correct,
+          proposal.component_version_id=capability_version.component_asset_version_id
+            AND proposal.component_version_content_hash=component_version.content_hash AS exact_component_version,
+          proposal.capability_version_id=delivery.capability_version_id
+            AND proposal.capability_version_content_hash=delivery.capability_version_content_hash AS exact_capability_version,
+          decision.action AS decision_action,
+          (SELECT count(*)::int FROM foundry_product.component_versions version_count
+            JOIN foundry_product.components component_count ON component_count.id=version_count.component_id
+            WHERE component_count.asset_type='WEB_COMPONENT_ASSET' AND component_count.supply_strategy='ADAPT') AS version_count,
+          (SELECT count(*)::int FROM foundry_product.teacher_reviews) AS review_count,
+          (SELECT count(*)::int FROM foundry_product.learning_outcomes) AS outcome_count
+        FROM foundry_product.asset_optimization_proposals proposal
+        JOIN foundry_product.asset_optimization_decisions decision ON decision.proposal_id=proposal.id
+        JOIN foundry_product.runtime_deliveries delivery ON delivery.id=proposal.runtime_delivery_id
+        JOIN foundry_product.capability_versions capability_version ON capability_version.id=proposal.capability_version_id
+        JOIN foundry_product.component_versions component_version ON component_version.id=proposal.component_version_id
+      `;
+      expect(optimizationProof).toMatchObject({
+        proposal_type: "ASSET",
+        signal_kind: "INCORRECT_ATTEMPT",
+        correct: "false",
+        exact_component_version: true,
+        exact_capability_version: true,
+        decision_action: "REQUEST_SUCCESSOR",
+        version_count: versionBaseline?.count,
+        review_count: baselineHumanRows.review_count,
+        outcome_count: baselineHumanRows.outcome_count,
+      });
   } finally {
     await sql.end();
     await Promise.allSettled(opened.map((context) => context.close()));

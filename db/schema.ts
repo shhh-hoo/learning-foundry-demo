@@ -1209,6 +1209,70 @@ export const capabilitySupplyRelations = product.table("capability_supply_relati
   index("capability_supply_relation_course_idx").on(table.institutionId, table.courseId, table.createdAt),
 ]);
 
+/** Class B: evidence-bound suggestion to improve one exact ComponentAssetVersion. */
+export const assetOptimizationProposals = product.table("asset_optimization_proposals", {
+  id: id(),
+  institutionId: uuid("institution_id").notNull().references(() => institutions.id, { onDelete: "cascade" }),
+  courseId: uuid("course_id").notNull().references(() => courses.id, { onDelete: "cascade" }),
+  componentId: uuid("component_id").notNull().references(() => components.id),
+  componentVersionId: uuid("component_version_id").notNull().references(() => componentVersions.id),
+  componentVersionContentHash: text("component_version_content_hash").notNull(),
+  capabilityId: uuid("capability_id").notNull().references(() => capabilities.id),
+  capabilityVersionId: uuid("capability_version_id").notNull().references(() => capabilityVersions.id),
+  capabilityVersionContentHash: text("capability_version_content_hash").notNull(),
+  capabilitySupplyRelationId: uuid("capability_supply_relation_id").notNull().references(() => capabilitySupplyRelations.id),
+  runtimeDeliveryId: uuid("runtime_delivery_id").notNull().references(() => runtimeDeliveries.id),
+  learnerAttemptId: uuid("learner_attempt_id").notNull().references(() => learnerAttempts.id),
+  learnerAttemptContentHash: text("learner_attempt_content_hash").notNull(),
+  proposalType: text("proposal_type").notNull(),
+  signalKind: text("signal_kind").notNull(),
+  rationale: text("rationale").notNull(),
+  proposedChange: jsonb("proposed_change").$type<Record<string, unknown>>().notNull(),
+  evidenceSnapshot: jsonb("evidence_snapshot").$type<Record<string, unknown>>().notNull(),
+  evidenceRefs: jsonb("evidence_refs").$type<Array<Record<string, string>>>().notNull(),
+  evidenceHash: text("evidence_hash").notNull(),
+  limitations: jsonb("limitations").$type<string[]>().notNull(),
+  ruleKey: text("rule_key").notNull(),
+  ruleVersion: text("rule_version").notNull(),
+  confidence: real("confidence").notNull(),
+  state: text("state").notNull(),
+  requestedBy: uuid("requested_by").notNull().references(() => users.id),
+  requesterProvenance: jsonb("requester_provenance").$type<{ userId: string; institutionId: string; roles: string[]; authMethod: string; sessionId: string; authenticatedAt: string }>().notNull(),
+  requestHash: text("request_hash").notNull(),
+  createdAt: createdAt(),
+}, (table) => [
+  uniqueIndex("asset_optimization_delivery_uq").on(table.runtimeDeliveryId),
+  uniqueIndex("asset_optimization_request_hash_uq").on(table.institutionId, table.requestHash),
+  index("asset_optimization_course_idx").on(table.institutionId, table.courseId, table.createdAt),
+  check("asset_optimization_type_ck", sql`${table.proposalType} = 'ASSET' AND ${table.signalKind} = 'INCORRECT_ATTEMPT'`),
+  check("asset_optimization_state_ck", sql`${table.state} = 'PENDING_GOVERNANCE'`),
+  check("asset_optimization_confidence_ck", sql`${table.confidence} >= 0 AND ${table.confidence} <= 1`),
+  check("asset_optimization_json_ck", sql`jsonb_typeof(${table.proposedChange})='object' AND jsonb_typeof(${table.evidenceSnapshot})='object' AND jsonb_typeof(${table.evidenceRefs})='array' AND jsonb_typeof(${table.limitations})='array'`),
+  check("asset_optimization_hash_ck", sql`length(${table.componentVersionContentHash})>7 AND length(${table.capabilityVersionContentHash})>7 AND length(${table.learnerAttemptContentHash})>7 AND length(${table.evidenceHash})>7 AND length(${table.requestHash})>7`),
+]);
+
+/** Class A: append-only human governance of an Asset Optimization Proposal's next action. */
+export const assetOptimizationDecisions = product.table("asset_optimization_decisions", {
+  id: id(),
+  institutionId: uuid("institution_id").notNull().references(() => institutions.id, { onDelete: "cascade" }),
+  courseId: uuid("course_id").notNull().references(() => courses.id, { onDelete: "cascade" }),
+  proposalId: uuid("proposal_id").notNull().references(() => assetOptimizationProposals.id),
+  componentId: uuid("component_id").notNull().references(() => components.id),
+  componentVersionId: uuid("component_version_id").notNull().references(() => componentVersions.id),
+  action: text("action").notNull(),
+  rationale: text("rationale").notNull(),
+  decidedBy: uuid("decided_by").notNull().references(() => users.id),
+  actorProvenance: jsonb("actor_provenance").$type<{ userId: string; institutionId: string; roles: string[]; authMethod: string; sessionId: string; authenticatedAt: string }>().notNull(),
+  idempotencyKey: text("idempotency_key").notNull(),
+  requestHash: text("request_hash").notNull(),
+  createdAt: createdAt(),
+}, (table) => [
+  uniqueIndex("asset_optimization_decision_proposal_uq").on(table.proposalId),
+  uniqueIndex("asset_optimization_decision_actor_key_uq").on(table.institutionId, table.decidedBy, table.idempotencyKey),
+  check("asset_optimization_decision_action_ck", sql`${table.action} IN ('REQUEST_SUCCESSOR','KEEP_CURRENT')`),
+  check("asset_optimization_decision_payload_ck", sql`length(btrim(${table.rationale}))>=5 AND length(${table.requestHash})>7`),
+]);
+
 export const scheduleItems = product.table("schedule_items", {
   id: id(),
   learnerId: uuid("learner_id").notNull().references(() => users.id),
