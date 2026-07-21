@@ -22,7 +22,7 @@ async function openRole(browser: Browser, account: "learner" | "teacher" | "expe
   return { context, page };
 }
 
-test("CAP-07 supplies a real exact Web ComponentAsset and CAP-08A governs one Attempt-driven Asset proposal", async ({ browser }, testInfo) => {
+test("CAP-07 supplies a real exact Web ComponentAsset, CAP-08A governs Asset evidence and CAP-08B governs an independent Routing signal", async ({ browser }, testInfo) => {
   test.skip(testInfo.project.name === "mobile", "The bounded stateless CAP-07 path runs once on desktop.");
   test.setTimeout(180_000);
   const opened: BrowserContext[] = [];
@@ -170,18 +170,19 @@ test("CAP-07 supplies a real exact Web ComponentAsset and CAP-08A governs one At
     await expect(announcedSuccess).toContainText(exactPreviewInput.retry_feedback);
     await expect(delivery).toContainText("No delivery creates a Diagnosis, TeacherReview or LearningOutcome.");
 
-    const [previewDeliverySemantics] = await sql<Array<{ same_input: boolean; same_output: boolean; preview_correct: boolean; delivery_correct: boolean }>>`
+    const [previewDeliverySemantics] = await sql<Array<{ runtime_delivery_id: string; capability_id: string; same_input: boolean; same_output: boolean; preview_correct: boolean; delivery_correct: boolean }>>`
       SELECT preview.learner_input->>'selectedChoiceId'=attempt.structured_input->'assetRuntimeInput'->>'selectedChoiceId' AS same_input,
         preview.runtime_output=delivery.normalized_output AS same_output,
         (preview.runtime_output->>'correct')::boolean AS preview_correct,
-        (delivery.normalized_output->>'correct')::boolean AS delivery_correct
+        (delivery.normalized_output->>'correct')::boolean AS delivery_correct,
+        delivery.id AS runtime_delivery_id, delivery.capability_id
       FROM foundry_product.component_asset_previews preview
       JOIN foundry_product.capability_versions capability_version ON capability_version.component_asset_version_id=preview.component_version_id
       JOIN foundry_product.runtime_deliveries delivery ON delivery.capability_version_id=capability_version.id AND delivery.status='SUCCEEDED'
       JOIN foundry_product.learner_attempts attempt ON attempt.runtime_delivery_id=delivery.id
       ORDER BY delivery.finished_at DESC LIMIT 1
     `;
-    expect(previewDeliverySemantics).toEqual({ same_input: true, same_output: true, preview_correct: false, delivery_correct: false });
+    expect(previewDeliverySemantics).toMatchObject({ same_input: true, same_output: true, preview_correct: false, delivery_correct: false });
 
       const [proof] = await sql<Array<{
         component_status: string;
@@ -310,6 +311,156 @@ test("CAP-07 supplies a real exact Web ComponentAsset and CAP-08A governs one At
         version_count: versionBaseline?.count,
         review_count: baselineHumanRows.review_count,
         outcome_count: baselineHumanRows.outcome_count,
+      });
+
+      const [routingBaseline] = await sql<Array<{
+        resolution_count: number;
+        plan_count: number;
+        version_count: number;
+        capability_version_count: number;
+        route_snapshot: string;
+        review_count: number;
+        outcome_count: number;
+        asset_proposal_count: number;
+      }>>`
+        SELECT
+          (SELECT count(*)::int FROM foundry_product.capability_resolutions) AS resolution_count,
+          (SELECT count(*)::int FROM foundry_product.activity_plans) AS plan_count,
+          (SELECT count(*)::int FROM foundry_product.component_versions) AS version_count,
+          (SELECT count(*)::int FROM foundry_product.capability_versions) AS capability_version_count,
+          (SELECT jsonb_build_object(
+            'resolutionId',resolution.id,'policyVersion',resolution.policy_version,'inputHash',resolution.input_hash,
+            'candidateSet',resolution.candidate_set,'selectedCapabilityId',resolution.selected_capability_id,
+            'selectedCapabilityVersionId',resolution.selected_capability_version_id,
+            'selectionRationale',resolution.selection_rationale,'activeVersionId',capability.active_version_id
+          )::text
+          FROM foundry_product.runtime_deliveries delivery
+          JOIN foundry_product.activity_plans plan ON plan.id=delivery.activity_plan_id
+          JOIN foundry_product.capability_resolutions resolution ON resolution.id=plan.capability_resolution_id
+          JOIN foundry_product.capabilities capability ON capability.id=resolution.selected_capability_id
+          WHERE delivery.id=${previewDeliverySemantics.runtime_delivery_id}::uuid) AS route_snapshot,
+          (SELECT count(*)::int FROM foundry_product.teacher_reviews) AS review_count,
+          (SELECT count(*)::int FROM foundry_product.learning_outcomes) AS outcome_count,
+          (SELECT count(*)::int FROM foundry_product.asset_optimization_proposals) AS asset_proposal_count
+      `;
+      if (!routingBaseline || !previewDeliverySemantics) throw new Error("CAP-08B exact route baseline is unavailable");
+
+      await teacher.page.reload();
+      const runtimeInspection = teacher.page.getByTestId("teacher-runtime-inspection").filter({ hasText: previewDeliverySemantics.runtime_delivery_id });
+      await expect(runtimeInspection).toHaveCount(1);
+      const interventionForm = runtimeInspection.getByTestId("teacher-intervention-form");
+      await interventionForm.locator('select[name="interventionAction"]').selectOption("EXCLUDE_CAPABILITY");
+      await interventionForm.locator('select[name="teacherCapabilityChoice"]').selectOption(previewDeliverySemantics.capability_id);
+      await interventionForm.locator('textarea[name="reason"]').fill("Exclude this exact selected Capability next cycle and inspect whether the same route should recur for comparable authorized Context.");
+      await interventionForm.getByRole("button", { name: "Record explicit intervention" }).click();
+      await expect(runtimeInspection.getByText("Saved", { exact: true })).toBeVisible();
+
+      const teacherRoutingCandidate = teacher.page.getByTestId("routing-optimization-candidate");
+      await expect(teacherRoutingCandidate).toHaveCount(1);
+      await expect(teacherRoutingCandidate).toContainText("TEACHER EXCLUSION · REVIEWABLE SIGNAL");
+      await expect(teacherRoutingCandidate).toContainText("Attempt");
+
+      await expert.page.reload();
+      const routingCandidate = expert.page.getByTestId("routing-optimization-candidate");
+      await expect(routingCandidate).toHaveCount(1);
+      await expect(routingCandidate).toContainText("ROUTING");
+      await routingCandidate.getByTestId("routing-optimization-proposal-button").click();
+
+      const routingProposal = expert.page.getByTestId("routing-optimization-proposal");
+      await expect(routingProposal).toHaveCount(1);
+      await expect(routingProposal).toContainText("PENDING GOVERNANCE");
+      await expect(routingProposal).toContainText("ROUTING · NOT ASSET · NOT STRATEGY");
+      await expect(routingProposal).toContainText("current policy and rankings remain unchanged");
+      await expect(routingProposal.getByText("Exact Context → route → downstream evidence lineage")).toBeVisible();
+
+      await teacher.page.reload();
+      const teacherRoutingProposal = teacher.page.getByTestId("routing-optimization-proposal");
+      await expect(teacherRoutingProposal).toHaveCount(1);
+      const routingDecisionForm = teacherRoutingProposal.getByTestId("routing-optimization-decision-form");
+      await expect(routingDecisionForm).toHaveAttribute("data-hydrated", "true");
+      await routingDecisionForm.getByLabel("Human rationale").fill("Request a bounded successor-policy review from this exact teacher override while preserving the current route, ranking and historical evidence.");
+      await routingDecisionForm.getByRole("button", { name: "Record append-only routing decision" }).click();
+      await expect(teacherRoutingProposal.getByTestId("routing-optimization-decision")).toContainText("REQUEST_POLICY_REVIEW");
+
+      await expert.page.reload();
+      const governedRoutingProposal = expert.page.getByTestId("routing-optimization-proposal");
+      const routingDecision = governedRoutingProposal.getByTestId("routing-optimization-decision");
+      await expect(routingDecision).toContainText("REQUEST_POLICY_REVIEW");
+      await expect(routingDecision).toContainText("current policy and rankings remain unchanged");
+      await expect(routingDecision).toContainText("No route, CapabilityVersion, ActivityPlan, LearningOutcome, Asset Optimization or Learning Strategy record was created");
+
+      const [routingProof] = await sql<Array<{
+        proposal_type: string;
+        signal_kind: string;
+        decision_action: string;
+        attempt_interpretation: string;
+        exact_context: boolean;
+        exact_resolution: boolean;
+        exact_candidate: boolean;
+        exact_plan: boolean;
+        exact_runtime_attempt: boolean;
+        exact_intervention: boolean;
+        resolution_count: number;
+        plan_count: number;
+        version_count: number;
+        capability_version_count: number;
+        route_snapshot: string;
+        review_count: number;
+        outcome_count: number;
+        asset_proposal_count: number;
+      }>>`
+        SELECT proposal.proposal_type,proposal.signal_kind,decision.action AS decision_action,
+          proposal.evidence_snapshot->'learnerAttempt'->>'interpretation' AS attempt_interpretation,
+          proposal.context_compilation_id=context.id AND proposal.context_snapshot_hash=context.snapshot_hash AS exact_context,
+          proposal.capability_resolution_id=resolution.id
+            AND proposal.capability_resolution_input_hash=resolution.input_hash
+            AND proposal.selected_capability_id=resolution.selected_capability_id
+            AND proposal.selected_capability_version_id=resolution.selected_capability_version_id AS exact_resolution,
+          EXISTS (SELECT 1 FROM jsonb_array_elements(resolution.candidate_set) candidate
+            WHERE candidate->>'capabilityId'=proposal.selected_capability_id::text
+              AND candidate->>'versionId'=proposal.selected_capability_version_id::text
+              AND candidate->>'eligibility'='ELIGIBLE') AS exact_candidate,
+          proposal.activity_plan_id=plan.id AND plan.capability_resolution_id=resolution.id
+            AND plan.capability_version_id=proposal.selected_capability_version_id AS exact_plan,
+          proposal.runtime_delivery_id=delivery.id AND delivery.activity_plan_id=plan.id
+            AND proposal.learner_attempt_id=attempt.id AND attempt.runtime_delivery_id=delivery.id AS exact_runtime_attempt,
+          proposal.teacher_intervention_id=intervention.id AND intervention.action_type='EXCLUDE_CAPABILITY'
+            AND intervention.constraint_capability_id=proposal.selected_capability_id AS exact_intervention,
+          jsonb_build_object(
+            'resolutionId',resolution.id,'policyVersion',resolution.policy_version,'inputHash',resolution.input_hash,
+            'candidateSet',resolution.candidate_set,'selectedCapabilityId',resolution.selected_capability_id,
+            'selectedCapabilityVersionId',resolution.selected_capability_version_id,
+            'selectionRationale',resolution.selection_rationale,'activeVersionId',capability.active_version_id
+          )::text AS route_snapshot,
+          (SELECT count(*)::int FROM foundry_product.capability_resolutions) AS resolution_count,
+          (SELECT count(*)::int FROM foundry_product.activity_plans) AS plan_count,
+          (SELECT count(*)::int FROM foundry_product.component_versions) AS version_count,
+          (SELECT count(*)::int FROM foundry_product.capability_versions) AS capability_version_count,
+          (SELECT count(*)::int FROM foundry_product.teacher_reviews) AS review_count,
+          (SELECT count(*)::int FROM foundry_product.learning_outcomes) AS outcome_count,
+          (SELECT count(*)::int FROM foundry_product.asset_optimization_proposals) AS asset_proposal_count
+        FROM foundry_product.routing_optimization_proposals proposal
+        JOIN foundry_product.routing_optimization_decisions decision ON decision.proposal_id=proposal.id
+        JOIN foundry_product.context_compilations context ON context.id=proposal.context_compilation_id
+        JOIN foundry_product.capability_resolutions resolution ON resolution.id=proposal.capability_resolution_id
+        JOIN foundry_product.capabilities capability ON capability.id=proposal.selected_capability_id
+        JOIN foundry_product.activity_plans plan ON plan.id=proposal.activity_plan_id
+        JOIN foundry_product.runtime_deliveries delivery ON delivery.id=proposal.runtime_delivery_id
+        JOIN foundry_product.learner_attempts attempt ON attempt.id=proposal.learner_attempt_id
+        JOIN foundry_product.teacher_interventions intervention ON intervention.id=proposal.teacher_intervention_id
+      `;
+      expect(routingProof).toMatchObject({
+        proposal_type: "ROUTING",
+        signal_kind: "TEACHER_EXCLUSION_OVERRIDE",
+        decision_action: "REQUEST_POLICY_REVIEW",
+        attempt_interpretation: "LINEAGE_ONLY_NOT_ROUTING_VERDICT",
+        exact_context: true,
+        exact_resolution: true,
+        exact_candidate: true,
+        exact_plan: true,
+        exact_runtime_attempt: true,
+        exact_intervention: true,
+        ...routingBaseline,
       });
   } finally {
     await sql.end();

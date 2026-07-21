@@ -356,7 +356,7 @@ export function TeacherInterventionForm({
       setSubmitting(false);
     }
   }}>
-    <label>Intervention<select value={actionType} onChange={(event) => setActionType(event.target.value as typeof actionType)}><option value="REQUIRE_CAPABILITY">Require Capability next cycle</option><option value="EXCLUDE_CAPABILITY">Exclude Capability next cycle</option></select></label>
+    <label>Intervention<select name="interventionAction" value={actionType} onChange={(event) => setActionType(event.target.value as typeof actionType)}><option value="REQUIRE_CAPABILITY">Require Capability next cycle</option><option value="EXCLUDE_CAPABILITY">Exclude Capability next cycle</option></select></label>
     <label>Capability<select name="teacherCapabilityChoice" required defaultValue=""><option value="" disabled>Select course Capability</option>{capabilities.map((capability) => <option key={capability.id} value={capability.id}>{capability.name} · {capability.key}</option>)}</select></label>
     <label>Human reason<textarea name="reason" required minLength={5}/></label>
     <button disabled={submitting || action.pending || capabilities.length === 0}>Record explicit intervention</button><FormStatus value={action.message}/>
@@ -692,6 +692,38 @@ export function AssetOptimizationDecisionForm({ proposalId }: { proposalId: stri
     <button data-hydrated={hydrated ? "true" : "false"} disabled={!hydrated || action.pending}>Record append-only decision</button>
     <FormStatus value={action.message}/>
     <small>This decision does not create, check, confirm, publish or activate a successor version.</small>
+  </form>;
+}
+
+export function RoutingOptimizationProposalButton({ teacherInterventionId }: { teacherInterventionId: string }) {
+  const action = useAction();
+  const commandKey = useStableCommandKey("cap08b-proposal");
+  return <div><button data-testid="routing-optimization-proposal-button" disabled={action.pending} onClick={async () => {
+    try {
+      await action.run("/api/routing-optimization/proposals", { teacherInterventionId, idempotencyKey: commandKey.current() });
+      commandKey.regenerate();
+    } catch (error) { action.setMessage(error instanceof Error ? error.message : "Unable to create the Routing Optimization Proposal"); }
+  }}>Create evidence-bound Routing proposal</button><FormStatus value={action.message}/></div>;
+}
+
+export function RoutingOptimizationDecisionForm({ proposalId }: { proposalId: string }) {
+  const action = useAction();
+  const commandKey = useStableCommandKey("cap08b-decision");
+  const hydrated = useHydrated();
+  const [decision, setDecision] = useState<"REQUEST_POLICY_REVIEW" | "KEEP_CURRENT_POLICY">("REQUEST_POLICY_REVIEW");
+  return <form className="stack compact" data-testid="routing-optimization-decision-form" data-hydrated={hydrated ? "true" : "false"} onSubmit={async (event) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    try {
+      await action.run(`/api/routing-optimization/proposals/${proposalId}/decisions`, { action: decision, rationale: form.get("rationale"), idempotencyKey: commandKey.current() });
+      commandKey.regenerate();
+    } catch (error) { action.setMessage(error instanceof Error ? error.message : "Unable to govern the Routing Optimization Proposal"); }
+  }}>
+    <label>Next action<select value={decision} onChange={(event) => setDecision(event.target.value as "REQUEST_POLICY_REVIEW" | "KEEP_CURRENT_POLICY")}><option value="REQUEST_POLICY_REVIEW">Request governed policy review</option><option value="KEEP_CURRENT_POLICY">Keep current policy</option></select></label>
+    <label>Human rationale<textarea name="rationale" required minLength={5} placeholder="Explain why this exact override warrants policy review or no policy work."/></label>
+    <button data-hydrated={hydrated ? "true" : "false"} disabled={!hydrated || action.pending}>Record append-only routing decision</button>
+    <FormStatus value={action.message}/>
+    <small>This decision does not change ranking, eligibility, policy, Capability versions, ActivityPlans or Outcomes.</small>
   </form>;
 }
 

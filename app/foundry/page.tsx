@@ -1,8 +1,10 @@
 import { withWorkspaceActor } from "@/application/identity";
 import { getFoundryWorkspace } from "@/application/queries";
 import { getAssetOptimizationWorkspace } from "@/application/asset-optimization";
+import { getRoutingOptimizationWorkspace } from "@/application/routing-optimization";
 import { CandidateForm, ComponentEvaluationButton, ComponentVersionForm, GapSupplyButton, PublicationReviewForm, RollbackForm, WebComponentPreviewForm } from "@/components/ClientActions";
 import { AssetOptimizationPanel } from "@/components/AssetOptimizationPanel";
+import { RoutingOptimizationPanel } from "@/components/RoutingOptimizationPanel";
 import { Badge, Card, Empty, SurfaceHeader } from "@/components/ui";
 
 export const dynamic = "force-dynamic";
@@ -20,7 +22,7 @@ function webChoices(value: unknown): Array<{ id: string; label: string }> {
 
 export default async function FoundryPage() {
   return withWorkspaceActor(["EXPERT", "ADMIN"], "Capability Workshop", async (actor) => {
-  const [workspace, assetOptimization] = await Promise.all([getFoundryWorkspace(actor), getAssetOptimizationWorkspace(actor)]);
+  const [workspace, assetOptimization, routingOptimization] = await Promise.all([getFoundryWorkspace(actor), getAssetOptimizationWorkspace(actor), getRoutingOptimizationWorkspace(actor)]);
   const evidenceOptions = workspace.evidenceOptions.map(({ evidence, source }) => ({ id: evidence.id, title: evidence.title, locator: evidence.locator, sourceTitle: source.title }));
   const componentGroups = [...workspace.candidates.reduce((groups, row) => {
     const group = groups.get(row.component.id) ?? { component: row.component, rows: [] as typeof workspace.candidates };
@@ -49,6 +51,7 @@ export default async function FoundryPage() {
       {workspace.gapSignals.length === 0 ? <Empty>No current unclaimed ADAPT gap is available. GENERATE and generation-forbidden NO_MATCH are outside this bounded slice; existing, parameterized and composed matches are not widened into supply work.</Empty> : null}
     </Card>
     <AssetOptimizationPanel workspace={assetOptimization}/>
+    <RoutingOptimizationPanel workspace={routingOptimization}/>
     <div className="stack">{componentGroups.map(({ component, rows }) => {
       const publishedVersions = rows.flatMap(({ version }) => version?.status === "PUBLISHED" ? [{ id: version.id, version: version.version }] : []);
       return <Card key={component.id} eyebrow={`${component.key} · ${component.referencePackKey}`} title={component.title}>
