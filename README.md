@@ -1,111 +1,196 @@
-# Learning Foundry · full-framework rewrite
+# Learning Foundry
 
-Exact commit `b6f023fe995e44e714bf5da2c2096128e1def9fe` is the immutable
-audited Next.js App Router, LangGraph JS and PostgreSQL implementation
-checkpoint. This descendant branch leaves that checkpoint's product behavior
-unchanged and contains only separately reviewable governance-guidance changes.
-The audited checkpoint is historical implementation evidence, not an accepted
-rewrite, completed product or cutover claim.
+Learning Foundry is an **AI Learning Orchestration Platform** that turns live learning evidence into the next governed learning activity.
 
-Current documentation authority:
-`learning-foundry-docs@05413353c5b4d231878747d307cb8dd3c232eeb1`.
-The retained PR #22 audit remains exact-head evidence only. Its observations
-and old requirement interpretation are historical; the superseded 113-row
-ledger and `COMP-*` evidence do not map mechanically to current `CAP-*`
-requirements. This implementation-guidance change is separately reviewable and
-revertible. It grants no Legacy deletion, canonical Product State migration,
-preview approval, merge, release, production or cutover authority.
+The current trial stack is based on Draft PR #39 at exact head:
 
-## State and authority
+```text
+da3985ca8030d2c18ab86b336927ae931cab9b63
+```
 
-- `foundry_product` stores canonical Product State.
-- `foundry_operational` stores workflow, retrieval and Eval inspection records.
-- `langgraph_checkpoint` is the separate LangGraph checkpoint store. Production requires `CHECKPOINT_DATABASE_URL` and `PRODUCT_DATABASE_URL` to use distinct database roles or targets; they may use the same managed PostgreSQL database when repository/schema boundaries and permissions remain separate. Local and test environments may fall back to `DATABASE_URL`.
-- Authenticated actor provenance—not a caller-supplied string—authorizes TeacherReview, LearningOutcome and PublicationDecision commands.
-- `RETRY` is the only activity type exposed in Checkpoint A.
+It is an internal local Showcase candidate, not a public preview, school Pilot, production release or learning-effectiveness claim.
 
-The real-intelligence work package adds governed PDF/image intake, PDF.js page extraction, persisted provider embeddings with exact cosine retrieval, PostgreSQL full-text search, reciprocal-rank fusion, configured Cohere reranking, grounded model synthesis, and configured OpenAI image/handwriting interpretation. Each adapter reports `EXECUTED`, `UNAVAILABLE`, or `FAILED`; missing keys never synthesize success. This exact-vector implementation does not claim a production-scale ANN index. Four deterministic Chemistry calculation adapters live under the Chemistry Reference Pack rather than Core.
+Current product authority:
 
-Uploaded bytes are stored through the server-only `FileStorage` port and never in Product State rows. Local verification uses `.local-data/uploads` (or `FILE_STORAGE_LOCAL_ROOT`); production startup fails without an explicit storage root until a managed storage adapter is selected. Extracted text, content hashes, ownership, rights decisions, locators, and ingestion status remain governed Product State.
+```text
+learning-foundry-docs@05413353c5b4d231878747d307cb8dd3c232eeb1
+```
 
-The audited checkpoint contains partial capability-supply primitives: exact
-versions, versioned system checks, deterministic Capability fixture execution,
-an authenticated expert decision interrupt, immutable decisions, successor
-versions, rollback and version-pinned support delivery. It also contains
-Component-oriented editor and review structures created under superseded CMS
-authority. Those structures are salvage candidates, not current requirements.
-No old `COMP-*` result establishes `CAP-*` completion. Rights/citation checks
-recorded as `NOT_REQUIRED` remain historical facts, never inferred passes. This
-is exact-head evidence, not human validation, product completion or
-public-preview authorization.
+## Try the product locally
 
-Optional live integrations:
+Requirements:
 
-- `OPENAI_API_KEY`: embeddings and image/handwriting interpretation; also synthesis when `FOUNDRY_SYNTHESIS_PROVIDER=OPENAI`.
-- `COHERE_API_KEY`: Cohere reranking (`COHERE_RERANK_MODEL`, default `rerank-v3.5`).
-- `DEEPSEEK_API_KEY`: grounded synthesis when `FOUNDRY_SYNTHESIS_PROVIDER=DEEPSEEK` or when it is the first configured synthesis provider.
-- `FILE_STORAGE_LOCAL_ROOT`: explicit local object root; required in production until managed object storage is configured.
+- Node.js 20.9 or newer;
+- npm;
+- Docker Desktop or another working Docker Engine with `docker compose`.
 
-Workflow starts and resumes use request-scoped cancellation plus a bounded
-deadline (30 seconds by default, capped at 120 seconds). LangGraph, chat and
-vision calls receive native abort signals. The installed LangChain OpenAI
-embeddings and Cohere rerank wrappers do not expose per-call signals, so those
-two boundaries enforce pre/post deadline guards but cannot cooperatively stop an
-already in-flight wrapper call. They must not be reported as cooperatively
-cancelled; the workflow still stops before subsequent canonical writes.
+From this branch:
 
-External telemetry, product/pedagogy/learning-effectiveness Eval, managed object storage, production ANN/vector infrastructure, and a live production identity-provider configuration remain unavailable or not configured. No public preview is authorized.
+```bash
+npm run showcase
+```
 
-The unmerged RW-02 Draft adds a generic production OIDC contract, DB-backed
-session rotation/revocation, transaction-local tenant context, forced RLS for
-every cataloged Product State and operational table, institution-prefixed
-checkpoint enforcement, and least-privilege auth/product/checkpoint/worker
-roles. Local automated, direct-database, and HTTPS OIDC-simulator evidence is
-recorded in `docs/RW-02-EVIDENCE.md`. It is not live-provider, managed-database,
-preview, human, production, or Product Owner acceptance evidence.
+That single command:
 
-Production OIDC requires `AUTH_OIDC_ISSUER`, `AUTH_OIDC_CLIENT_ID`,
-`AUTH_OIDC_CLIENT_SECRET`, `AUTH_SECRET`, and an operator-provisioned immutable
-issuer+subject binding. Production database separation requires
-`PRODUCT_DATABASE_URL`, `CHECKPOINT_DATABASE_URL`, `AUTH_DATABASE_URL`,
-`WORKER_DATABASE_URL`, `MIGRATION_DATABASE_URL`, and
-`CHECKPOINT_MIGRATION_DATABASE_URL`, each using its documented distinct login
-role or target. Production runtime pools merge an exact group-role startup
-setting into those URLs and fail if the login lacks the matching grant; owner
-migration URLs are not reused by application pools. Each operator-provisioned
-application login must be LOGIN, NOINHERIT, NOSUPERUSER, NOBYPASSRLS,
-non-owning, and a direct member of exactly one matching runtime group; startup
-must still SET that exact group role. The mutation guard resolves PostgreSQL
-role/session membership from the catalogs. When `role=none`, a non-owner caller
-with zero or multiple runtime authorities fails closed. An explicit runtime
-group selected at connection startup is honored; that path therefore relies on
-the operator provisioning each login with exactly one direct runtime-group
-membership.
-The migration creates NOLOGIN group roles; it does not create credentials or
-grant a deploy environment access.
+1. creates ignored local-only credentials;
+2. starts a dedicated PostgreSQL 16 container;
+3. installs locked dependencies when needed;
+4. applies Product State and LangGraph checkpoint migrations;
+5. seeds learner, teacher, expert and engineer accounts;
+6. starts the separate Component Executor;
+7. starts Next.js;
+8. waits for both health endpoints;
+9. prints the generated password and opens the sign-in page.
 
-These controls remain **DRAFT / NOT DEPLOYED / NOT LIVE-CONFIGURED** until a
-separate authorized deployment provisions the roles, applies the migrations,
-configures an approved provider, and supplies evidence. Background or automatic
-recovery for a crashed `RESUMING` workflow is **NOT_IMPLEMENTED**. On request,
-an authorized actor may reclaim an expired resume lease using the current
-interrupt version; fresh leases remain protected from concurrent resume. This
-bounded reclaim path and the RW-02 Draft grant no preview or production
-authorization.
+Default URL:
 
-RW-02 is an **internal implementation checkpoint, not production-ready tenant
-isolation**. Its catalog-backed role resolution and tenant probes cover the
-enumerated local PostgreSQL paths only. Managed-database ownership, login
-provisioning, role-chain configuration, deployment/session behavior and any
-unexamined privileged bypass remain deferred to authorized operational and
-security review. In particular, the explicit `SET ROLE` path does not
-independently re-count the session login's other memberships, so the documented
-one-group login constraint is a deployment assumption, not a locally proven
-managed-environment guarantee. Local tests do not approve those assumptions.
+```text
+http://127.0.0.1:3100/sign-in
+```
 
-Dependency audit status: Next.js 16.2.10 currently installs nested PostCSS 8.4.31, which remains affected by moderate advisory `GHSA-qx2v-qp2m-jg93`. A package override was tested and removed because Next continued to resolve its pinned nested version and npm correctly marked the forced tree invalid. The other current moderate findings are in the `drizzle-kit` / `@esbuild-kit` / `esbuild` development-tooling chain; npm's proposed remediation is an incompatible downgrade and is not applied. There are currently no high or critical audit findings. The runtime PostCSS advisory remains an explicit preview blocker pending a compatible upstream resolution.
+Institution:
 
-## Local verification
+```text
+checkpoint-showcase
+```
+
+Accounts:
+
+```text
+learner@showcase.invalid
+teacher@showcase.invalid
+expert@showcase.invalid
+engineer@showcase.invalid
+```
+
+The generated password is printed at startup and stored only in ignored `.env.showcase.local`.
+
+No model API key is required for the core deterministic product flow. Missing providers remain visibly unavailable rather than being simulated.
+
+Detailed walkthrough, reset and troubleshooting instructions:
+
+- [Local Showcase](docs/LOCAL_SHOWCASE.md)
+
+Useful commands:
+
+```bash
+npm run showcase:status
+npm run showcase:reset
+npm run showcase:stop
+npm run showcase:destroy
+```
+
+Press Ctrl+C to stop Next.js and Component Executor. The dedicated PostgreSQL data persists until reset or destroy.
+
+## What currently works
+
+The current stacked Draft product includes:
+
+```text
+Task / Goal
+→ Context Compiler
+→ Diagnosis Proposal
+→ Capability Resolution
+→ Activity Planning
+→ exact ComponentAsset runtime
+→ LearningEvents and LearnerAttempt
+→ Teacher assignment and intervention
+→ governed Retry / Transfer / Retention
+→ real Capability Gap
+→ Web ComponentAsset adaptation
+→ checks and exact learner preview
+→ authenticated expert confirmation
+→ Registry availability and learner delivery
+→ Asset Optimization Proposal
+→ Routing Optimization Proposal
+```
+
+### Learner Workspace
+
+Learners can:
+
+- create and inspect database-backed Tasks and Episodes;
+- converse inside Task-scoped Context;
+- inspect selected and excluded Context;
+- upload governed PDF/image learning materials;
+- submit text or image/handwritten Attempts;
+- trigger diagnosis-driven Capability Resolution;
+- use an exact-version Web ComponentAsset;
+- inspect honest cancellation, failure and bounded retry states;
+- complete governed Retry / Transfer / Retention activities.
+
+### Teacher Workspace
+
+Teachers can:
+
+- assign a Task to an enrolled learner;
+- inspect exact Context, Diagnosis, Capability Resolution, ActivityPlan, RuntimeDelivery, Attempt and ordered LearningEvents;
+- record explicit required/excluded Capability interventions;
+- review governed follow-up results;
+- inspect Asset and Routing Optimization proposals;
+- record append-only human next actions without automatically changing policy or claiming Outcome.
+
+### Capability Workshop
+
+Experts can:
+
+- inspect real persisted no-match / adaptation signals;
+- create a bounded course-private Web ComponentAsset proposal;
+- run deterministic checks;
+- execute and reload an exact learner preview;
+- confirm an immutable exact version;
+- register it for scoped Capability Resolution;
+- inspect exact-version delivery evidence;
+- create evidence-bound Asset and Routing Optimization proposals.
+
+The Workshop remains need-driven. It is not a generic CMS, giant editor or standalone publishing product.
+
+### Engineering / Inspection
+
+Engineers can inspect:
+
+- LangGraph workflows, interrupts and checkpoints;
+- Product State separately from operational/checkpoint state;
+- retrieval and provider status;
+- model calls and unavailable states;
+- framework contract checks;
+- Component evaluation, decision and delivery lineage;
+- recoverable expired resume claims.
+
+## Architecture
+
+```text
+Next.js App Router + React
+        │
+        ├── Learner Workspace
+        ├── Teacher Workspace
+        ├── Capability Workshop
+        └── Engineering / Inspection
+        │
+        ▼
+Application and domain services
+        │
+        ├── Context / Evidence / Diagnosis
+        ├── Capability Resolution / Activity Planning
+        ├── Asset Runtime / Follow-up / Governance
+        └── Optimization proposals
+        │
+        ├───────────────┐
+        ▼               ▼
+LangGraph           Component Executor
+checkpoints          bounded exact asset checks/preview
+        │               │
+        └───────┬───────┘
+                ▼
+PostgreSQL
+  ├── foundry_product
+  ├── foundry_operational
+  └── langgraph_checkpoint
+```
+
+Canonical Product State, workflow checkpoint state and operational inspection records remain semantically separate even when the local Showcase uses one PostgreSQL instance.
+
+## Standard development commands
 
 ```bash
 npm ci
@@ -116,28 +201,40 @@ npm run build
 npm run legacy:scan
 ```
 
-Database verification requires an isolated PostgreSQL database:
+Database-backed verification requires an isolated PostgreSQL database. The guarded E2E path uses the exact local database name `learning_foundry_e2e` and refuses remote/reset-unsafe targets.
 
 ```bash
-export DATABASE_URL=postgresql://...
-npm run db:migrate
-npm run db:checkpoint
-SYNTHETIC_SHOWCASE_MODE=true SHOWCASE_PASSWORD='<unique local secret>' npm run db:seed
-npm run test:integration
-npm run test:integration:rerun
+export E2E_DATABASE_URL='postgresql://postgres:postgres@127.0.0.1:55432/learning_foundry_e2e'
+export E2E_RESET_ALLOWED=true
+export E2E_SHOWCASE_PASSWORD='a-unique-password-of-at-least-12-characters'
+
+npm run test:e2e
 ```
 
-The historical-checkpoint upgrade rehearsal uses a separately named guarded
-local database. It constructs the exact old `{observationId}`-only Component
-shape before applying that checkpoint's Component migration, then verifies its
-authenticated Review backfill and audit quarantine of non-bindable pre-Eval
-shells. The retained audit flags deletion in this migration as a separate
-schema/data authority risk; a passing rehearsal does not authorize migration:
+## Optional providers
 
-```bash
-UPGRADE_REHEARSAL_ALLOWED=true \
-UPGRADE_REHEARSAL_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/learning_foundry_upgrade_rehearsal \
-npm run test:migration-upgrade
-```
+Provider-backed features are optional for the local synthetic Showcase:
 
-Synthetic credentials authentication is disabled unless `SYNTHETIC_SHOWCASE_MODE=true`. The showcase password has no repository default and must be supplied through the environment.
+- `DEEPSEEK_API_KEY` — grounded synthesis;
+- `OPENAI_API_KEY` — embeddings and image/handwriting interpretation, optionally synthesis;
+- `COHERE_API_KEY` — reranking;
+- `LANGSMITH_API_KEY` — optional external tracing when explicitly enabled.
+
+Unavailable providers must remain unavailable. Do not fabricate retrieval, synthesis, multimodal interpretation or evaluation success.
+
+## Current boundaries
+
+This repository does not currently claim:
+
+- public online preview validation;
+- live institutional OIDC validation;
+- managed PostgreSQL or Object Storage provisioning;
+- production tenant-isolation approval;
+- real learner consent or school operations readiness;
+- human-governance validation;
+- learning effectiveness;
+- accepted Doc 12 requirement completion;
+- merge to `main`;
+- production deployment or cutover.
+
+The current goal is to make the real product inspectable and usable enough for Product Owner evaluation before adding more platform complexity.
