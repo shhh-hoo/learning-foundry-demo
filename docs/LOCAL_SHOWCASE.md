@@ -150,7 +150,7 @@ The first run stores those values in `.env.showcase.local`. To change them later
 
 ### `SYNTHETIC_IDENTITY_DENIED` or “Synthetic identity must be pre-provisioned”
 
-This indicates that the database contains showcase users but not their authentication identity bindings. Update to the latest PR #40 branch and rerun the seed path:
+This indicates that the database contains showcase users but not their authentication identity bindings. Update to the latest PR #40 branch and rerun the normal launcher:
 
 ```bash
 git fetch origin agent/local-showcase-one-command
@@ -158,9 +158,9 @@ git reset --hard origin/agent/local-showcase-one-command
 npm run showcase
 ```
 
-The current launcher provisions and verifies all four identities during `db:seed`. Existing Product State may be retained; destroying the database is not required.
+The current `db:seed` command provisions and verifies all four identities. Existing Product State may be retained; destroying the database is not required.
 
-To repair identities explicitly while the generated showcase environment exists:
+When the showcase processes are already running, repair the current database explicitly in a second terminal:
 
 ```bash
 set -a
@@ -168,6 +168,8 @@ source .env.showcase.local
 set +a
 npm run showcase:auth-check
 ```
+
+Then reload `/sign-in` and use the same generated password.
 
 ### Docker is unavailable
 
