@@ -11,6 +11,13 @@
     "build": "next build",
     "start": "next start",
     "component-executor": "node --import tsx component-executor/server.ts",
+    "showcase": "node scripts/showcase.mjs start",
+    "showcase:reset": "node scripts/showcase.mjs reset",
+    "showcase:status": "node scripts/showcase.mjs status",
+    "showcase:stop": "node scripts/showcase.mjs stop",
+    "showcase:destroy": "node scripts/showcase.mjs destroy",
+    "showcase:check": "node --check scripts/showcase.mjs",
+    "showcase:auth-check": "node --import tsx scripts/provision-showcase-identities.ts",
     "lint": "eslint . --max-warnings=0",
     "check": "tsc --noEmit --pretty false",
     "test": "vitest run",
@@ -31,11 +38,11 @@
     "test:e2e": "npm run test:e2e:setup && playwright test",
     "db:generate": "drizzle-kit generate --name full_framework",
     "db:migrate": "node --import tsx db/migrate.ts",
-    "db:seed": "node --import tsx db/seed-showcase.ts",
+    "db:seed": "node --import tsx db/seed-showcase.ts && npm run showcase:auth-check",
     "db:checkpoint": "node --import tsx db/setup-checkpoint.ts",
     "contract:check": "node --import tsx evals/run.ts",
     "legacy:scan": "node --import tsx scripts/scan-legacy-imports.ts",
-    "validate": "npm run lint && npm run check && npm test && npm run build && npm run legacy:scan"
+    "validate": "npm run showcase:check && npm run lint && npm run check && npm test && npm run build && npm run legacy:scan"
   },
   "dependencies": {
     "@langchain/cohere": "1.1.0",
