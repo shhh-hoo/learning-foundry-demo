@@ -29,7 +29,7 @@ jobs:
       - run: npm run check
       - run: npm test
       - run: npm run build
-      - name: Smoke-test local Showcase startup
+      - name: Smoke-test local Showcase startup and synthetic identities
         env:
           SHOWCASE_NO_OPEN: "true"
         run: |
@@ -69,6 +69,10 @@ jobs:
           curl --fail --silent http://127.0.0.1:3202/health
           curl --fail --silent http://127.0.0.1:3100/api/health
           curl --fail --silent http://127.0.0.1:3100/sign-in >/dev/null
+          set -a
+          source .env.showcase.local
+          set +a
+          npm run showcase:auth-check
       - if: github.event_name != 'pull_request'
         uses: actions/configure-pages@v5
       - if: github.event_name != 'pull_request'
