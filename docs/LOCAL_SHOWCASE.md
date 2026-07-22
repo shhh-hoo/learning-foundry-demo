@@ -28,10 +28,11 @@ The launcher:
 3. installs the lockfile dependencies with `npm ci` when `node_modules` is absent;
 4. applies Product State and LangGraph checkpoint migrations;
 5. seeds isolated synthetic learner, teacher, expert and engineer accounts;
-6. starts the separate Component Executor on port 3202;
-7. starts Next.js on port 3100;
-8. waits for both health endpoints;
-9. prints the login details and opens the sign-in page where a desktop opener is available.
+6. pre-provisions and verifies the four synthetic authentication identities;
+7. starts the separate Component Executor on port 3202;
+8. starts Next.js on port 3100;
+9. waits for both health endpoints;
+10. prints the login details and opens the sign-in page where a desktop opener is available.
 
 The default URL is:
 
@@ -146,6 +147,27 @@ npm run showcase
 The first run stores those values in `.env.showcase.local`. To change them later, run `npm run showcase:destroy`, then start again with new overrides.
 
 ## Troubleshooting
+
+### `SYNTHETIC_IDENTITY_DENIED` or “Synthetic identity must be pre-provisioned”
+
+This indicates that the database contains showcase users but not their authentication identity bindings. Update to the latest PR #40 branch and rerun the seed path:
+
+```bash
+git fetch origin agent/local-showcase-one-command
+git reset --hard origin/agent/local-showcase-one-command
+npm run showcase
+```
+
+The current launcher provisions and verifies all four identities during `db:seed`. Existing Product State may be retained; destroying the database is not required.
+
+To repair identities explicitly while the generated showcase environment exists:
+
+```bash
+set -a
+source .env.showcase.local
+set +a
+npm run showcase:auth-check
+```
 
 ### Docker is unavailable
 
