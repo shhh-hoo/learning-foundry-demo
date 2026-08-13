@@ -38,7 +38,7 @@ Run the small salvage checks from repository root:
 
 ```bash
 npx tsc -p rebuild/tsconfig.json
-npx vitest run --config rebuild/vitest.config.ts
+npx vitest run rebuild/tests
 ```
 
 This is a migration boundary, not the final UI or database implementation.
